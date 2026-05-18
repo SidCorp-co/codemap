@@ -1,0 +1,19 @@
+{
+  "name": "pipeline-skills",
+  "displayName": "Pipeline Skills",
+  "description": "Claude Code skill templates organized by project stack × pipeline stage. Drop-in bundles for Forge pipeline and generic workflows.",
+  "version": "0.1.0",
+  "homepage": "https://github.com/SidCorp-co/pipeline-skills",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SidCorp-co/pipeline-skills.git"
+  },
+  "license": "MIT",
+  "bundles": [
+    {
+      "name": "forge-monorepo-pnpm-tbd",
+      "path": "bundles/forge-monorepo-pnpm-tbd",
+      "description": "TBD + pnpm workspaces + local-E2E verification, merge to main"
+    }
+  ]
+}
