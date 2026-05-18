@@ -1,4 +1,4 @@
-# pipeline-skills
+# forge-pipeline-skills
 
 Open-source Claude Code skill templates organized by **project stack × pipeline stage**. Drop-in `.claude/skills/` bundles for Forge pipeline (and generic Claude Code workflows) so a new project can adopt a battle-tested skill chain in minutes instead of hand-writing each `SKILL.md`.
 
@@ -34,14 +34,14 @@ snippets/                          ← reusable review/test checklists (planned)
 ### A. Copy a bundle into your project
 
 ```bash
-git clone --depth 1 https://github.com/SidCorp-co/pipeline-skills /tmp/pipeline-skills
-cp -r /tmp/pipeline-skills/bundles/forge-monorepo-pnpm-tbd/skills/* .claude/skills/
+git clone --depth 1 https://github.com/SidCorp-co/forge-pipeline-skills /tmp/forge-pipeline-skills
+cp -r /tmp/forge-pipeline-skills/bundles/forge-monorepo-pnpm-tbd/skills/* .claude/skills/
 ```
 
 ### B. Mount via `--add-dir` (no copy)
 
 ```bash
-claude code --add-dir /path/to/pipeline-skills/bundles/forge-monorepo-pnpm-tbd
+claude code --add-dir /path/to/forge-pipeline-skills/bundles/forge-monorepo-pnpm-tbd
 ```
 
 ### C. (Future) `npx skill-bootstrap`

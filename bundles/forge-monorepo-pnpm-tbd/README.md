@@ -29,14 +29,14 @@ Forge pipeline skill bundle for a pnpm-workspace monorepo on Trunk-Based Develop
 ## Install into your project
 
 ```bash
-git clone --depth 1 https://github.com/SidCorp-co/pipeline-skills /tmp/ps
+git clone --depth 1 https://github.com/SidCorp-co/forge-pipeline-skills /tmp/ps
 cp -r /tmp/ps/bundles/forge-monorepo-pnpm-tbd/skills/* .claude/skills/
 ```
 
 Or mount without copying:
 
 ```bash
-claude code --add-dir /path/to/pipeline-skills/bundles/forge-monorepo-pnpm-tbd
+claude code --add-dir /path/to/forge-pipeline-skills/bundles/forge-monorepo-pnpm-tbd
 ```
 
 ## Customization
