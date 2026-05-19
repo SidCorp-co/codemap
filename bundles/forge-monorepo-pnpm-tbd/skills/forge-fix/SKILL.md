@@ -1,11 +1,12 @@
 ---
 name: forge-fix
-description: "PROJECT-LOCAL OVERRIDE for jarvis-agents (TBD). Applies scoped fixes from review/QA feedback, ends at `developed`. forge-release merges to main after re-review pass."
+version: 0.1.0
+description: "TBD monorepo bundle. Applies scoped fixes from review/QA feedback, ends at `developed`. forge-release merges to main after re-review pass."
 user_invocable: true
 arguments: "documentId"
 ---
 
-# Forge Fix — jarvis-agents (TBD)
+# Forge Fix — TBD monorepo bundle
 
 Project-local override. Applies scoped fixes; same TBD discipline as forge-code.
 

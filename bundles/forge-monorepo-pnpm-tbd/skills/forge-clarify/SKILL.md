@@ -1,5 +1,6 @@
 ---
 name: forge-clarify
+version: 0.1.0
 description: "Clarify and validate Forge issues before planning — reproduce bugs via browser, verify UX expectations for features, capture evidence screenshots. Use this skill after triage (confirmed status) to ensure the issue is well-understood before writing an implementation plan. Triggers on: /forge-clarify, clarifying issues, reproducing bugs, validating UX, verifying issue understanding. Also use when the pipeline needs to move an issue from confirmed to clarified status."
 user_invocable: true
 arguments: "documentId"
@@ -7,9 +8,11 @@ arguments: "documentId"
 
 # Forge Clarify
 
-This is the step between triage and plan: `confirmed → clarified`. Its job is to validate understanding — reproduce bugs in a live environment, verify UX expectations for features, and capture visual evidence. This prevents the plan step from targeting the wrong code path or misunderstanding the desired outcome.
+This is the step between triage and plan. Its job is to validate understanding — reproduce bugs in a live environment, verify UX expectations for features, and capture visual evidence. This prevents the plan step from targeting the wrong code path or misunderstanding the desired outcome.
 
-Simple issues are auto-skipped (the lifecycle hook advances them to `clarified` without running this skill).
+This skill fires when triage routed the issue to `needs_info` (incomplete) OR can be invoked manually for any issue. On success it transitions back to `confirmed` so `forge-plan` picks up.
+
+Simple issues are auto-skipped — triage routes them to `confirmed` directly without running this skill.
 
 ## Usage
 
@@ -94,11 +97,11 @@ forge_comments → create → {
 
 **Set status LAST** (triggers the plan step):
 
-- If clear (bug reproduced, or UX validated) → `clarified`
-- If ambiguous (cannot reproduce, or UX unclear) → `needs_info`
+- If clear (bug reproduced, or UX validated) → `confirmed` (so `forge-plan` fires next)
+- If ambiguous (cannot reproduce, or UX unclear) → `needs_info` (stays for human follow-up or re-clarify)
 
 ```
-forge_issues → update → { documentId: "<id>", data: { status: "clarified" } }
+forge_issues → update → { documentId: "<id>", data: { status: "confirmed" } }
 ```
 
 ## Comment Formats

@@ -1,11 +1,12 @@
 ---
 name: forge-test
-description: "PROJECT-LOCAL OVERRIDE for jarvis-agents (TBD). At status=testing: spin up local core + web dev servers, walk acceptanceCriteria via Playwright MCP when UI changed, auto-advance testing → pass → staging → released so forge-release can take over. Replaces the deprecated VPS-deploy verification."
+version: 0.1.0
+description: "TBD monorepo bundle. At status=testing: spin up local core + web dev servers, walk acceptanceCriteria via Playwright MCP when UI changed, auto-advance testing → pass → staging → released so forge-release can take over. Replaces the deprecated VPS-deploy verification."
 user_invocable: true
 arguments: "documentId"
 ---
 
-# Forge Test — jarvis-agents (local E2E + auto-advance)
+# Forge Test — local E2E + auto-advance
 
 Verification gate after `forge-review`. Boots `packages/core` (port 8080) and `packages/web` (port 3000) as background processes, walks every line of `acceptanceCriteria` on `localhost` via Playwright MCP, captures evidence, then advances the status walk so `forge-release` merges to main and closes the issue.
 

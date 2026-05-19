@@ -1,11 +1,12 @@
 ---
 name: forge-release
-description: "PROJECT-LOCAL OVERRIDE for jarvis-agents (TBD). Fires at status=released after forge-test has verified the branch locally. Merges ISS-* to main, pushes, cleans up the worktree, and auto-closes the issue. VPS staging deploy is deprecated."
+version: 0.1.0
+description: "TBD monorepo bundle. Fires at status=released after forge-test has verified the branch locally. Merges ISS-* to main, pushes, cleans up the worktree, and auto-closes the issue. VPS staging deploy is deprecated."
 user_invocable: true
 arguments: "documentId"
 ---
 
-# Forge Release — jarvis-agents (TBD merge + auto-close)
+# Forge Release — TBD merge + auto-close
 
 Final step of the auto-chain. By the time this skill fires the branch has already been verified locally by `forge-test` (servers booted, acceptanceCriteria walked via Playwright). This skill performs the merge to `main`, pushes, and closes the issue.
 

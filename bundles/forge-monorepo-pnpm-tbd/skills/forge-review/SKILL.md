@@ -1,11 +1,12 @@
 ---
 name: forge-review
-description: "PROJECT-LOCAL OVERRIDE for jarvis-agents (TBD). Independent code review with fresh context. Posts findings as issue comment. Decides verdict: APPROVE → auto-advance developed → testing (forge-test takes over). REQUEST CHANGES → developed → reopen (forge-fix takes over). ABSTAIN (review couldn't run) → halt at developed for human."
+version: 0.1.0
+description: "TBD monorepo bundle. Independent code review with fresh context. Posts findings as issue comment. Decides verdict: APPROVE → auto-advance developed → testing (forge-test takes over). REQUEST CHANGES → developed → reopen (forge-fix takes over). ABSTAIN (review couldn't run) → halt at developed for human."
 user_invocable: true
 arguments: "documentId"
 ---
 
-# Forge Review — jarvis-agents (verdict-driven auto-advance)
+# Forge Review — verdict-driven auto-advance
 
 Project-local override. Respects the project's `autoReview=true` toggle: the skill decides per-issue whether the review is clean enough to continue the auto-chain, or whether forge-fix needs to take over, or whether a human gate is really needed.
 
@@ -32,9 +33,9 @@ Project-local override. Respects the project's `autoReview=true` toggle: the ski
    ```
 
 5. Detect tech stack from changed files. Read only what applies:
-   - `packages/core/` files → load `packages/core/skills/strapi/SKILL.md` if present, and `forge/.forge/lessons.md` for past gotchas.
-   - `packages/web/` files → load `.claude/skills/nextjs/SKILL.md` if present.
    - Always read `CLAUDE.md` at repo root + `packages/<pkg>/CLAUDE.md` if the changed package has one.
+   - Per-stack skill docs at `.claude/skills/<stack>/SKILL.md` (e.g. `nextjs`, `vue`, `strapi`, `nestjs`) — load only if changed files belong to that stack and the doc exists.
+   - Project lessons / past gotchas — common locations: `.forge/lessons.md`, `docs/lessons.md`, `KNOWN_ISSUES.md`. Read only if present.
 
 6. Run the review checklist:
    - **Bugs & logic** — wrong logic, null risks, race conditions, missing error handling, off-by-one.

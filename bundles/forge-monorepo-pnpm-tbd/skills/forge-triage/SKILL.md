@@ -1,5 +1,6 @@
 ---
 name: forge-triage
+version: 0.1.0
 description: "Triage and validate Forge project management issues before development begins. Use this skill whenever issues need to be reviewed for completeness, classified by complexity, or assigned category/priority. Triggers on: /forge-triage, triaging issues, validating issue quality, classifying issue complexity, setting issue priority, reviewing new issues, checking if issues are actionable. Also use when the pipeline needs to move an issue from open to confirmed status. Even if the user just says 'triage this' or 'check if this issue is ready', use this skill."
 user_invocable: true
 arguments: "documentId1 documentId2 ..."

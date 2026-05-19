@@ -1,12 +1,13 @@
 ---
 name: forge-staging
-description: "DEPRECATED. VPS staging deploy was removed from the jarvis-agents workflow on 2026-05-12. forge-test now performs local-server verification (Playwright E2E on localhost) and forge-release auto-closes after merging to main. This skill is a no-op kept only so the dispatcher doesn't error on legacy `staging` status transitions."
+version: 0.1.0
+description: "DEPRECATED. This bundle replaces VPS-deploy staging with local-server verification — forge-test performs Playwright E2E on localhost and forge-release auto-closes after merging to main. forge-staging is a no-op kept only so the dispatcher doesn't error on legacy `staging` status transitions in the state machine."
 user_invocable: false
 ---
 
 # Forge Staging — DEPRECATED no-op
 
-VPS deploy on `staging` status was retired on 2026-05-12.
+VPS-deploy on `staging` status is replaced by local-server verification (see `forge-test`).
 
 The replacement flow is:
 
@@ -27,7 +28,7 @@ If invoked:
 1. Fetch issue.
 2. Post comment via `forge_comments → create`:
    ```
-   **forge-staging skipped** — VPS deploy retired on 2026-05-12.
+   **forge-staging skipped** — VPS-deploy replaced by local-server verification.
    The auto-chain walks through `staging` status without side effects;
    `forge-release` handles merge + close. No action required here.
    ```
@@ -45,7 +46,7 @@ If invoked:
 | Verify the change works | SSH VPS, deploy, curl /health | `forge-test` boots local core+web + Playwright E2E |
 | Promote to a shared environment | Push to VPS staging | `forge-release` merges to `main` |
 | QA gate before merge | Manual smoke on VPS | Local Playwright walk per acceptanceCriteria |
-| Production deploy | (no prod in v0.1) | (unchanged — no prod in v0.1) |
+| Production deploy | Project-specific (Coolify/Vercel/etc.) | Project-specific (unchanged) |
 
 ## Tools
 

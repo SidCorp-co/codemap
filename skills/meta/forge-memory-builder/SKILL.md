@@ -1,5 +1,6 @@
 ---
 name: forge-memory-builder
+version: 0.1.0
 description: "Self-driving memory health agent for Claude Code auto-memory. Builds a project baseline (CLAUDE.md + active skills + code + Forge MCP), reads each memo semantically, verifies claims against current state, and acts: auto-normalizes frontmatter/body per Claude Code spec, auto-renames for convention, auto-trims verbose entries, auto-deletes verifiable noise (in-progress specs with active issues, ship logs, CLAUDE.md duplicates, code-derivable mechanism dumps). Escalates only when a deletion would erase a non-obvious operational rule with no alternative source."
 user_invocable: true
 arguments: "[dry-run|audit|run|promote]"
