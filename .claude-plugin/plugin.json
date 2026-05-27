@@ -1,19 +1,13 @@
 {
   "name": "forge-pipeline-skills",
   "displayName": "Forge Pipeline Skills",
-  "description": "Claude Code skill templates organized by project stack × pipeline stage. Drop-in bundles for Forge pipeline and generic workflows.",
-  "version": "0.1.0",
+  "description": "Pipeline skill templates organized by stack × branching × deploy × verification. Base canonical set + per-profile overlays = drop-in bundle.",
+  "version": "0.2.0",
   "homepage": "https://github.com/SidCorp-co/forge-pipeline-skills",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/SidCorp-co/forge-pipeline-skills.git"
-  },
+  "repository": { "type": "git", "url": "https://github.com/SidCorp-co/forge-pipeline-skills.git" },
   "license": "MIT",
-  "bundles": [
-    {
-      "name": "forge-monorepo-pnpm-tbd",
-      "path": "bundles/forge-monorepo-pnpm-tbd",
-      "description": "TBD + pnpm workspaces + local-E2E verification, merge to main"
-    }
+  "profiles": [
+    { "name": "pnpm-monorepo-tbd-local", "path": "profiles/pnpm-monorepo-tbd-local", "bundle": "bundles/pnpm-monorepo-tbd-local" },
+    { "name": "webapp-coolify-gitflow", "path": "profiles/webapp-coolify-gitflow", "bundle": "bundles/webapp-coolify-gitflow" }
   ]
 }

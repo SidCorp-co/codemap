@@ -2,13 +2,24 @@
 
 Thanks for considering a contribution. This repo collects Claude Code skill templates for common project stacks; the goal is small, high-quality, opinionated bundles — not exhaustive coverage.
 
+## Repo model (read this first)
+
+This repo follows a **base + per-profile overlay** model, not "one bundle per stack copies everything":
+
+- `skills/` is the **canonical base** — one source of truth for the pattern.
+- `profiles/<descriptor>/overlays/` carries **only the files that diverge** from base for that profile's stack/branching/deploy/verification.
+- `profile.json.excludeSkills` removes skills that are genuinely N/A in the profile (no stub files).
+- `bundles/<descriptor>/` is the generated drop-in artefact (`tools/build-bundle.sh`).
+
+See `README.md` and `profiles/_template/README.md` for the contract.
+
 ## What's in scope
 
-- **New bundle for a stack we don't cover** — e.g. Django, Rails, Flutter, Go monorepo.
-- **New skill variant** for an existing stage — e.g. `forge-test/playwright-mocked-network.md`.
-- **Snippet** that several skills reference — e.g. a React performance checklist for `forge-review`.
-- **CI / validator improvements** in `tools/`.
-- **README / BUNDLES docs** — anything that helps newcomers pick the right bundle.
+- **New profile** for a stack/flow we don't cover — descriptor name only (e.g., `django-coolify-tbd`), not project name.
+- **Improvements to base** — when a change benefits every profile (placeholder fix, prose clarity, new MCP tool reference).
+- **New snippet** that several skills reference — `snippets/` is fine.
+- **Tooling** improvements in `tools/` (lint rules, build options).
+- **Docs** — README / BUNDLES / placeholders catalogue / contributing.
 
 ## What's out of scope
 
@@ -48,8 +59,8 @@ CI rejects PRs where:
 - Frontmatter has invalid YAML or missing required fields.
 - `name` doesn't match parent dir.
 - `description` is empty or > 250 chars.
-- Body contains non-English content (placeholder names like `<project>` are fine).
-- File contains hardcoded credentials (gitleaks scan).
+- Body contains non-English content (placeholder names like `<baseBranch>` are fine).
+- `tools/lint-skill.sh` finds denied tokens — real UUIDs, hostnames, project names, bearers, or secrets. See `conventions/placeholders.md` for the policy and the allowed placeholder catalogue.
 
 ## English-only
 
@@ -69,9 +80,9 @@ All skill content (frontmatter description, body, code examples, comments) must 
 
 ## Checklist
 - [ ] Skill name matches parent dir
-- [ ] Frontmatter valid (run `npx skill-validator` locally)
+- [ ] Frontmatter valid; `tools/lint-skill.sh` clean
 - [ ] English-only
-- [ ] No hardcoded credentials
+- [ ] No real project names, UUIDs, hostnames, or credentials — placeholders / examples only
 - [ ] README/BUNDLES updated if adding a bundle
 ```
 

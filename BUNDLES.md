@@ -1,68 +1,78 @@
-# Bundles
+# Bundles catalogue
 
-Curated install-ready combinations. Each bundle ships every `SKILL.md` needed to wire up a project end-to-end for its stack profile. Pick the bundle closest to your project; tweak the individual skills as needed (they're plain markdown).
+Each profile produces a drop-in bundle = `skills/` base + `profiles/<p>/overlays/` − `profile.json.excludeSkills`. Bundles are committed under `bundles/` so consumers can `cp` directly without running the build.
+
+```bash
+tools/build-bundle.sh <profile>      # build one
+tools/build-bundle.sh --all          # build every profile
+tools/diff-overlay.sh <profile>      # see how a profile diverges from base
+```
+
+Install into a project:
+
+```bash
+cp -r bundles/<profile>/skills/* /path/to/your-project/.claude/skills/
+```
+
+---
 
 ## Available
 
-### `forge-monorepo-pnpm-tbd`
+### `pnpm-monorepo-tbd-local`
 
-For a pnpm-workspace monorepo on Trunk-Based Development with local-E2E verification before merging to `main`.
+pnpm workspaces · Trunk-Based Development · local-E2E verification · merge-to-main · no remote deploy.
 
-- **Stack**: pnpm workspaces, multi-package (`packages/core`, `packages/web`, ...)
-- **Branching**: TBD — short-lived `ISS-*` branches from `main`, merged back same-day
-- **Verification**: forge-test boots local dev servers + walks acceptance criteria via Playwright MCP
-- **Release**: forge-release squash-merges to `main`, pushes, auto-closes the issue
-- **Worktree default**: yes (`.claude/worktrees/iss-XX-<slug>/`)
-- **Remote name**: `github` (configurable)
+| Axis | Value |
+|---|---|
+| Stack | pnpm monorepo (multi-package) |
+| Branching | TBD — short-lived `ISS-*` off `<baseBranch>` |
+| Deploy | none (build is local; no Coolify / Vercel / cloud) |
+| Verification | local Playwright E2E against `pnpm dev` |
 
-Skills included:
-1. `forge-triage` — open → confirmed/needs_info
-2. `forge-clarify` — needs_info → confirmed (reproduce + verify)
-3. `forge-plan` — confirmed → approved
-4. `forge-code` — approved → developed (TBD branch + push)
-5. `forge-review` — developed → testing (APPROVE) or reopen (REQUEST CHANGES)
-6. `forge-test` — testing → pass → staging → released (local E2E)
-7. `forge-fix` — reopen → developed (scoped fix from feedback)
-8. `forge-release` — released → closed (merge main + cleanup)
-9. `forge-staging` — no-op (deprecated; kept so state machine doesn't error)
+- **Overlay**: 5 `SKILL.md` (`forge-code`, `forge-fix`, `forge-release`, `forge-review`, `forge-test`) + 6 reference docs.
+- **Excluded**: `forge-staging` — N/A in TBD; the bundle ships **without** it.
+- **Bundle size**: 25 skill files across 8 skills.
 
-Install: `cp -r bundles/forge-monorepo-pnpm-tbd/skills/* .claude/skills/`
+### `webapp-coolify-gitflow`
+
+Multi-component webapp · GitFlow-lite (baseBranch = staging, productionBranch = main) · Coolify deploy with prod human-confirm gate.
+
+| Axis | Value |
+|---|---|
+| Stack | multi-component webapp (backend + frontend + auxiliaries) |
+| Branching | GitFlow-lite — ISS-* off `<baseBranch>`; release merges to `<productionBranch>` |
+| Deploy | Coolify — staging auto-deploys; prod requires human confirm |
+| Verification | staging-URL Playwright E2E after deploy completes |
+
+- **Overlay**: none — base is exactly this case (the canonical set is Coolify-aware + `<baseBranch>`/`<productionBranch>` placeholder-driven).
+- **Excluded**: none.
+- **Bundle size**: 20 skill files across 9 skills.
+
+---
 
 ## Planned
 
-### `forge-nextjs-tbd-vercel`
-Next.js single-repo on TBD, deploys via Vercel Git integration. forge-test runs Vitest + Playwright against `pnpm dev`. forge-release tags a release; Vercel auto-deploys.
+### `nextjs-vercel-tbd`
+Next.js single-repo on TBD. `forge-test` runs Vitest + Playwright against `pnpm dev`. `forge-release` tags a release; Vercel Git integration auto-deploys. Likely `excludeSkills: ["forge-staging"]`.
 
-### `forge-strapi-coolify`
-Strapi 5 single-repo on GitFlow-lite (`develop` + `main`). forge-test hits the Strapi REST API on a Docker-composed stack. forge-release pushes to `main`, Coolify webhook fires.
+### `strapi-coolify-singlerepo`
+Strapi 5 single-repo on GitFlow-lite. `forge-test` exercises Strapi REST against a docker-composed stack. `forge-release` pushes to productionBranch, Coolify webhook fires.
 
-### `forge-tauri-github-release`
-Tauri desktop app, TBD. forge-test runs Tauri integration test harness. forge-release tags `v*.*.*` → `release.yml` matrix-builds → GitHub Releases auto-undraft.
+### `tauri-github-release`
+Tauri desktop app on TBD. `forge-test` runs the Tauri integration harness. `forge-release` tags `v*.*.*` → GitHub Actions matrix-builds → GitHub Releases auto-undraft.
 
-### `forge-nestjs-postgres-cloud-run`
-NestJS backend on TBD. forge-test runs e2e against a Docker-composed Postgres. forge-release pushes a container to Artifact Registry, Cloud Run deploys.
+### `nestjs-postgres-cloudrun`
+NestJS backend on TBD. `forge-test` runs E2E against docker-composed Postgres. `forge-release` pushes a container to Artifact Registry; Cloud Run deploys.
+
+---
 
 ## Bundle anatomy
 
-Every bundle ships:
-
 ```
-bundles/<bundle-name>/
-├── .claude-plugin/plugin.json     ← plugin marketplace metadata
-├── README.md                       ← stack assumptions, install steps
-└── skills/                         ← all skills the bundle owns
-    └── <skill-name>/SKILL.md
+bundles/<profile>/
+├── profile.json        # axis metadata (copied from profiles/<p>/profile.json)
+└── skills/
+    ├── forge-{...}/SKILL.md     # base or overlay-replaced
+    │   └── references/...
+    └── meta/...
 ```
-
-## Contributing a new bundle
-
-1. Pick a name: `forge-<stack>-<flow>-<deploy>` (e.g. `forge-django-gitflow-fly`).
-2. Copy the closest existing bundle as a starting point.
-3. Adjust every `SKILL.md` body to reflect your stack's:
-   - build/test/lint commands
-   - branch strategy
-   - deploy mechanism
-   - code conventions
-4. Write `bundles/<your-bundle>/README.md` explaining assumptions.
-5. Add a row to the "Available" table above + the matrix in root README.
-6. Open a PR — CI validates frontmatter + body structure per Claude Code spec.

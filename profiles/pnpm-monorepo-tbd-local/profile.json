@@ -1,0 +1,24 @@
+{
+  "name": "pnpm-monorepo-tbd-local",
+  "description": "pnpm workspaces \u00b7 Trunk-Based \u00b7 local-E2E verification \u00b7 merge-to-main \u00b7 no remote deploy",
+  "stack": "pnpm-monorepo",
+  "branching": "tbd",
+  "deploy": "none",
+  "verification": "local-e2e",
+  "overlayFiles": [
+    "forge-code/SKILL.md",
+    "forge-code/references/worktree-mode.md",
+    "forge-fix/SKILL.md",
+    "forge-release/SKILL.md",
+    "forge-release/references/changelog-append.md",
+    "forge-release/references/comment-formats.md",
+    "forge-review/SKILL.md",
+    "forge-review/references/comment-format.md",
+    "forge-review/references/review-checklist.md",
+    "forge-test/SKILL.md",
+    "forge-test/references/comment-format.md"
+  ],
+  "excludeSkills": [
+    "forge-staging"
+  ]
+}
