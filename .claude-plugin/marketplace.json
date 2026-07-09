@@ -1,0 +1,15 @@
+{
+  "name": "forge",
+  "owner": { "name": "SidCorp-co" },
+  "metadata": {
+    "description": "Forge pipeline skill templates for Claude Code.",
+    "version": "0.2.0"
+  },
+  "plugins": [
+    {
+      "name": "forge-pipeline-skills",
+      "source": "./",
+      "description": "Pipeline skill templates organized by stack × branching × deploy × verification. Base canonical set + per-profile overlays = drop-in bundle."
+    }
+  ]
+}
