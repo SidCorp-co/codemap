@@ -71,6 +71,12 @@ cp -r bundles/webapp-coolify-gitflow/skills/* /path/to/your-project/.claude/skil
 | `meta/forge-guidebook` | Generate friendly, task-oriented end-user docs from source |
 | `meta/forge-memory-builder` | Self-driving memory-health agent for Claude Code auto-memory |
 
+### Utility
+
+| Skill | What it does |
+|---|---|
+| `ui-discover` | Discover & verify live external UI/UX resources (styles, libraries, chart types) and return a filtered shortlist |
+
 ## Concepts
 
 - **Base** — `skills/` — the most-complete, canonical pattern. Everything starts here.
