@@ -1,6 +1,8 @@
 ---
 name: ui-discover
 description: "Discover live external UI/UX resources via web search; return a verified, filtered shortlist (2-4), not a dump. Auto-detects mode: explore (styles/trends), implement (libs/templates verified on GitHub/npm), chart (chart type + anti-patterns)."
+user_invocable: true
+arguments: "what to find (e.g. 'dashboard chart library for React', 'glassmorphism landing page inspiration')"
 ---
 
 # UI Discover
