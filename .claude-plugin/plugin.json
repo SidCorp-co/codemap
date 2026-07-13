@@ -5,7 +5,7 @@
   "version": "0.2.0",
   "author": { "name": "SidCorp-co" },
   "homepage": "https://github.com/SidCorp-co/forge-pipeline-skills",
-  "repository": { "type": "git", "url": "https://github.com/SidCorp-co/forge-pipeline-skills.git" },
+  "repository": "https://github.com/SidCorp-co/forge-pipeline-skills",
   "license": "MIT",
   "keywords": ["claude-code", "skills", "pipeline", "forge", "devops", "coolify"],
   "profiles": [
