@@ -2,7 +2,7 @@
   "name": "forge-pipeline-skills",
   "displayName": "Forge Pipeline Skills",
   "description": "Pipeline skill templates organized by stack × branching × deploy × verification. Base canonical set + per-profile overlays = drop-in bundle.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": { "name": "SidCorp-co" },
   "homepage": "https://github.com/SidCorp-co/forge-pipeline-skills",
   "repository": "https://github.com/SidCorp-co/forge-pipeline-skills",
