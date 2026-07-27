@@ -1,6 +1,9 @@
 // codemap/1 §3 §4 §7 — grammar, canonical form, diagnostics.
 
 export const TAGS = ['flow', 'edge', 'guard', 'hack', 'why'];
+
+// cm:why the whole prose family is baselined together, so `cm init` leaves a legacy repo green (§8)
+export const PROSE_CODES = new Set(['CM001', 'CM010', 'CM011']);
 export const EDGE_KINDS = ['contract', 'ordering', 'lockstep', 'sideeffect', 'naming', 'protocol'];
 
 /** codemap/1 §4 — the single recognizer. */

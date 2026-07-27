@@ -2,7 +2,7 @@
 
 import { profileFor, isGenerated } from './languages.mjs';
 import { scanComments, nextCodeLine } from './scan.mjs';
-import { parseAnnotation, canonical, hasTodo, diag } from './parse.mjs';
+import { parseAnnotation, canonical, hasTodo, diag, PROSE_CODES } from './parse.mjs';
 import { enforcementFor } from './registry.mjs';
 
 // cm:why a docblock carrying structured tags is machine-consumed, not narration, so it is exempt
@@ -94,7 +94,7 @@ export function analyzeFile({ relPath, src, reg }) {
   return {
     annotations,
     diags,
-    proseCount: diags.filter((d) => d.code === 'CM001').length,
+    proseCount: diags.filter((d) => PROSE_CODES.has(d.code)).length,
     skipped: null,
   };
 }

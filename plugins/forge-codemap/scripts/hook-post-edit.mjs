@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, relative, isAbsolute } from 'node:path';
 import { findRoot, loadRegistry, loadBaseline, selects, DEFAULT_REGISTRY } from './lib/registry.mjs';
 import { analyzeFile } from './lib/analyze.mjs';
+import { PROSE_CODES } from './lib/parse.mjs';
 
 function readStdin() {
   try { return JSON.parse(readFileSync(0, 'utf8')); } catch { return null; }
@@ -51,14 +52,10 @@ if (fixes.length) {
 
 // cm:why prose enforcement is opt-in per repo (cm init), so an un-onboarded legacy tree is never blocked
 const onboarded = !reg._missing;
-const PROSE = new Set(['CM001', 'CM010', 'CM011']);
 const baseline = loadBaseline(root)[rel] ?? 0;
-const cm001 = res.diags.filter((d) => d.code === 'CM001');
-const others = res.diags.filter((d) => !PROSE.has(d.code) && d.code !== 'CM009');
-const prose = onboarded
-  ? [...res.diags.filter((d) => d.code === 'CM010' || d.code === 'CM011'), ...(cm001.length > baseline ? cm001 : [])]
-  : [];
-const blocking = [...others, ...prose];
+const prose = res.diags.filter((d) => PROSE_CODES.has(d.code));
+const others = res.diags.filter((d) => !PROSE_CODES.has(d.code) && d.code !== 'CM009');
+const blocking = [...others, ...(onboarded && prose.length > baseline ? prose : [])];
 
 if (!blocking.length) process.exit(0);
 

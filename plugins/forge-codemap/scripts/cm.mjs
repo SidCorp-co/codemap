@@ -9,7 +9,7 @@ import {
 } from './lib/registry.mjs';
 import { analyzeFile } from './lib/analyze.mjs';
 import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact, mermaid } from './lib/graph.mjs';
-import { canonical, CODE_TABLE } from './lib/parse.mjs';
+import { canonical, CODE_TABLE, PROSE_CODES } from './lib/parse.mjs';
 
 const COLOR = process.stdout.isTTY && !process.env.NO_COLOR;
 const c = (n, s) => (COLOR ? `[${n}m${s}[0m` : s);
@@ -77,10 +77,10 @@ switch (cmd) {
 
     let diags = [];
     for (const f of perFile) {
-      const cm001 = f.diags.filter((d) => d.code === 'CM001');
+      const prose = f.diags.filter((d) => PROSE_CODES.has(d.code));
       const base = baseline[f.relPath] ?? 0;
-      const keep = cm001.length > base ? cm001 : [];
-      diags.push(...f.diags.filter((d) => d.code !== 'CM001'), ...keep);
+      const keep = prose.length > base ? prose : [];
+      diags.push(...f.diags.filter((d) => !PROSE_CODES.has(d.code)), ...keep);
     }
 
     const g = buildGraph(perFile);
@@ -196,6 +196,11 @@ switch (cmd) {
 
   case 'baseline': {
     const reg = loadOrDie();
+    // cm:why a baseline without a registry is meaningless and silently pollutes whatever root cwd resolved to
+    if (reg._missing) {
+      console.error(red(`codemap: no .forge/codemap.json at ${root} — run "cm init" there first.`));
+      process.exit(2);
+    }
     const perFile = analyzeAll(reg, walk(root, reg).filter((f) => selects(reg, f)));
     const counts = {};
     for (const f of perFile) if (f.proseCount > 0) counts[f.relPath] = f.proseCount;
