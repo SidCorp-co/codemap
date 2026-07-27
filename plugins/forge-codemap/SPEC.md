@@ -123,8 +123,8 @@ survive contact with ecosystems whose convention is the opposite of "few comment
 
 | Language | Leaders | docPolicy | Notes |
 |---|---|---|---|
-| TS/JS/TSX | `//` | `banned`, `/** */` allowed on exports (§4.2) | pragma allowlist covers `@ts-*`, eslint/biome, bundler hints |
-| Go | `//` | **`required-on-exported`** | a comment block directly above an exported declaration is exempt — godoc/revive require it |
+| TS/JS/TSX | `//` | `banned` for `//` and `/* */`; `/** */` doc blocks allowed (§4.2) | pragma allowlist covers `@ts-*`, eslint/biome, bundler hints |
+| Go | `//` | **`required-on-exported`** | only a comment run directly above the package clause or an EXPORTED declaration is exempt — godoc/revive require it there |
 | PHP | `//` `#` | `allowed` | PHPStan/Psalm/Laravel IDE-helper docblocks are load-bearing; `_ide_helper*` and `vendor/` are excluded outright |
 | Python | `#` | `allowed` | docstrings are strings, not comments, so they are out of scope by construction |
 | Rust | `//` | `allowed` for `///`/`//!` | `// SAFETY:` is exempt (clippy requires it) |
