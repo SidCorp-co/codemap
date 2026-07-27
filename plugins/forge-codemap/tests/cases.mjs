@@ -31,7 +31,7 @@ export const analyzeCases = [
     annotations: [],
   },
   {
-    name: 'ts: a docblock is hover documentation on an export, prose anywhere else',
+    name: 'ts: a /** */ block is documentation; a /* */ block and // prose are not',
     file: 'd.ts',
     src: [
       '/** Returns the config. */',
@@ -40,10 +40,12 @@ export const analyzeCases = [
       'export function b(x) {}',
       '/** Internal helper that does the thing. */',
       'function c() {}',
+      '/** @param x on an interface member */',
+      'export interface I { x: number }',
       '/* not a doc block, just prose */',
       'export function d() {}',
     ].join('\n'),
-    codes: ['CM001', 'CM001'],
+    codes: ['CM001'],
     annotations: [],
   },
   {
@@ -243,6 +245,13 @@ export const analyzeCases = [
     annotations: [],
     skipped: 'generated',
   },
+];
+
+export const baselineCases = [
+  { name: 'identical text hashes identically', a: 'Load the config', b: 'Load the config', same: true },
+  { name: 'whitespace is normalized away', a: '  Load   the config ', b: 'Load the config', same: true },
+  { name: 'different text hashes differently', a: 'Load the config', b: 'Load the cache', same: false },
+  { name: 'a one-character change is detected', a: 'retry once', b: 'retry twice', same: false },
 ];
 
 export const graphCases = [

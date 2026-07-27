@@ -70,13 +70,29 @@ const BASELINE = ['.forge', 'codemap-baseline.json'];
 export function loadBaseline(root) {
   const p = join(root, ...BASELINE);
   if (!existsSync(p)) return {};
-  try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return {}; }
+  let raw;
+  try { raw = JSON.parse(readFileSync(p, 'utf8')); } catch { return {}; }
+  const out = {};
+  for (const [file, v] of Object.entries(raw)) {
+    // cm:why the pre-0.2 format stored counts, which cannot say WHICH comment is new — treat it as empty and say so
+    if (!Array.isArray(v)) {
+      out.__legacyFormat = true;
+      continue;
+    }
+    out[file] = new Set(v);
+  }
+  return out;
 }
 
-export function saveBaseline(root, counts) {
+export function saveBaseline(root, keysByFile) {
   const dir = join(root, '.forge');
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const sorted = Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
+  const sorted = Object.fromEntries(
+    Object.entries(keysByFile)
+      .filter(([, keys]) => keys.length > 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([f, keys]) => [f, [...keys].sort()]),
+  );
   writeFileSync(join(root, ...BASELINE), `${JSON.stringify(sorted, null, 2)}\n`);
 }
 

@@ -4,6 +4,26 @@ export const TAGS = ['flow', 'edge', 'guard', 'hack', 'why'];
 
 // cm:why the whole prose family is baselined together, so `cm init` leaves a legacy repo green (§8)
 export const PROSE_CODES = new Set(['CM001', 'CM010', 'CM011']);
+
+/**
+ * Baseline key for one prose comment: a hash of its normalized text.
+ *
+ * Counting comments per file was the first design and it failed on contact — adding three lines to
+ * a file with eighty frozen comments surfaced all eighty, because a count cannot say WHICH comment
+ * is new. Hashing the text can: it is line-independent (reformatting and moving code are free),
+ * deleting legacy comments is free, and only genuinely new text is flagged.
+ */
+export function baselineKey(text) {
+  const norm = String(text).replace(/\s+/g, ' ').trim();
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < norm.length; i++) {
+    const c = norm.charCodeAt(i);
+    h1 = (h1 ^ c) * 0x01000193 >>> 0;
+    h2 = (h2 + c * (i + 1)) >>> 0;
+  }
+  return `${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}`;
+}
 export const EDGE_KINDS = ['contract', 'ordering', 'lockstep', 'sideeffect', 'naming', 'protocol'];
 
 /** codemap/1 §4 — the single recognizer. */

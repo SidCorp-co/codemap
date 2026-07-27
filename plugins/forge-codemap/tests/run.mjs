@@ -6,7 +6,8 @@ import { dirname, join } from 'node:path';
 import { analyzeFile } from '../scripts/lib/analyze.mjs';
 import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact } from '../scripts/lib/graph.mjs';
 import { DEFAULT_REGISTRY } from '../scripts/lib/registry.mjs';
-import { analyzeCases, graphCases } from './cases.mjs';
+import { baselineKey } from '../scripts/lib/parse.mjs';
+import { analyzeCases, baselineCases, graphCases } from './cases.mjs';
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -44,6 +45,11 @@ for (const t of analyzeCases) {
     check(`${t.name} (canonical)`, fix?.canonical === t.canonical,
       `canonical: expected "${t.canonical}" got "${fix?.canonical}"`);
   }
+}
+
+for (const t of baselineCases) {
+  const same = baselineKey(t.a) === baselineKey(t.b);
+  check(`baseline: ${t.name}`, same === t.same, `expected same=${t.same}, got ${same}`);
 }
 
 for (const t of graphCases) {

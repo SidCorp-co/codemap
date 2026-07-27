@@ -97,11 +97,11 @@ const P = {
     strDelims: ['"', "'", '`'],
     multiline: ['`'],
     docPolicy: 'banned',
-    // A /** */ block above an export is the idiomatic home of API docs and the IDE surfaces it on
-    // hover — a consumer with an immediate payoff, so it earns its place (principle 1). The spam
-    // this framework exists to kill is inline narration, not hover docs.
-    docBlocksOnExported: true,
-    exportedDecl: /^export\b/,
+    // A /** */ block is documentation by form: the IDE surfaces it on hover, which is a consumer
+    // with an immediate payoff (principle 1). Narration in a function body is the spam this exists
+    // to kill, and that is always a line comment. So doc blocks are exempt and `//` prose is not —
+    // simpler and more predictable than trying to decide which declarations deserve docs.
+    docBlocksAllowed: true,
     exempt: [...COMMON_EXEMPT, ...TS_EXEMPT],
   },
   go: {

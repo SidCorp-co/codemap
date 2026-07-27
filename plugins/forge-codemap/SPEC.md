@@ -91,16 +91,19 @@ a header, and is still `CM001`.
 
 Multi-line rationale belongs in the header. One-line rationale at a call site belongs in `cm:why`.
 
-### §4.2 Doc comments on exported declarations
+### §4.2 Doc comments
 
-A `/** … */` block directly above an **exported** declaration is hover documentation: the IDE
-consumes it and the payoff is immediate, so principle 1 is satisfied and it is exempt. The same
-block above a non-exported declaration is prose (`CM001`), and a `/* … */` block — not a doc
-comment — is prose wherever it appears. Go applies the same rule to `//` runs through
-`docPolicy: required-on-exported`.
+A `/** … */` block is documentation **by form** — the IDE surfaces it on hover, a consumer with an
+immediate payoff — so it is exempt wherever it appears. A `/* … */` block is not a doc comment and is
+prose. Narration inside a function body, the spam this framework exists to kill, is always a line
+comment.
 
-This is the boundary the framework cares about: hover docs on a public API are useful; narration
-inside a function body is the spam.
+The first cut of this rule exempted doc blocks only directly above an `export`, and it flagged JSDoc
+on interface members within the hour. Deciding which declarations *deserve* documentation is not the
+framework's business; distinguishing documentation from narration is.
+
+Go is the exception, via `docPolicy: required-on-exported`: it has no block-doc form, so the same
+distinction has to be made positionally on `//` runs.
 
 ## §5 Edge kinds
 
@@ -182,9 +185,16 @@ That asymmetry is deliberate: the plugin can be installed once, machine-wide, ac
 no un-onboarded legacy tree is ever blocked. Onboarding is a per-repo decision, not a side effect of
 installing.
 
-`.forge/codemap-baseline.json` holds a per-file count of pre-existing prose comments. Enforcement
-fails only when a file's count *increases*, so legacy code is frozen rather than migrated
-(principle 7). Regenerate with `cm baseline`.
+`.forge/codemap-baseline.json` freezes pre-existing prose **by content**: per file, the set of
+hashes of the normalized comment texts. A violation is suppressed when its text is already in that
+set, so legacy code is frozen rather than migrated (principle 7). Regenerate with `cm baseline`.
+
+The first design counted comments per file and failed on contact: adding three lines to a file with
+eighty frozen comments surfaced all eighty, because a count cannot say *which* comment is new. The
+content hash can. It is also line-independent, so reformatting, moving code, and deleting legacy
+comments are all free.
+
+A pre-0.2 count-format baseline is detected, ignored, and reported — never silently trusted.
 
 ## §9 Stability
 

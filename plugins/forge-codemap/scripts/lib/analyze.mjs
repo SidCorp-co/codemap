@@ -2,16 +2,16 @@
 
 import { profileFor, isGenerated } from './languages.mjs';
 import { scanComments, nextCodeLine } from './scan.mjs';
-import { parseAnnotation, canonical, hasTodo, diag, PROSE_CODES } from './parse.mjs';
+import { parseAnnotation, canonical, hasTodo, diag, PROSE_CODES, baselineKey } from './parse.mjs';
 import { enforcementFor } from './registry.mjs';
 
 // cm:why a docblock carrying structured tags is machine-consumed, not narration, so it is exempt
-const STRUCTURED_DOC =/@(param|returns?|type|template|satisfies|throws|var|property|method|mixin|deprecated|example|see|link|inheritDoc)\b/;
+const STRUCTURED_DOC = /@(param|returns?|type|template|satisfies|throws|var|property|method|mixin|deprecated|example|see|link|inheritDoc)\b/;
 
 export function analyzeFile({ relPath, src, reg }) {
   const prof = profileFor(relPath);
-  if (!prof) return { skipped: 'no-profile', annotations: [], diags: [], proseCount: 0 };
-  if (isGenerated(src)) return { skipped: 'generated', annotations: [], diags: [], proseCount: 0 };
+  if (!prof) return { skipped: 'no-profile', annotations: [], diags: [], proseKeys: [] };
+  if (isGenerated(src)) return { skipped: 'generated', annotations: [], diags: [], proseKeys: [] };
 
   const { grammar, docPolicy } = enforcementFor(reg, prof);
   const lines = src.split('\n');
@@ -24,7 +24,7 @@ export function analyzeFile({ relPath, src, reg }) {
   const header = moduleHeader(lines, comments, codeLines);
   const headerMax = reg.enforce?.headerMaxLines ?? 20;
   if (header && header.count > headerMax) {
-    raw.push(diag('CM011', relPath, header.start, `${header.count} lines (max ${headerMax})`));
+    raw.push({ ...diag('CM011', relPath, header.start, `${header.count} lines (max ${headerMax})`), text: `header:${header.count}` });
   }
   const inHeader = (c) => !!header && c.line >= header.start && c.endLine <= header.end;
 
@@ -38,11 +38,10 @@ export function analyzeFile({ relPath, src, reg }) {
         }
       }
       // cm:why CM003 is the actionable diagnostic, so a misplaced block is not also billed as prose
-      const hoverDoc = c.kind === 'doc' && prof.docBlocksOnExported &&
-        documentsExported(lines, codeLines, c.endLine, prof);
+      const hoverDoc = c.kind === 'doc' && prof.docBlocksAllowed;
       if (!misplaced && grammar && docPolicy === 'banned' && c.text && !inHeader(c) && !hoverDoc &&
           !STRUCTURED_DOC.test(c.text) && !prof.exempt.some((re) => re.test(c.text))) {
-        raw.push(diag('CM001', relPath, c.line, trunc(c.text)));
+        raw.push({ ...diag('CM001', relPath, c.line, trunc(c.text)), text: c.text });
       }
       continue;
     }
@@ -70,18 +69,18 @@ export function analyzeFile({ relPath, src, reg }) {
     if (prof.exempt.some((re) => re.test(text))) continue;
 
     if (grammar && hasTodo(text)) {
-      raw.push(diag('CM010', relPath, c.line, trunc(text)));
+      raw.push({ ...diag('CM010', relPath, c.line, trunc(text)), text });
       continue;
     }
 
     if (!grammar || inHeader(c)) continue;
 
     if (docPolicy === 'banned') {
-      raw.push(diag('CM001', relPath, c.line, trunc(text)));
+      raw.push({ ...diag('CM001', relPath, c.line, trunc(text)), text });
     } else if (docPolicy === 'required-on-exported') {
       // cm:why godoc/revive require a comment above every exported declaration, so only that position is exempt
       const exempt = c.firstOnLine && documentsExported(lines, codeLines, c.line, prof);
-      if (!exempt) raw.push(diag('CM001', relPath, c.line, trunc(text)));
+      if (!exempt) raw.push({ ...diag('CM001', relPath, c.line, trunc(text)), text });
     }
   }
 
@@ -94,7 +93,7 @@ export function analyzeFile({ relPath, src, reg }) {
   return {
     annotations,
     diags,
-    proseCount: diags.filter((d) => PROSE_CODES.has(d.code)).length,
+    proseKeys: [...new Set(diags.filter((d) => PROSE_CODES.has(d.code)).map((d) => baselineKey(d.text ?? d.message)))],
     skipped: null,
   };
 }

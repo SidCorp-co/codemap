@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, relative, isAbsolute } from 'node:path';
 import { findRoot, loadRegistry, loadBaseline, selects, DEFAULT_REGISTRY } from './lib/registry.mjs';
 import { analyzeFile } from './lib/analyze.mjs';
-import { PROSE_CODES } from './lib/parse.mjs';
+import { PROSE_CODES, baselineKey } from './lib/parse.mjs';
 
 function readStdin() {
   try { return JSON.parse(readFileSync(0, 'utf8')); } catch { return null; }
@@ -52,17 +52,19 @@ if (fixes.length) {
 
 // cm:why prose enforcement is opt-in per repo (cm init), so an un-onboarded legacy tree is never blocked
 const onboarded = !reg._missing;
-const baseline = loadBaseline(root)[rel] ?? 0;
-const prose = res.diags.filter((d) => PROSE_CODES.has(d.code));
+const frozen = loadBaseline(root)[rel] ?? new Set();
+const prose = res.diags.filter(
+  (d) => PROSE_CODES.has(d.code) && !frozen.has(baselineKey(d.text ?? d.message)),
+);
 const others = res.diags.filter((d) => !PROSE_CODES.has(d.code) && d.code !== 'CM009');
-const blocking = [...others, ...(onboarded && prose.length > baseline ? prose : [])];
+const blocking = [...others, ...(onboarded ? prose : [])];
 
 if (!blocking.length) process.exit(0);
 
 const lines = blocking.slice(0, 12).map((d) => `${rel}:${d.line} ${d.code} ${d.message}\n    fix: ${d.fix}`);
 const extra = blocking.length > 12 ? `\n… and ${blocking.length - 12} more` : '';
-const baselineNote = cm001.length > baseline && baseline > 0
-  ? `\nThis file's frozen prose-comment budget is ${baseline}; it now has ${cm001.length}.`
+const baselineNote = frozen.size
+  ? `\n${frozen.size} pre-existing comment(s) in this file are frozen by the baseline and are not your problem — only the ones listed above are.`
   : '';
 
 process.stdout.write(JSON.stringify({

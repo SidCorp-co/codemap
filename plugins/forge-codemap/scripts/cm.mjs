@@ -9,7 +9,7 @@ import {
 } from './lib/registry.mjs';
 import { analyzeFile } from './lib/analyze.mjs';
 import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact, mermaid } from './lib/graph.mjs';
-import { canonical, CODE_TABLE, PROSE_CODES } from './lib/parse.mjs';
+import { canonical, CODE_TABLE, PROSE_CODES, baselineKey } from './lib/parse.mjs';
 
 const COLOR = process.stdout.isTTY && !process.env.NO_COLOR;
 const c = (n, s) => (COLOR ? `[${n}m${s}[0m` : s);
@@ -77,10 +77,11 @@ switch (cmd) {
 
     let diags = [];
     for (const f of perFile) {
-      const prose = f.diags.filter((d) => PROSE_CODES.has(d.code));
-      const base = baseline[f.relPath] ?? 0;
-      const keep = prose.length > base ? prose : [];
-      diags.push(...f.diags.filter((d) => !PROSE_CODES.has(d.code)), ...keep);
+      const frozen = baseline[f.relPath] ?? new Set();
+      const keep = f.diags.filter(
+        (d) => !PROSE_CODES.has(d.code) || !frozen.has(baselineKey(d.text ?? d.message)),
+      );
+      diags.push(...keep);
     }
 
     const g = buildGraph(perFile);
@@ -108,6 +109,7 @@ switch (cmd) {
     console.log(`${bold('codemap')} ${SPEC_VERSION} · ${files.length} files (${skipped} skipped) · ` +
       `${g.flows.size} flows · ${g.edges.length} edges · ${g.guards.length} guards · ${g.hacks.length} hacks`);
     console.log(`${errors ? red(`${errors} errors`) : 'no errors'}, ${warns} warnings`);
+    if (baseline.__legacyFormat) console.log(yellow('baseline is in the pre-0.2 count format and was ignored — run: cm baseline'));
     if (reg._missing) console.log(dim('no .forge/codemap.json — grammar tier ran with defaults; flow names unvalidated (§8). Run: cm init'));
     process.exitCode = errors ? 1 : 0;
     break;
@@ -202,12 +204,12 @@ switch (cmd) {
       process.exit(2);
     }
     const perFile = analyzeAll(reg, walk(root, reg).filter((f) => selects(reg, f)));
-    const counts = {};
-    for (const f of perFile) if (f.proseCount > 0) counts[f.relPath] = f.proseCount;
-    saveBaseline(root, counts);
-    const total = Object.values(counts).reduce((a, b) => a + b, 0);
-    console.log(`codemap baseline: froze ${total} pre-existing prose comments across ${Object.keys(counts).length} files`);
-    console.log(dim('legacy is frozen, not migrated (§8 / principle 7) — a file fails only when its count rises'));
+    const keys = {};
+    for (const f of perFile) if (f.proseKeys?.length) keys[f.relPath] = f.proseKeys;
+    saveBaseline(root, keys);
+    const total = Object.values(keys).reduce((a, b) => a + b.length, 0);
+    console.log(`codemap baseline: froze ${total} pre-existing prose comments across ${Object.keys(keys).length} files`);
+    console.log(dim('legacy is frozen by CONTENT (§8 / principle 7) — only a comment whose text is new is flagged'));
     break;
   }
 
@@ -215,12 +217,13 @@ switch (cmd) {
     const reg = existsSync(join(root, '.forge', 'codemap.json')) ? loadOrDie() : { ...DEFAULT_REGISTRY };
     saveRegistry(root, reg);
     const perFile = analyzeAll(reg, walk(root, reg).filter((f) => selects(reg, f)));
-    const counts = {};
-    for (const f of perFile) if (f.proseCount > 0) counts[f.relPath] = f.proseCount;
-    saveBaseline(root, counts);
+    const keys = {};
+    for (const f of perFile) if (f.proseKeys?.length) keys[f.relPath] = f.proseKeys;
+    saveBaseline(root, keys);
+    const total = Object.values(keys).reduce((a, b) => a + b.length, 0);
     console.log(`codemap ${SPEC_VERSION} initialised at ${root}`);
     console.log(`  .forge/codemap.json`);
-    console.log(`  .forge/codemap-baseline.json  ${dim(`${Object.values(counts).reduce((a, b) => a + b, 0)} legacy comments frozen`)}`);
+    console.log(`  .forge/codemap-baseline.json  ${dim(`${total} legacy comments frozen by content`)}`);
     break;
   }
 
