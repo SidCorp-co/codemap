@@ -11,11 +11,18 @@ strictly the complement. The full contract is `SPEC.md` beside this skill's plug
 
 ## Running the CLI
 
+Resolve it once per session, then reuse `$CM`. A `cm` on `PATH` wins; otherwise take the
+newest installed plugin copy (the cache keeps one directory per version, so never hardcode one).
+
 ```bash
-CM=$(ls -d ~/.claude/plugins/cache/*/plugins/forge-codemap/scripts/cm.mjs 2>/dev/null | head -1)
-[ -n "$CM" ] || CM=~/.claude/plugins/marketplaces/forge/plugins/forge-codemap/scripts/cm.mjs
-node "$CM" <verb>
+CM=cm
+command -v cm >/dev/null 2>&1 || \
+  CM="node $(ls -td "$HOME"/.claude/plugins/cache/*/forge-codemap/*/scripts/cm.mjs 2>/dev/null | head -1)"
+$CM verify
 ```
+
+If that resolves to nothing, the plugin is not installed for this user — say so rather than
+guessing a path. A one-time `ln -s <plugin>/bin/cm ~/.local/bin/cm` makes `cm` available directly.
 
 | Verb | Use |
 |---|---|

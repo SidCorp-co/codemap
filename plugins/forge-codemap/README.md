@@ -39,6 +39,19 @@ a personal `outputStyle` choice** while it is enabled. Disable the plugin to get
 Zero dependencies — bare `node` ≥ 18. No `npm install`, so the hooks work the moment the plugin is
 enabled.
 
+For the CLI, symlink the wrapper once — it resolves its own location, so it survives plugin updates:
+
+```bash
+ln -s "$(ls -td ~/.claude/plugins/cache/*/forge-codemap/*/bin/cm | head -1)" ~/.local/bin/cm
+```
+
+In CI, skip the plugin entirely and run the script straight from a shallow clone:
+
+```yaml
+- run: git clone --depth 1 https://github.com/SidCorp-co/forge-pipeline-skills /tmp/fps
+- run: node /tmp/fps/plugins/forge-codemap/scripts/cm.mjs verify
+```
+
 ## Onboard a repo
 
 ```bash
