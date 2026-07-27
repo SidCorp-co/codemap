@@ -14,7 +14,7 @@ const DEFAULT_EXCLUDE = [
   '**/.next/**', '**/.turbo/**', '**/.git/**', '**/coverage/**', '**/__pycache__/**',
   '**/*.min.js', '**/*.generated.*', '**/_ide_helper*', '**/.venv/**', '**/venv/**',
   // git worktrees hold a second copy of the tree; scanning them double-counts every finding
-  '**/.claude/worktrees/**', '**/*-backup-*/**', '**/.next/**', '**/storybook-static/**',
+  '**/.claude/worktrees/**', '**/*-backup-*/**', '**/storybook-static/**',
 ];
 
 export const DEFAULT_REGISTRY = {
