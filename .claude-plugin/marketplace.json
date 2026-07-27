@@ -2,14 +2,19 @@
   "name": "forge",
   "owner": { "name": "SidCorp-co" },
   "metadata": {
-    "description": "Forge pipeline skill templates for Claude Code.",
-    "version": "0.3.0"
+    "description": "Forge extensions for Claude Code: pipeline skill templates and the CodeMap annotation layer.",
+    "version": "0.4.0"
   },
   "plugins": [
     {
       "name": "forge-pipeline-skills",
       "source": "./",
       "description": "Pipeline skill templates organized by stack × branching × deploy × verification. Base canonical set + per-profile overlays = drop-in bundle."
+    },
+    {
+      "name": "forge-codemap",
+      "source": "./plugins/forge-codemap",
+      "description": "codemap/1 — declare the couplings LSP cannot derive (cross-language contracts, flows, edit-time guards) as cm: annotations, and get them injected into the agent's context before it edits the file. Comment spam stops as a side effect."
     }
   ]
 }

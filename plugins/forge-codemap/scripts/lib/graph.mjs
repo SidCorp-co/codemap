@@ -1,0 +1,141 @@
+// The declared-edge graph: flows, edges, guards, hacks — plus the checks that keep it from
+// rotting (codemap/1 §7 referential + structural tiers) and the impact query.
+
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { diag } from './parse.mjs';
+
+export function buildGraph(perFile) {
+  const g = { flows: new Map(), edges: [], guards: [], hacks: [], whys: [], byFile: new Map() };
+  for (const { relPath, annotations } of perFile) {
+    for (const a of annotations) {
+      const bucket = g.byFile.get(relPath) ?? [];
+      bucket.push(a);
+      g.byFile.set(relPath, bucket);
+      if (a.tag === 'flow') {
+        const f = g.flows.get(a.flow) ?? { name: a.flow, steps: [] };
+        f.steps.push(a);
+        g.flows.set(a.flow, f);
+      } else if (a.tag === 'edge') g.edges.push(a);
+      else if (a.tag === 'guard') g.guards.push(a);
+      else if (a.tag === 'hack') g.hacks.push(a);
+      else if (a.tag === 'why') g.whys.push(a);
+    }
+  }
+  return g;
+}
+
+export function referentialDiags(g, { root, reg }) {
+  const out = [];
+  const declared = new Set((reg.flows ?? []).map((f) => f.name));
+  const registryPresent = !reg._missing;
+
+  for (const [name, flow] of g.flows) {
+    if (registryPresent && !declared.has(name)) {
+      out.push(diag('CM101', flow.steps[0].file, flow.steps[0].line, name));
+    }
+    const ids = new Map();
+    for (const s of flow.steps) {
+      const prev = ids.get(s.step);
+      if (prev) out.push(diag('CM105', s.file, s.line, `${name}/${s.step} also at ${prev.file}:${prev.line}`));
+      else ids.set(s.step, s);
+    }
+    for (const s of flow.steps) {
+      if (s.after && !ids.has(s.after)) out.push(diag('CM103', s.file, s.line, `after:${s.after}`));
+    }
+  }
+
+  for (const e of g.edges) {
+    const path = e.target.split('#')[0];
+    if (!existsSync(join(root, path))) out.push(diag('CM102', e.file, e.line, e.target));
+  }
+
+  return out;
+}
+
+export function structuralDiags(g) {
+  const out = [];
+  for (const [name, flow] of g.flows) {
+    if (flow.steps.length === 1) {
+      out.push(diag('CM201', flow.steps[0].file, flow.steps[0].line, name));
+      continue;
+    }
+    const roots = flow.steps.filter((s) => !s.after);
+    if (roots.length !== 1) {
+      out.push(diag('CM202', flow.steps[0].file, flow.steps[0].line,
+        roots.length === 0 ? `${name} has no root step (every step has after:)` : `${name} has ${roots.length} root steps`));
+      continue;
+    }
+    const { cycle } = orderFlow(flow);
+    if (cycle) out.push(diag('CM202', flow.steps[0].file, flow.steps[0].line, `${name} cycles at ${cycle}`));
+  }
+  return out;
+}
+
+/** Topological walk of the after: chain. Branching is allowed; cycles are not. */
+export function orderFlow(flow) {
+  const byStep = new Map(flow.steps.map((s) => [s.step, s]));
+  const children = new Map();
+  for (const s of flow.steps) {
+    if (!s.after) continue;
+    const arr = children.get(s.after) ?? [];
+    arr.push(s);
+    children.set(s.after, arr);
+  }
+  const roots = flow.steps.filter((s) => !s.after);
+  const ordered = [];
+  const seen = new Set();
+  let cycle = null;
+  (function walk(node, depth) {
+    if (seen.has(node.step)) { cycle = node.step; return; }
+    seen.add(node.step);
+    ordered.push({ ...node, depth });
+    for (const c of children.get(node.step) ?? []) walk(c, depth + 1);
+  })(roots[0] ?? flow.steps[0], 0);
+  for (const s of flow.steps) if (!seen.has(s.step)) ordered.push({ ...s, depth: 0, detached: true });
+  return { ordered, cycle, byStep };
+}
+
+/**
+ * Blast radius of a path: what the type system and LSP cannot tell you.
+ * Derivable references stay LSP's job on purpose (codemap/1 §1).
+ */
+export function impact(g, relPath) {
+  const guards = g.guards.filter((a) => a.file === relPath);
+  const hacks = g.hacks.filter((a) => a.file === relPath);
+  const outgoing = g.edges.filter((e) => e.file === relPath);
+  const incoming = g.edges.filter((e) => {
+    const t = e.target.split('#')[0];
+    return e.file !== relPath && (t === relPath || relPath.startsWith(`${t}/`) || t.startsWith(`${relPath}/`));
+  });
+  const flows = [];
+  for (const [name, flow] of g.flows) {
+    const mine = flow.steps.filter((s) => s.file === relPath);
+    if (!mine.length) continue;
+    const { ordered } = orderFlow(flow);
+    const neighbours = [];
+    for (const s of mine) {
+      const i = ordered.findIndex((o) => o.step === s.step);
+      for (const j of [i - 1, i + 1]) {
+        const n = ordered[j];
+        if (n && n.file !== relPath) neighbours.push(n);
+      }
+    }
+    flows.push({ name, steps: mine, neighbours });
+  }
+  return { guards, hacks, outgoing, incoming, flows };
+}
+
+export function mermaid(flow) {
+  const { ordered } = orderFlow(flow);
+  const id = (s) => s.step.replace(/[^a-z0-9]/gi, '_');
+  const lines = ['flowchart TD'];
+  for (const s of ordered) {
+    const label = `${s.step}<br/><small>${s.file}:${s.line}</small>`;
+    lines.push(`  ${id(s)}["${label}"]`);
+  }
+  for (const s of ordered) {
+    if (s.after) lines.push(`  ${id({ step: s.after })} --> ${id(s)}`);
+  }
+  return lines.join('\n');
+}

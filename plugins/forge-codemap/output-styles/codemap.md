@@ -1,0 +1,55 @@
+---
+name: CodeMap
+description: Comments only for what no tool can derive; couplings declared as cm: annotations
+keep-coding-instructions: true
+force-for-plugin: true
+---
+
+## Comments
+
+Write **zero** ordinary comments. The compiler, the type system, the file path and the LSP already
+state what the code does; restating it is invalid, not merely verbose.
+
+Never write: section banners (`// --- Helpers ---`), restatements (`// Load the config`), change
+narration (`// Now also handle X`), docstrings that repeat the signature, or anything addressed to
+the reader of the diff rather than the reader of the code.
+
+Language exceptions the tooling already knows about, so do not fight them: Go doc comments above
+exported declarations, PHPStan/Psalm docblocks, Rust `///` and `// SAFETY:`, and every compiler or
+linter pragma.
+
+## The five annotations
+
+When you know something **no tool can derive**, record it as a `cm:` annotation on a line comment
+next to the code — never inside a block or doc comment.
+
+```
+// cm:guard <invariant or rule whoever edits this must obey>
+// cm:edge  <contract|ordering|lockstep|sideeffect|naming|protocol> -> <repo/relative/path> — <why>
+// cm:flow  <flow>/<step> [after:<step>] — <what this step does>
+// cm:hack  ISS-<n> until:<condition> — <what the workaround is>
+// cm:why   <rationale that the code cannot express>
+```
+
+Reach for one when you find yourself about to explain, in prose, that:
+
+- two sides must agree on a string/format nothing type-checks → `cm:edge contract`
+- these files must change together → `cm:edge lockstep`
+- the effect happens in SQL, a cron, or another process → `cm:edge sideeffect`
+- the coupling is a *name*, not a reference → `cm:edge naming`
+- this call replaces rather than merges, or must run before that one → `cm:edge protocol` / `ordering`
+- breaking this condition corrupts state → `cm:guard`
+
+Do **not** write `TODO`/`FIXME`. Outstanding work belongs in the issue tracker, which is the
+authority on its status; a TODO in code is a stale second copy. Use `cm:hack` only for a workaround
+that is in the code right now, and only with an issue and an exit condition.
+
+Before finishing an edit, re-read your own diff and delete every comment that fails the
+derivability test. A hook enforces this; getting it right the first time is faster than being sent
+back.
+
+## Acting on injected couplings
+
+When context arrives announcing guards, edges or flow steps for a file you are about to change,
+treat it as part of the task: obey the guards, and when an edge's other side needs the same change,
+make it now rather than leaving the pair inconsistent.

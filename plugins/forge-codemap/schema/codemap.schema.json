@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SidCorp-co/forge-pipeline-skills/plugins/forge-codemap/schema/codemap.schema.json",
+  "title": "codemap/1 registry",
+  "description": "Closes the vocabulary of flow names and scopes enforcement. Steps are never declared here — they are derived from the code (SPEC.md §1.1, §8).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["specVersion"],
+  "properties": {
+    "specVersion": {
+      "const": "codemap/1",
+      "description": "A tool older than the registry refuses to run (§9)."
+    },
+    "flows": {
+      "type": "array",
+      "description": "Declared flow names. A cm:flow naming anything absent from this list is CM101.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "enforce": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "grammar": { "type": "boolean", "default": true },
+        "include": { "type": "array", "items": { "type": "string" }, "default": ["**"] },
+        "exclude": { "type": "array", "items": { "type": "string" } },
+        "headerMaxLines": { "type": "integer", "minimum": 1, "default": 20 }
+      }
+    },
+    "languages": {
+      "type": "object",
+      "description": "Per-language overrides, keyed by profile id: ts, go, php, py, rust, sql, sh, yaml.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "enforce": { "type": "boolean" },
+          "docPolicy": { "enum": ["banned", "allowed", "required-on-exported"] }
+        }
+      }
+    }
+  }
+}
