@@ -8,6 +8,7 @@ import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact } from
 import { DEFAULT_REGISTRY } from '../scripts/lib/registry.mjs';
 import { baselineKey } from '../scripts/lib/parse.mjs';
 import { analyzeCases, baselineCases, graphCases } from './cases.mjs';
+import { wiringCases } from './wiring.mjs';
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -79,6 +80,8 @@ for (const t of graphCases) {
       `impact: guards=${r.guards.length} incoming=${r.incoming.length} outgoing=${r.outgoing.length} neighbours=[${nb}]`);
   }
 }
+
+wiringCases(PLUGIN_ROOT, check);
 
 console.log(`codemap golden corpus: ${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.error(`  FAIL ${f}`);
