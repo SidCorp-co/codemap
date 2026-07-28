@@ -11,13 +11,14 @@ strictly the complement. The full contract is `SPEC.md` beside this skill's plug
 
 ## Running the CLI
 
-Resolve it once per session, then reuse `$CM`. A `cm` on `PATH` wins; otherwise take the
-newest installed plugin copy (the cache keeps one directory per version, so never hardcode one).
+Resolve it once per session, then reuse `$CM`. A `cm` on `PATH` wins; otherwise take the newest copy
+under **this session's** config dir — a Forge runner sets `CLAUDE_CONFIG_DIR` to an isolated directory,
+so globbing `~/.claude` finds either nothing or a different install than the one actually loaded.
 
 ```bash
 CM=cm
 command -v cm >/dev/null 2>&1 || \
-  CM="node $(ls -td "$HOME"/.claude/plugins/cache/*/forge-codemap/*/scripts/cm.mjs 2>/dev/null | head -1)"
+  CM="node $(ls -td "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/forge-codemap/*/scripts/cm.mjs 2>/dev/null | head -1)"
 $CM verify
 ```
 

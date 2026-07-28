@@ -42,7 +42,7 @@ enabled.
 For the CLI, symlink the wrapper once — it resolves its own location, so it survives plugin updates:
 
 ```bash
-ln -s "$(ls -td ~/.claude/plugins/cache/*/forge-codemap/*/bin/cm | head -1)" ~/.local/bin/cm
+ln -s "$(ls -td "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/forge-codemap/*/bin/cm | head -1)" ~/.local/bin/cm
 ```
 
 In CI, skip the plugin entirely and run the script straight from a shallow clone:
@@ -59,8 +59,9 @@ cm init        # writes .forge/codemap.json and FREEZES existing comments as a b
 cm verify      # should be green immediately, even in a legacy codebase
 ```
 
-A file fails only when its prose-comment count *rises*. Legacy is frozen, never migrated — a
-mass comment deletion is a separate, reviewable change.
+Legacy is frozen by CONTENT: only a comment whose text is new gets flagged, so reformatting, moving
+code and deleting old comments are all free. Legacy is frozen, never migrated — a mass comment
+deletion is a separate, reviewable change.
 
 Then annotate **from evidence**: take the couplings that have already caused a manual intervention
 or a broken deploy and declare those. A flow nobody has been burned by has not earned its
@@ -90,7 +91,7 @@ cm fmt                      normalize annotations
 cm impact <path>            declared blast radius              [--json]
 cm flow [name]              ordered trace                      [--mermaid]
 cm ls                       every annotation in the repo
-cm baseline                 re-freeze legacy comment counts
+cm baseline                 re-freeze legacy comments (by content hash)
 cm new flow <name>          declare a flow
 cm codes                    diagnostic reference
 ```
@@ -101,7 +102,7 @@ CI: `cm verify --since $(git merge-base origin/main HEAD)`.
 
 | Language | Ordinary comments |
 |---|---|
-| TS/JS | banned; `/** */` allowed on exports (IDE hover docs) |
+| TS/JS | `//` and `/* */` banned; `/** */` doc blocks allowed anywhere (IDE hover docs) |
 | Go | `//` above the package clause and exported declarations exempt (godoc/revive) |
 | PHP | allowed — PHPStan/Psalm/Laravel docblocks are load-bearing |
 | Python | allowed; docstrings are strings, so they are out of scope |
