@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/hook-pre-edit.mjs",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hook-pre-edit.mjs",
             "args": [],
             "timeout": 15
           }
@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/scripts/hook-post-edit.mjs",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hook-post-edit.mjs",
             "args": [],
             "timeout": 15
           }

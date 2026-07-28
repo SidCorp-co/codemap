@@ -2,7 +2,7 @@
   "name": "forge-codemap",
   "displayName": "Forge CodeMap",
   "description": "Declared-edge layer for code: cm: annotations carrying the couplings LSP cannot derive (cross-language contracts, flows, guards), auto-injected into the agent's context before it edits. Kills comment spam as a side effect.",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "author": { "name": "SidCorp-co" },
   "homepage": "https://github.com/SidCorp-co/forge-pipeline-skills/tree/main/plugins/forge-codemap",
   "repository": "https://github.com/SidCorp-co/forge-pipeline-skills",
