@@ -53,7 +53,14 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
 <leader> cm:why   <text>
 ```
 
-- **One line. One annotation.** No continuation lines.
+- **One line. One annotation.** The machine-parsed part — tag, kind, target, `after:`, `until:` —
+  must fit on the annotation's own line; nothing after it is parsed.
+- **A wrap is one line, not a paragraph.** The single standalone line comment directly below an
+  annotation, under the same leader, is its continuation: exempt from prose enforcement, and not
+  merged into the annotation's text (so `canonical` and `cm fmt` never rewrite across lines). A
+  second such line is prose again — and, sharing the block, is sited (§8), so it cannot be frozen.
+  Without this, every wrapped annotation in the wild is a hidden `CM001` that the baseline freezes
+  forever, which is how an annotation layer ends up *adding* comments.
 - **Line comments only.** Never inside a block or doc comment (`/* */`, `/** */`, `///`, `//!`,
   `{{-- --}}`) — that is `CM003`. Rationale: block/doc comments are parsed by TSDoc, PHPStan,
   Psalm, and rustdoc; staying out of them means no other toolchain ever sees a `cm:` line.
@@ -195,6 +202,17 @@ content hash can. It is also line-independent, so reformatting, moving code, and
 comments are all free.
 
 A pre-0.2 count-format baseline is detected, ignored, and reported — never silently trusted.
+
+**Sited prose is never frozen.** A `CM001`/`CM010` violation sharing a comment block with a `cm:`
+annotation is reported regardless of the baseline. Contiguous standalone comment lines form one
+block; a trailing comment on a code line is not part of one. `CM011` is excluded — it measures a
+header's length, not one comment's text, so no site can own it.
+
+Without this exception the baseline has no path that ever reduces: legacy prose is spared forever,
+annotations only accrete, and a repo ends with more comments than before onboarding. The rule is
+narrow on purpose — an author who annotates a site has just read it, so the noise there is theirs;
+prose they never touched stays frozen. `cm sweep` lists what the baseline is hiding, and
+`cm sweep --prune-baseline` drops keys matching nothing, so paid-off debt stops being counted.
 
 ## §9 Stability
 

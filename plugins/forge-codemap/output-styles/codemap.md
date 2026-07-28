@@ -44,6 +44,11 @@ Do **not** write `TODO`/`FIXME`. Outstanding work belongs in the issue tracker, 
 authority on its status; a TODO in code is a stale second copy. Use `cm:hack` only for a workaround
 that is in the code right now, and only with an issue and an exit condition.
 
+Adding an annotation makes you the owner of the comment block it lands in. Delete every ordinary
+comment glued to it — the baseline spares legacy prose everywhere else, but never in a block you have
+just annotated, so leaving the noise there turns the site red. An annotation added on top of four
+lines of restatement has made the file worse, not better.
+
 Before finishing an edit, re-read your own diff and delete every comment that fails the
 derivability test. A hook enforces this; getting it right the first time is faster than being sent
 back.

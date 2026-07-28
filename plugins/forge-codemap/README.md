@@ -63,6 +63,12 @@ Legacy is frozen by CONTENT: only a comment whose text is new gets flagged, so r
 code and deleting old comments are all free. Legacy is frozen, never migrated — a mass comment
 deletion is a separate, reviewable change.
 
+One exception, or the total never falls: prose sharing a comment block with a `cm:` annotation is
+**not** frozen. Annotating a site means you have read it, so the noise there is yours to delete —
+otherwise annotations only ever accrete on top of legacy comments and onboarding ends with more
+comments than it started with. `cm sweep` shows what the baseline is hiding, and `cm verify` prints
+the remaining debt on every run.
+
 Then annotate **from evidence**: take the couplings that have already caused a manual intervention
 or a broken deploy and declare those. A flow nobody has been burned by has not earned its
 annotations yet.
@@ -91,6 +97,7 @@ cm fmt                      normalize annotations
 cm impact <path>            declared blast radius              [--json]
 cm flow [name]              ordered trace                      [--mermaid]
 cm ls                       every annotation in the repo
+cm sweep [paths...]         list the prose the baseline hides  [--limit N] [--prune-baseline]
 cm baseline                 re-freeze legacy comments (by content hash)
 cm new flow <name>          declare a flow
 cm codes                    diagnostic reference

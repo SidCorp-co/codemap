@@ -6,6 +6,7 @@
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync, statSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { baselineKey } from '../scripts/lib/parse.mjs';
 import { tmpdir } from 'node:os';
 
 const GUARD_TEXT = 'wiring probe — this line must reach injected context';
@@ -57,7 +58,7 @@ function runHook(entry, { root, file }) {
     encoding: 'utf8',
   });
   let json = null;
-  try { json = JSON.parse(res.stdout); } catch { /* silent exit writes nothing */ }
+  try { json = JSON.parse(res.stdout); } catch { json = null; }
   return { ...res, json };
 }
 
@@ -125,6 +126,17 @@ export function wiringCases(pluginRoot, check) {
       check('wiring: PostToolUse passes a clean file',
         passed.stdout.trim() === '' && passed.status === 0,
         `expected no output, got status=${passed.status} stdout: ${passed.stdout}`);
+
+      // cm:edge lockstep -> plugins/forge-codemap/scripts/hook-post-edit.mjs — CI and the hook must apply the same siting override
+      const frozenText = 'legacy narration frozen at init';
+      const sitedFile = writeFixture(root, 'sited.ts',
+        `// ${frozenText}\n// cm:guard callers must hold the run lock\nexport const s = 1;\n`);
+      writeFileSync(join(root, '.forge', 'codemap-baseline.json'),
+        `${JSON.stringify({ 'sited.ts': [baselineKey(frozenText)] })}\n`);
+      const stillBlocked = runHook(post, { root, file: sitedFile });
+      check('wiring: PostToolUse blocks frozen prose that an annotation now sits in',
+        stillBlocked.json?.decision === 'block' && stillBlocked.json.reason.includes('CM001'),
+        `the baseline must not spare a block the author just annotated; got: ${stillBlocked.stdout || '(empty)'}`);
 
       const legacy = makeRepo({ onboarded: false });
       roots.push(legacy);

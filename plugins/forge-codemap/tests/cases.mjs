@@ -3,6 +3,83 @@
 
 export const analyzeCases = [
   {
+    name: 'ts: prose in an annotated block is sited, so the baseline cannot spare it (§8)',
+    file: 'sited.ts',
+    src: [
+      '// Load the config',
+      '// cm:guard callers must hold the run lock',
+      'function f() {}',
+      '',
+      '// unrelated narration far from any annotation',
+      'function g() {}',
+    ].join('\n'),
+    codes: ['CM001', 'CM001'],
+    annotations: ['guard'],
+    sited: [1],
+    proseKeyCount: 1,
+  },
+  {
+    name: 'ts: an annotation may wrap onto one line, and only one (§4)',
+    file: 'wrap.ts',
+    src: [
+      '// cm:why the retry budget is per-run because a per-attempt one lets a flapping step spend it all',
+      '// and the dispatcher cannot tell that apart from genuine progress',
+      '// a third line is prose again',
+      'const r = 1;',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['why'],
+    sited: [3],
+  },
+  {
+    name: 'ts: a wrapped line under a DIFFERENT leader is not a continuation',
+    file: 'wrap-leader.ts',
+    src: [
+      '// cm:why the retry budget is per-run, not per-attempt',
+      '/* narration in a block comment */',
+      'const r = 1;',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['why'],
+  },
+  {
+    name: 'ts: a blank line ends the block, so prose below it is not sited',
+    file: 'gap.ts',
+    src: [
+      '// cm:guard callers must hold the run lock',
+      '',
+      '// Load the config',
+      'function f() {}',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['guard'],
+    sited: [],
+  },
+  {
+    name: 'ts: a trailing comment on a code line is not part of the block above it',
+    file: 'trailing.ts',
+    src: [
+      '// cm:guard callers must hold the run lock',
+      'function f() {} // Load the config',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['guard'],
+    sited: [],
+  },
+  {
+    name: 'ts: a TODO glued to an annotation is sited too',
+    file: 'sited-todo.ts',
+    src: [
+      '// cm:why the retry budget is per-run, not per-attempt',
+      '// TODO tune the ceiling',
+      'const r = 1;',
+    ].join('\n'),
+    codes: ['CM010'],
+    annotations: ['why'],
+    sited: [2],
+    proseKeyCount: 0,
+  },
+  {
     name: 'ts: prose comment is invalid, pragmas and annotations are not',
     file: 'a.ts',
     src: [

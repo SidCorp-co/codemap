@@ -9,6 +9,7 @@ import { DEFAULT_REGISTRY } from '../scripts/lib/registry.mjs';
 import { baselineKey } from '../scripts/lib/parse.mjs';
 import { analyzeCases, baselineCases, graphCases } from './cases.mjs';
 import { wiringCases } from './wiring.mjs';
+import { cliCases } from './cli.mjs';
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -40,6 +41,17 @@ for (const t of analyzeCases) {
   const wantTags = t.annotations ?? [];
   check(`${t.name} (annotations)`, JSON.stringify(gotTags) === JSON.stringify(wantTags),
     `annotations: expected [${wantTags}] got [${gotTags}]`);
+
+  if (t.sited) {
+    const got2 = res.diags.filter((d) => d.sited).map((d) => d.line).sort((a, b) => a - b);
+    check(`${t.name} (sited)`, JSON.stringify(got2) === JSON.stringify(t.sited),
+      `sited lines: expected [${t.sited}] got [${got2}]`);
+  }
+
+  if (t.proseKeyCount !== undefined) {
+    check(`${t.name} (proseKeys exclude sited)`, res.proseKeys.length === t.proseKeyCount,
+      `proseKeys: expected ${t.proseKeyCount} got ${res.proseKeys.length} — a sited key would freeze nothing`);
+  }
 
   if (t.canonical) {
     const fix = res.diags.find((d) => d.code === 'CM009');
@@ -82,6 +94,7 @@ for (const t of graphCases) {
 }
 
 wiringCases(PLUGIN_ROOT, check);
+cliCases(PLUGIN_ROOT, check);
 
 console.log(`codemap golden corpus: ${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.error(`  FAIL ${f}`);

@@ -8,6 +8,9 @@ import { enforcementFor } from './registry.mjs';
 // cm:why a docblock carrying structured tags is machine-consumed, not narration, so it is exempt
 const STRUCTURED_DOC = /@(param|returns?|type|template|satisfies|throws|var|property|method|mixin|deprecated|example|see|link|inheritDoc)\b/;
 
+// cm:why CM011 measures a header's LENGTH, not one comment's text, so it can never be owned by a site
+const SITEABLE = new Set(['CM001', 'CM010']);
+
 export function analyzeFile({ relPath, src, reg }) {
   const prof = profileFor(relPath);
   if (!prof) return { skipped: 'no-profile', annotations: [], diags: [], proseKeys: [] };
@@ -20,6 +23,7 @@ export function analyzeFile({ relPath, src, reg }) {
   const annotations = [];
   const raw = [];
   const ignores = new Map();
+  const annLines = new Map();
 
   const header = moduleHeader(lines, comments, codeLines);
   const headerMax = reg.enforce?.headerMaxLines ?? 20;
@@ -61,6 +65,7 @@ export function analyzeFile({ relPath, src, reg }) {
       if (parsed.diags) { raw.push(...parsed.diags); continue; }
       const ann = { ...parsed.ann, indent: c.indent ?? '', leader: c.leader };
       annotations.push(ann);
+      annLines.set(c.line, c.leader);
       const want = canonical(ann);
       if (text !== want) raw.push({ ...diag('CM009', relPath, c.line, text), canonical: want });
       continue;
@@ -72,6 +77,10 @@ export function analyzeFile({ relPath, src, reg }) {
       raw.push({ ...diag('CM010', relPath, c.line, trunc(text)), text });
       continue;
     }
+
+    // cm:why an annotation may wrap onto exactly ONE following line — enough for a sentence that does not
+    // fit, while a third line is prose again, so this cannot become a licence to dump a paragraph (§4)
+    if (c.firstOnLine !== false && annLines.get(c.line - 1) === c.leader) continue;
 
     if (!grammar || inHeader(c)) continue;
 
@@ -90,12 +99,41 @@ export function analyzeFile({ relPath, src, reg }) {
     return !(above?.has(d.code) || same?.has(d.code));
   });
 
+  siteProse(comments, annotations, diags);
+
   return {
     annotations,
     diags,
-    proseKeys: [...new Set(diags.filter((d) => PROSE_CODES.has(d.code)).map((d) => baselineKey(d.text ?? d.message)))],
+    // cm:why sited prose can never be spared, so freezing its key would only add a hash that decides nothing
+    proseKeys: [...new Set(diags.filter((d) => PROSE_CODES.has(d.code) && !d.sited)
+      .map((d) => baselineKey(d.text ?? d.message)))],
     skipped: null,
   };
+}
+
+// cm:edge lockstep -> plugins/forge-codemap/scripts/hook-post-edit.mjs — the `sited` flag is what overrides the baseline there
+// cm:why the baseline spares legacy prose everywhere except a block its author has just annotated: that
+// is the one place the tool can tell "you worked here and left the noise" from "this predates you" (§8)
+function siteProse(comments, annotations, diags) {
+  const annLines = new Set(annotations.map((a) => a.line));
+  if (!annLines.size) return;
+
+  const standalone = comments.filter((c) => c.firstOnLine !== false).sort((a, b) => a.line - b.line);
+  for (let i = 0; i < standalone.length;) {
+    let end = standalone[i].endLine;
+    const start = standalone[i].line;
+    let j = i + 1;
+    while (j < standalone.length && standalone[j].line <= end + 1) {
+      end = Math.max(end, standalone[j].endLine);
+      j++;
+    }
+    if ([...annLines].some((l) => l >= start && l <= end)) {
+      for (const d of diags) {
+        if (SITEABLE.has(d.code) && d.line >= start && d.line <= end) d.sited = true;
+      }
+    }
+    i = j;
+  }
 }
 
 // cm:why the trailing blank line is what separates a header from narration glued to the first statement (§4.1)

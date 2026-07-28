@@ -20,11 +20,26 @@ const bold = (s) => c('1', s);
 
 const argv = process.argv.slice(2);
 const cmd = argv[0] ?? 'help';
-const flags = new Set(argv.filter((a) => a.startsWith('--')));
-const positional = argv.slice(1).filter((a) => !a.startsWith('--'));
+
+// cm:guard every flag that takes a value MUST be listed here — an unlisted one has its value parsed as a
+// path, which silently narrowed `cm verify --since <ref>` to zero files and made the CI gate a no-op
+const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description']);
+
+const flags = new Set(argv.filter((a) => a.startsWith('--')).map((a) => a.split('=')[0]));
+const positional = [];
+for (let i = 1; i < argv.length; i++) {
+  const a = argv[i];
+  if (a.startsWith('--')) {
+    if (VALUE_FLAGS.has(a) && !a.includes('=')) i++;
+    continue;
+  }
+  positional.push(a);
+}
 const flagValue = (name) => {
-  const i = argv.indexOf(name);
-  return i === -1 ? null : argv[i + 1];
+  const hit = argv.find((a) => a === name || a.startsWith(`${name}=`));
+  if (hit === undefined) return null;
+  if (hit.includes('=')) return hit.slice(hit.indexOf('=') + 1);
+  return argv[argv.indexOf(name) + 1] ?? null;
 };
 
 const root = findRoot();
@@ -76,12 +91,18 @@ switch (cmd) {
     const baseline = flags.has('--no-baseline') ? {} : loadBaseline(root);
 
     let diags = [];
+    let debt = 0;
+    let cleaned = 0;
     for (const f of perFile) {
       const frozen = baseline[f.relPath] ?? new Set();
+      // cm:edge lockstep -> plugins/forge-codemap/scripts/hook-post-edit.mjs — same baseline override, or CI and the hook disagree
       const keep = f.diags.filter(
-        (d) => !PROSE_CODES.has(d.code) || !frozen.has(baselineKey(d.text ?? d.message)),
+        (d) => !PROSE_CODES.has(d.code) || d.sited || !frozen.has(baselineKey(d.text ?? d.message)),
       );
       diags.push(...keep);
+
+      const present = new Set(f.proseKeys ?? []);
+      for (const k of frozen) (present.has(k) ? debt++ : cleaned++);
     }
 
     const g = buildGraph(perFile);
@@ -92,10 +113,24 @@ switch (cmd) {
     if (wantRef) diags.push(...referentialDiags(g, { root, reg }));
     if (wantStruct) diags.push(...structuralDiags(g));
 
+    // cm:why a baselined file that no longer exists (or left the scope) has had its comments deleted too,
+    // but only a full scan can tell that apart from "not looked at this run"
+    const scoped = Boolean(flagValue('--since') || positional.length);
+    if (!scoped) {
+      const seen = new Set(perFile.map((f) => f.relPath));
+      for (const [rel, frozen] of Object.entries(baseline)) {
+        if (rel.startsWith('__') || seen.has(rel)) continue;
+        cleaned += frozen.size ?? frozen.length ?? 0;
+      }
+    }
+
     if (flags.has('--json')) {
       // cm:why process.exit() truncates a piped stdout that has not drained, so only the code is set
       process.exitCode = diags.some((d) => d.tier !== 'structural') ? 1 : 0;
-      console.log(JSON.stringify({ specVersion: SPEC_VERSION, files: files.length, diags }, null, 2));
+      console.log(JSON.stringify({
+        specVersion: SPEC_VERSION, files: files.length, diags,
+        legacy: { debt, cleaned, scoped },
+      }, null, 2));
       break;
     }
 
@@ -109,6 +144,12 @@ switch (cmd) {
     console.log(`${bold('codemap')} ${SPEC_VERSION} · ${files.length} files (${skipped} skipped) · ` +
       `${g.flows.size} flows · ${g.edges.length} edges · ${g.guards.length} guards · ${g.hacks.length} hacks`);
     console.log(`${errors ? red(`${errors} errors`) : 'no errors'}, ${warns} warnings`);
+    if (debt || cleaned) {
+      const share = debt + cleaned ? Math.round((cleaned / (debt + cleaned)) * 100) : 0;
+      console.log(`legacy prose: ${bold(String(debt))} distinct still frozen · ${cleaned} cleaned (${share}%)` +
+        `${scoped ? dim(' — scoped run, whole-tree figures need a bare `cm verify`') : ''}`);
+      if (debt) console.log(dim('frozen comments are debt, not absolution — list them with: cm sweep <path>'));
+    }
     if (baseline.__legacyFormat) console.log(yellow('baseline is in the pre-0.2 count format and was ignored — run: cm baseline'));
     if (reg._missing) console.log(dim('no .forge/codemap.json — grammar tier ran with defaults; flow names unvalidated (§8). Run: cm init'));
     process.exitCode = errors ? 1 : 0;
@@ -196,6 +237,72 @@ switch (cmd) {
     break;
   }
 
+  // cm:why the baseline hides legacy prose so CI can be green on day one; without a verb that lists what
+  // it hid, "frozen" reads as "resolved" and the debt is invisible forever (§8)
+  case 'sweep': {
+    const reg = loadOrDie();
+    if (reg._missing) {
+      console.error(red(`codemap: no .forge/codemap.json at ${root} — nothing is frozen, so nothing to sweep.`));
+      process.exit(2);
+    }
+    const files = fileList(reg);
+    const perFile = analyzeAll(reg, files);
+    const baseline = loadBaseline(root);
+    const scoped = Boolean(flagValue('--since') || positional.length);
+
+    const rows = [];
+    const pruned = {};
+    let stale = 0;
+    for (const f of perFile) {
+      const frozen = baseline[f.relPath];
+      if (!frozen) continue;
+      for (const d of f.diags) {
+        if (!PROSE_CODES.has(d.code) || d.sited) continue;
+        if (frozen.has(baselineKey(d.text ?? d.message))) {
+          rows.push({ file: f.relPath, line: d.line, code: d.code, text: d.text ?? d.message });
+        }
+      }
+      const present = new Set(f.proseKeys ?? []);
+      const keep = [...frozen].filter((k) => present.has(k));
+      stale += frozen.size - keep.length;
+      if (keep.length) pruned[f.relPath] = keep;
+    }
+
+    if (flags.has('--prune-baseline')) {
+      // cm:guard prune must never run scoped — an unscanned file would be dropped from the baseline entirely,
+      // silently absolving every comment in it. cm baseline is the deliberate re-freeze; this is not.
+      if (scoped) {
+        console.error(red('codemap: --prune-baseline needs a whole-tree run — drop the paths and --since.'));
+        process.exit(2);
+      }
+      saveBaseline(root, pruned);
+      console.log(`codemap sweep: dropped ${stale} stale key(s); ${Object.values(pruned).reduce((a, b) => a + b.length, 0)} remain frozen`);
+      console.log(dim('bookkeeping only — no source file was touched, and no new comment was absolved'));
+      break;
+    }
+
+    if (flags.has('--json')) {
+      console.log(JSON.stringify({ frozen: rows.length, stale, scoped, comments: rows }, null, 2));
+      break;
+    }
+
+    const limit = Number(flagValue('--limit') ?? 40);
+    rows.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+    for (const r of rows.slice(0, limit)) {
+      console.log(`${bold(`${r.file}:${r.line}`)} ${dim(r.code)} ${r.text.length > 88 ? `${r.text.slice(0, 85)}...` : r.text}`);
+    }
+    if (rows.length > limit) console.log(dim(`… and ${rows.length - limit} more (--limit ${rows.length} to see all)`));
+    console.log('');
+    // cm:why the baseline is keyed per FILE by text, so the comparable unit is file+key, not key: deduping
+    // globally here made this disagree with the debt `cm verify` prints from the same baseline
+    const distinct = new Set(rows.map((r) => `${r.file} ${baselineKey(r.text)}`)).size;
+    console.log(`${bold('codemap sweep')} · ${rows.length} frozen prose comment(s), ${distinct} distinct, ` +
+      `across ${new Set(rows.map((r) => r.file)).size} file(s)${scoped ? dim(' — scoped run') : ''}`);
+    if (stale) console.log(dim(`${stale} baseline key(s) no longer match any comment — drop them with: cm sweep --prune-baseline`));
+    console.log(dim('deleting these is a reviewable change of its own (principle 7) — cm never edits them for you'));
+    break;
+  }
+
   case 'baseline': {
     const reg = loadOrDie();
     // cm:why a baseline without a registry is meaningless and silently pollutes whatever root cwd resolved to
@@ -263,7 +370,9 @@ switch (cmd) {
   cm impact <path>              declared blast radius of a file  [--json]
   cm flow [name]                ordered trace of a flow  [--mermaid]
   cm ls                         every annotation in the repo
-  cm baseline                   re-freeze the legacy prose-comment counts
+  cm sweep [paths...]           list the prose the baseline is hiding  [--limit N] [--json]
+                                  [--prune-baseline] drop keys that match nothing (no source edits)
+  cm baseline                   re-freeze legacy prose by content
   cm new flow <name>            declare a flow in the registry
   cm codes                      diagnostic reference
 

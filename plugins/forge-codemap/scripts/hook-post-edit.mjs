@@ -53,8 +53,9 @@ if (fixes.length) {
 // cm:why prose enforcement is opt-in per repo (cm init), so an un-onboarded legacy tree is never blocked
 const onboarded = !reg._missing;
 const frozen = loadBaseline(root)[rel] ?? new Set();
+// cm:edge lockstep -> plugins/forge-codemap/scripts/lib/analyze.mjs — `sited` is set there; cm verify applies the same override
 const prose = res.diags.filter(
-  (d) => PROSE_CODES.has(d.code) && !frozen.has(baselineKey(d.text ?? d.message)),
+  (d) => PROSE_CODES.has(d.code) && (d.sited || !frozen.has(baselineKey(d.text ?? d.message))),
 );
 const others = res.diags.filter((d) => !PROSE_CODES.has(d.code) && d.code !== 'CM009');
 const blocking = [...others, ...(onboarded ? prose : [])];
