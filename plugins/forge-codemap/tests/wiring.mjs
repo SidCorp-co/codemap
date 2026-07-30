@@ -127,7 +127,8 @@ export function wiringCases(pluginRoot, check) {
         passed.stdout.trim() === '' && passed.status === 0,
         `expected no output, got status=${passed.status} stdout: ${passed.stdout}`);
 
-      // cm:edge lockstep -> plugins/forge-codemap/scripts/hook-post-edit.mjs — CI and the hook must apply the same siting override
+      // cm:why the hook drives `cm verify` now, so siting cannot drift between it and CI — this case is
+      // what proves the hook consults the baseline at all
       const frozenText = 'legacy narration frozen at init';
       const sitedFile = writeFixture(root, 'sited.ts',
         `// ${frozenText}\n// cm:guard callers must hold the run lock\nexport const s = 1;\n`);

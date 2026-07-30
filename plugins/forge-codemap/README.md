@@ -39,23 +39,27 @@ a personal `outputStyle` choice** while it is enabled. Disable the plugin to get
 Zero dependencies — bare `node` ≥ 18. No `npm install`, so the hooks work the moment the plugin is
 enabled.
 
-For the CLI, symlink the wrapper once — it resolves its own location, so it survives plugin updates:
+The plugin is **not** how a repo gets checked — see [Who enforces](#who-enforces). It carries the
+skill, the two hooks and a fallback copy of the CLI, nothing more.
+
+For the CLI on your own machine, symlink the wrapper once — it resolves its own location, so it
+survives plugin updates:
 
 ```bash
 ln -s "$(ls -td "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/forge-codemap/*/bin/cm | head -1)" ~/.local/bin/cm
 ```
 
-In CI, skip the plugin entirely and run the script straight from a shallow clone:
+Anything that runs `cm` resolves it in one order, and the repo always wins:
 
-```yaml
-- run: git clone --depth 1 https://github.com/SidCorp-co/forge-pipeline-skills /tmp/fps
-- run: node /tmp/fps/plugins/forge-codemap/scripts/cm.mjs verify
+```
+.forge/codemap/cm   →   cm on PATH   →   the plugin's bundled copy
 ```
 
 ## Onboard a repo
 
 ```bash
 cm init        # writes .forge/codemap.json and FREEZES existing comments as a baseline
+cm install     # vendors cm into .forge/codemap/ — commit it (see "Who enforces" below)
 cm verify      # should be green immediately, even in a legacy codebase
 ```
 
@@ -92,7 +96,9 @@ that state.
 
 ```
 cm init                     onboard a repo (registry + baseline)
+cm install [--git-hook]     vendor cm into .forge/codemap/ so the rules hold with no plugin
 cm verify [--since <ref>]   grammar + referential + structural   [--tier T] [--json]
+                              [--staged] gate a commit   [--fix] normalize CM009 first
 cm fmt                      normalize annotations
 cm impact <path>            declared blast radius              [--json]
 cm flow [name]              ordered trace                      [--mermaid]
@@ -101,9 +107,74 @@ cm sweep [paths...]         list the prose the baseline hides  [--limit N] [--pr
 cm baseline                 re-freeze legacy comments (by content hash)
 cm new flow <name>          declare a flow
 cm codes                    diagnostic reference
+cm help [topic]             the guidebook — see below
+cm version                  tool version + spec version
 ```
 
-CI: `cm verify --since $(git merge-base origin/main HEAD)`.
+`cm help` is the guidebook, and it ships **inside the checker** rather than with this plugin, so an
+agent or contributor in a vendored repo can always ask instead of guessing. The verb list, diagnostics,
+tags, edge kinds, language policies and registry defaults are rendered from the same constants the code
+runs on — help cannot drift from behaviour — and `cm help spec [§N]` slices `SPEC.md` itself.
+
+```
+cm help topics          annotations · workflow · codes · baseline · languages · config · ci · principles · spec
+cm help workflow        what to run before an edit, and how to answer each diagnostic
+cm help annotations     the five tags and their exact form
+```
+
+A blocked edit ends with a pointer to `cm help workflow`, so the guide arrives at the moment it is
+needed rather than at install time.
+
+Exit codes: `0` clean · `1` violations · `2` **the gate could not run** (bad flag, unresolvable
+`--since`, path that matches nothing). Never conflate 1 and 2 in CI — 2 means nothing was checked.
+
+## Who enforces
+
+The plugin is the guide and the edit-time context. The **repo** is the authority:
+
+```bash
+cm install                # commit .forge/codemap/ — 14 files, 124K, zero dependencies
+cm install --git-hook     # + .git/hooks/pre-commit → cm verify --staged   (per-clone, not committed)
+```
+
+| Enforcement point | Command | Needs the plugin |
+|---|---|---|
+| CI | `.forge/codemap/cm verify --since $(git merge-base origin/main HEAD)` | no |
+| pre-commit | `.forge/codemap/cm verify --staged` | no |
+| the agent, mid-edit | the plugin's hooks, which drive the same `cm` | yes — and only here |
+
+Without `cm install` a repo carries a registry, a baseline and annotations that only plugin users can
+check — so a contributor without the plugin is unconstrained and the next one with it inherits their
+violations. `cm install` is what closes that gap; the plugin then only ever adds convenience.
+
+The vendored copy is also a **pin**: a contributor whose plugin is a version ahead or behind cannot
+change the verdict on that repo, because the hooks run the repo's copy, not their own.
+
+## How it works
+
+One checker, three triggers. Neither hook decides what a violation is — each shells out to `cm` and
+reads the verdict, so the edit-time gate and the CI gate cannot drift apart.
+
+```
+PreToolUse  (Edit|Write|MultiEdit|NotebookEdit)
+  └─ cm impact <file> --json ──→ additionalContext: guards, edges both ways, adjacent flow steps
+                                 never blocks — it only tells the agent what it cannot derive
+
+PostToolUse (Edit|Write|MultiEdit)
+  └─ cm verify --fix --json <file>
+       ├─ --fix normalizes CM009 in place first (principle 6: the tool owns the format)
+       ├─ grammar violation      → block, with the fix line and its §section
+       ├─ prose (CM001/CM010/11) → block only if the repo is onboarded AND the baseline is readable
+       ├─ nothing                → silent, exit 0
+       └─ cm itself failed       → says so; never blocks, never reads as clean
+
+CI / pre-commit
+  └─ cm verify [--since <ref> | --staged]  →  0 clean · 1 violations · 2 the gate could not run
+```
+
+What the baseline decides, in one place (`cm verify`), for all three: a prose violation is suppressed
+when its **text** is already frozen for that file — unless an annotation shares its comment block, in
+which case it is reported regardless. A frozen key is dropped only when its text is gone from the file.
 
 ## Languages
 

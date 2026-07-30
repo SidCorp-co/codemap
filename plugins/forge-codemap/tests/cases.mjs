@@ -16,7 +16,9 @@ export const analyzeCases = [
     codes: ['CM001', 'CM001'],
     annotations: ['guard'],
     sited: [1],
-    proseKeyCount: 1,
+    // cm:why BOTH keys — siting decides what is REPORTED, never what the baseline knows exists
+    // (lib/analyze.mjs header has what excluding the sited one cost)
+    proseKeyCount: 2,
   },
   {
     name: 'ts: an annotation may wrap onto one line, and only one (§4)',
@@ -77,7 +79,20 @@ export const analyzeCases = [
     codes: ['CM010'],
     annotations: ['why'],
     sited: [2],
-    proseKeyCount: 0,
+    proseKeyCount: 1,
+  },
+  {
+    // cm:why a URL regex is the everyday shape of this — `/https?:\/\//` ends with an escaped slash
+    // against its own closing delimiter, and a false CM001 on real code is how a validator gets switched off
+    name: 'ts: an escaped slash in a regex literal is not a comment leader',
+    file: 'regex.ts',
+    src: [
+      'const isUrl = /^https?:\\/\\//.test(u);',
+      'const p = /\\.forge\\/codemap\\//;',
+      'const ok = 1; // this one really is a comment',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: [],
   },
   {
     name: 'ts: prose comment is invalid, pragmas and annotations are not',
@@ -230,6 +245,24 @@ export const analyzeCases = [
     src: [...Array.from({ length: 21 }, (_, i) => `// line ${i + 1}`), '', 'run();'].join('\n'),
     codes: ['CM011'],
     annotations: [],
+  },
+  {
+    // cm:why a repo can adopt the graph without the comment discipline (`enforce.grammar: false`), and
+    // every prose-family code has to go quiet together or that mode ships surprise header errors
+    name: 'enforce.grammar: false silences the whole prose family, never the annotation grammar',
+    file: 'graphonly.ts',
+    src: [
+      ...Array.from({ length: 21 }, (_, i) => `// header line ${i + 1}`),
+      '',
+      '// plain narration a compiler already knows',
+      '// TODO wire the retry',
+      '// cm:edge magic -> nowhere.ts — a malformed annotation is still malformed',
+      '// cm:guard this one is fine',
+      'run();',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM004'],
+    annotations: ['guard'],
   },
 
   {

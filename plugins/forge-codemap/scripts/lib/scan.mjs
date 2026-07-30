@@ -24,6 +24,8 @@ function findUnescaped(line, delim, from) {
 /**
  * @returns {{comments: Array, codeLines: Set<number>}}
  *   comments: { kind: 'line'|'doc'|'block', line, endLine, leader, text, lines, firstOnLine }
+ *             line comments also carry { indent, col } — `col` is the 0-based offset of the leader,
+ *             which is what lets `cm fmt` rewrite an annotation positionally (see lib/rewrite.mjs)
  *   codeLines: 1-based line numbers that contain code outside comments (used by Go's
  *              required-on-exported policy to find the declaration a comment block documents)
  */
@@ -77,6 +79,9 @@ export function scanComments(src, prof) {
       if (ch === ' ' || ch === '\t') { j++; continue; }
 
       const leader = matchLongest(prof.lineLeaders, line, j);
+      // cm:why regex literals are not lexed, and `/https?:\/\//` ends in an escaped slash against its own
+      // closing delimiter — read as a leader, that phantom comment is a CM001 on a line of real code
+      if (leader && j > 0 && line[j - 1] === '\\') { j++; continue; }
       if (leader) {
         comments.push({
           kind: prof.docLineLeaders.includes(leader) ? 'doc' : 'line',
@@ -87,6 +92,7 @@ export function scanComments(src, prof) {
           lines: [{ line: lineNo, text: line.slice(j + leader.length).trim() }],
           firstOnLine: !sawCode,
           indent: line.slice(0, j),
+          col: j,
         });
         j = line.length;
         break;

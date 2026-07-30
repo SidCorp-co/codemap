@@ -1,15 +1,25 @@
 #!/usr/bin/env node
 // cm — the codemap/1 CLI. Zero dependencies on purpose (see registry.mjs).
+//
+// A positional path resolves against the CWD first, which is what a shell user means, and falls back to
+// root-relative only when that finds nothing. Preferring root the other way round made `.` inside a
+// subdirectory scope to the whole repo, and a literal "." matched no walked path at all — a clean 0-file
+// report. Every fail-open bug this CLI has shipped is that shape: a scope nobody could compute, reported
+// as a scope with nothing wrong in it. Hence exit 2 (§9.1) for anything that cannot be resolved.
 
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import {
   findRoot, loadRegistry, saveRegistry, loadBaseline, saveBaseline,
-  selects, walk, changedSince, SPEC_VERSION, DEFAULT_REGISTRY,
+  selects, walk, changedSince, changedStaged, toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
 } from './lib/registry.mjs';
 import { analyzeFile } from './lib/analyze.mjs';
 import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact, mermaid } from './lib/graph.mjs';
 import { canonical, CODE_TABLE, PROSE_CODES, baselineKey } from './lib/parse.mjs';
+import { applyFmt } from './lib/rewrite.mjs';
+import { candidateFiles } from './lib/candidates.mjs';
+import { install } from './lib/install.mjs';
+import { renderHelp, VERBS } from './lib/help.mjs';
 
 const COLOR = process.stdout.isTTY && !process.env.NO_COLOR;
 const c = (n, s) => (COLOR ? `[${n}m${s}[0m` : s);
@@ -24,6 +34,15 @@ const cmd = argv[0] ?? 'help';
 // cm:guard every flag that takes a value MUST be listed here — an unlisted one has its value parsed as a
 // path, which silently narrowed `cm verify --since <ref>` to zero files and made the CI gate a no-op
 const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description']);
+const TIERS = new Set(['all', 'grammar', 'referential', 'structural']);
+
+// cm:guard exit 2 is "the gate could not run", exit 1 is "the gate ran and failed" — CI must be able to
+// tell a missing ref or a mistyped flag from a real violation, or a broken invocation reads as a lint error
+function die(msg, hint) {
+  console.error(red(`codemap: ${msg}`));
+  if (hint) console.error(dim(`  ${hint}`));
+  process.exit(2);
+}
 
 const flags = new Set(argv.filter((a) => a.startsWith('--')).map((a) => a.split('=')[0]));
 const positional = [];
@@ -39,31 +58,82 @@ const flagValue = (name) => {
   const hit = argv.find((a) => a === name || a.startsWith(`${name}=`));
   if (hit === undefined) return null;
   if (hit.includes('=')) return hit.slice(hit.indexOf('=') + 1);
-  return argv[argv.indexOf(name) + 1] ?? null;
+  // cm:why `cm verify --since --json` used to take "--json" as the ref and die in git with a stack trace
+  const next = argv[argv.indexOf(name) + 1];
+  if (next === undefined || next.startsWith('--')) die(`${name} needs a value`);
+  return next;
+};
+
+const numericFlag = (name, fallback) => {
+  const raw = flagValue(name);
+  if (raw === null) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) die(`${name} needs a number, got "${raw}"`);
+  return n;
 };
 
 const root = findRoot();
 
 function loadOrDie() {
-  try { return loadRegistry(root); } catch (e) { console.error(red(`codemap: ${e.message}`)); process.exit(2); }
+  try { return loadRegistry(root); } catch (e) { die(e.message); }
+}
+
+/** Positional paths, resolved against the repo root. A path that resolves to nothing is fatal (exit 2). */
+function scopeFromPositional(reg) {
+  const files = [];
+  const unresolved = [];
+  let all = null;
+  for (const p of positional) {
+    // cm:guard resolve against the CWD first — root-relative is only the fallback (see the header)
+    const fromCwd = resolve(p);
+    const rel = (existsSync(fromCwd) ? relative(root, fromCwd) : p)
+      .split('\\').join('/').replace(/\/+$/, '').replace(/^\.\//, '').replace(/^\.$/, '');
+    if (rel.startsWith('..')) {
+      die(`${p} is outside the repo root ${root}`, 'cm only reasons about paths inside the tree it onboarded');
+    }
+    const abs = rel === '' ? root : join(root, rel);
+    if (!existsSync(abs)) { unresolved.push(p); continue; }
+    if (statSync(abs).isDirectory()) {
+      // cm:why walk() is only needed to expand a directory — doing it for a single file made the
+      // PostToolUse hook walk an entire monorepo on every edit
+      all ??= walk(root, reg);
+      files.push(...all.filter((f) => rel === '' || f.startsWith(`${rel}/`)));
+    } else files.push(rel);
+  }
+  if (unresolved.length) {
+    die(`no such path: ${unresolved.join(', ')}`,
+      'a path that matches nothing used to scan 0 files and exit 0 — a typo cannot be a green gate');
+  }
+  return files;
 }
 
 function fileList(reg) {
   const since = flagValue('--since');
+  if (since && flags.has('--staged')) die('--since and --staged are mutually exclusive');
   let files;
-  if (positional.length) {
-    const all = walk(root, reg);
-    files = [];
-    for (const p of positional) {
-      const rel = (existsSync(p) && !existsSync(join(root, p)) ? relative(root, resolve(p)) : p)
-        .split('\\').join('/').replace(/\/$/, '');
-      const abs = join(root, rel);
-      if (existsSync(abs) && statSync(abs).isDirectory()) files.push(...all.filter((f) => f.startsWith(`${rel}/`)));
-      else if (existsSync(abs)) files.push(rel);
-    }
-  } else if (since) files = changedSince(root, since);
-  else files = walk(root, reg);
+  try {
+    if (positional.length) files = scopeFromPositional(reg);
+    else if (flags.has('--staged')) files = changedStaged(root);
+    else if (since) files = changedSince(root, since);
+    else files = walk(root, reg);
+  } catch (e) {
+    die(e.message, 'in a shallow CI clone the ref often is not fetched — try: git fetch --deepen 50');
+  }
   return [...new Set(files)].filter((f) => selects(reg, f));
+}
+
+/** Every selected file — the scope for anything that reasons about prose (verify, baseline, init). */
+function allFiles(reg) {
+  return walk(root, reg).filter((f) => selects(reg, f));
+}
+
+/**
+ * The shortlist that carries annotations, via `git grep`. Enough for impact/flow/ls, which read the
+ * graph and never prose — and it is what keeps `cm impact` fast enough to run from a PreToolUse hook
+ * on a monorepo.
+ */
+function annotatedFiles(reg) {
+  return candidateFiles(root, reg);
 }
 
 function analyzeAll(reg, files) {
@@ -77,6 +147,34 @@ function analyzeAll(reg, files) {
   return perFile;
 }
 
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/**
+ * Normalize every CM009 in `perFile`, in place on disk. Shared by `cm fmt` and `cm verify --fix` so
+ * the hook and CI cannot normalize differently.
+ *
+ * @returns {Array<{file: string, line: number}>} only what was really rewritten — a fix that did not
+ *   apply is reported, never counted. Claiming a rewrite that did not happen left CM009 permanently
+ *   unfixable behind a "fix: run cm fmt" hint (see lib/rewrite.mjs).
+ */
+function fixCanonical(perFile) {
+  const done = [];
+  for (const f of perFile) {
+    const fixes = f.diags.filter((d) => d.code === 'CM009' && d.canonical);
+    if (!fixes.length) continue;
+    const abs = join(root, f.relPath);
+    const before = readFileSync(abs, 'utf8');
+    const { src, applied, failed } = applyFmt(before, fixes);
+    if (applied.length) writeFileSync(abs, src);
+    done.push(...applied.map((d) => ({ file: f.relPath, line: d.line })));
+    for (const d of failed) {
+      console.error(yellow(`${f.relPath}:${d.line} CM009 could not be normalized automatically`));
+      console.error(dim(`  rewrite by hand to: ${d.leader ?? '//'} ${d.canonical}`));
+    }
+  }
+  return done;
+}
+
 function printDiag(d) {
   const sev = d.tier === 'structural' ? yellow('warn') : red('error');
   console.log(`${bold(`${d.file}:${d.line}`)} ${sev} ${d.code} ${d.message}`);
@@ -86,8 +184,15 @@ function printDiag(d) {
 switch (cmd) {
   case 'verify': {
     const reg = loadOrDie();
+    const tier = flagValue('--tier') ?? 'all';
+    // cm:guard an unknown --tier used to wipe every diagnostic and exit 0 — `--tier=grammer` was a green
+    // CI gate over a broken tree, which is the same fail-open shape as an unlisted VALUE_FLAG above
+    if (!TIERS.has(tier)) die(`unknown --tier "${tier}"`, `one of: ${[...TIERS].join(', ')}`);
+
     const files = fileList(reg);
-    const perFile = analyzeAll(reg, files);
+    let perFile = analyzeAll(reg, files);
+    const normalized = flags.has('--fix') ? fixCanonical(perFile) : [];
+    if (normalized.length) perFile = analyzeAll(reg, files);
     const baseline = flags.has('--no-baseline') ? {} : loadBaseline(root);
 
     let diags = [];
@@ -95,7 +200,6 @@ switch (cmd) {
     let cleaned = 0;
     for (const f of perFile) {
       const frozen = baseline[f.relPath] ?? new Set();
-      // cm:edge lockstep -> plugins/forge-codemap/scripts/hook-post-edit.mjs — same baseline override, or CI and the hook disagree
       const keep = f.diags.filter(
         (d) => !PROSE_CODES.has(d.code) || d.sited || !frozen.has(baselineKey(d.text ?? d.message)),
       );
@@ -106,16 +210,13 @@ switch (cmd) {
     }
 
     const g = buildGraph(perFile);
-    const tier = flagValue('--tier') ?? 'all';
-    const wantRef = tier === 'all' || tier === 'referential';
-    const wantStruct = tier === 'all' || tier === 'structural';
-    if (tier !== 'all' && tier !== 'grammar') diags = diags.filter(() => false);
-    if (wantRef) diags.push(...referentialDiags(g, { root, reg }));
-    if (wantStruct) diags.push(...structuralDiags(g));
+    if (tier !== 'all' && tier !== 'grammar') diags = [];
+    if (tier === 'all' || tier === 'referential') diags.push(...referentialDiags(g, { root, reg }));
+    if (tier === 'all' || tier === 'structural') diags.push(...structuralDiags(g));
 
     // cm:why a baselined file that no longer exists (or left the scope) has had its comments deleted too,
     // but only a full scan can tell that apart from "not looked at this run"
-    const scoped = Boolean(flagValue('--since') || positional.length);
+    const scoped = Boolean(flagValue('--since') || flags.has('--staged') || positional.length);
     if (!scoped) {
       const seen = new Set(perFile.map((f) => f.relPath));
       for (const [rel, frozen] of Object.entries(baseline)) {
@@ -128,7 +229,12 @@ switch (cmd) {
       // cm:why process.exit() truncates a piped stdout that has not drained, so only the code is set
       process.exitCode = diags.some((d) => d.tier !== 'structural') ? 1 : 0;
       console.log(JSON.stringify({
-        specVersion: SPEC_VERSION, files: files.length, diags,
+        specVersion: SPEC_VERSION, toolVersion: toolVersion(), files: files.length, diags,
+        // cm:edge contract -> plugins/forge-codemap/scripts/hook-post-edit.mjs — the hook decides what blocks
+        // from these three: prose is enforced only when onboarded, and never while the baseline is unreadable
+        onboarded: !reg._missing,
+        baselineUnreadable: Boolean(baseline.__legacyFormat),
+        normalized,
         legacy: { debt, cleaned, scoped },
       }, null, 2));
       break;
@@ -143,7 +249,8 @@ switch (cmd) {
     console.log('');
     console.log(`${bold('codemap')} ${SPEC_VERSION} · ${files.length} files (${skipped} skipped) · ` +
       `${g.flows.size} flows · ${g.edges.length} edges · ${g.guards.length} guards · ${g.hacks.length} hacks`);
-    console.log(`${errors ? red(`${errors} errors`) : 'no errors'}, ${warns} warnings`);
+    console.log(`${errors ? red(plural(errors, 'error')) : 'no errors'}, ${plural(warns, 'warning')}`);
+    if (normalized.length) console.log(dim(`${plural(normalized.length, 'annotation')} normalized by --fix`));
     if (debt || cleaned) {
       const share = debt + cleaned ? Math.round((cleaned / (debt + cleaned)) * 100) : 0;
       console.log(`legacy prose: ${bold(String(debt))} distinct still frozen · ${cleaned} cleaned (${share}%)` +
@@ -158,23 +265,14 @@ switch (cmd) {
 
   case 'fmt': {
     const reg = loadOrDie();
-    const files = fileList(reg);
-    const perFile = analyzeAll(reg, files);
-    let changed = 0;
-    for (const f of perFile) {
-      const fixes = f.diags.filter((d) => d.code === 'CM009' && d.canonical);
-      if (!fixes.length) continue;
-      const abs = join(root, f.relPath);
-      const lines = readFileSync(abs, 'utf8').split('\n');
-      for (const fix of fixes) {
-        const i = fix.line - 1;
-        lines[i] = lines[i].replace(/(^|\s)(\/\/|#|--)\s*cm:.*$/, (_m, pre, leader) => `${pre}${leader} ${fix.canonical}`);
-      }
-      writeFileSync(abs, lines.join('\n'));
-      changed += fixes.length;
-      if (!flags.has('--quiet')) console.log(`${f.relPath} ${dim(`${fixes.length} normalized`)}`);
+    const perFile = analyzeAll(reg, fileList(reg));
+    const done = fixCanonical(perFile);
+    if (!flags.has('--quiet')) {
+      const byFile = new Map();
+      for (const d of done) byFile.set(d.file, (byFile.get(d.file) ?? 0) + 1);
+      for (const [file, n] of byFile) console.log(`${file} ${dim(`${n} normalized`)}`);
+      console.log(`codemap fmt: ${plural(done.length, 'annotation')} normalized`);
     }
-    if (!flags.has('--quiet')) console.log(`codemap fmt: ${changed} annotation(s) normalized`);
     break;
   }
 
@@ -182,7 +280,7 @@ switch (cmd) {
     const target = positional[0];
     if (!target) { console.error('usage: cm impact <path>'); process.exit(2); }
     const reg = loadOrDie();
-    const perFile = analyzeAll(reg, walk(root, reg).filter((f) => selects(reg, f)));
+    const perFile = analyzeAll(reg, annotatedFiles(reg));
     const g = buildGraph(perFile);
     const rel = target.replace(`${root}/`, '');
     const r = impact(g, rel);
@@ -204,7 +302,7 @@ switch (cmd) {
   case 'flow': {
     const name = positional[0];
     const reg = loadOrDie();
-    const perFile = analyzeAll(reg, walk(root, reg).filter((f) => selects(reg, f)));
+    const perFile = analyzeAll(reg, annotatedFiles(reg));
     const g = buildGraph(perFile);
     if (!name) {
       for (const [n, f] of g.flows) console.log(`${n}  ${dim(`${f.steps.length} steps`)}`);
@@ -224,7 +322,7 @@ switch (cmd) {
 
   case 'ls': {
     const reg = loadOrDie();
-    const perFile = analyzeAll(reg, walk(root, reg).filter((f) => selects(reg, f)));
+    const perFile = analyzeAll(reg, annotatedFiles(reg));
     const g = buildGraph(perFile);
     console.log(bold('flows'));
     for (const [n, f] of g.flows) console.log(`  ${n}  ${dim(`${f.steps.length} steps`)}`);
@@ -286,7 +384,7 @@ switch (cmd) {
       break;
     }
 
-    const limit = Number(flagValue('--limit') ?? 40);
+    const limit = numericFlag('--limit', 40);
     rows.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
     for (const r of rows.slice(0, limit)) {
       console.log(`${bold(`${r.file}:${r.line}`)} ${dim(r.code)} ${r.text.length > 88 ? `${r.text.slice(0, 85)}...` : r.text}`);
@@ -310,7 +408,9 @@ switch (cmd) {
       console.error(red(`codemap: no .forge/codemap.json at ${root} — run "cm init" there first.`));
       process.exit(2);
     }
-    const perFile = analyzeAll(reg, walk(root, reg).filter((f) => selects(reg, f)));
+    // cm:guard the baseline must see EVERY selected file, never the git-grep shortlist — a file with no
+    // annotation is exactly the one whose legacy prose needs freezing
+    const perFile = analyzeAll(reg, allFiles(reg));
     const keys = {};
     for (const f of perFile) if (f.proseKeys?.length) keys[f.relPath] = f.proseKeys;
     saveBaseline(root, keys);
@@ -323,7 +423,7 @@ switch (cmd) {
   case 'init': {
     const reg = existsSync(join(root, '.forge', 'codemap.json')) ? loadOrDie() : { ...DEFAULT_REGISTRY };
     saveRegistry(root, reg);
-    const perFile = analyzeAll(reg, walk(root, reg).filter((f) => selects(reg, f)));
+    const perFile = analyzeAll(reg, allFiles(reg));
     const keys = {};
     for (const f of perFile) if (f.proseKeys?.length) keys[f.relPath] = f.proseKeys;
     saveBaseline(root, keys);
@@ -331,6 +431,28 @@ switch (cmd) {
     console.log(`codemap ${SPEC_VERSION} initialised at ${root}`);
     console.log(`  .forge/codemap.json`);
     console.log(`  .forge/codemap-baseline.json  ${dim(`${total} legacy comments frozen by content`)}`);
+    break;
+  }
+
+  // cm:why enforcement that only exists inside the plugin is enforcement half the contributors never
+  // see; this puts the checker in the repo so the registry's rules hold with no plugin installed
+  case 'install': {
+    const version = toolVersion();
+    const r = install({
+      root, version, gitHook: flags.has('--git-hook'), force: flags.has('--force'),
+    });
+    if (!existsSync(join(root, '.forge', 'codemap.json'))) {
+      saveRegistry(root, { ...DEFAULT_REGISTRY });
+      console.log(`wrote .forge/codemap.json ${dim('(no baseline yet — run: .forge/codemap/cm baseline)')}`);
+    }
+    console.log(`codemap ${version} installed into ${bold('.forge/codemap/')} ${dim(`${r.files.length} files`)}`);
+    if (r.hook) console.log(`  ${r.hook} ${dim('runs: cm verify --staged --tier grammar')}`);
+    for (const n of r.notes) console.log(dim(`  note: ${n}`));
+    console.log('');
+    console.log('Commit .forge/codemap/ — it is what makes the rules hold without the plugin:');
+    console.log(dim('  CI:        .forge/codemap/cm verify --since $(git merge-base origin/main HEAD)'));
+    console.log(dim('  local:     .forge/codemap/cm verify --staged'));
+    console.log(dim('  agents:    the plugin hooks prefer this copy over their own bundle'));
     break;
   }
 
@@ -349,10 +471,18 @@ switch (cmd) {
     break;
   }
 
-  case 'codes': {
-    for (const [code, v] of Object.entries(CODE_TABLE)) {
-      console.log(`${code}  ${v.tier.padEnd(11)} ${v.section.padEnd(5)} ${v.message}`);
-    }
+  case 'codes':
+    console.log(renderHelp('codes').text);
+    break;
+
+  // cm:why an agent has to be able to ask what the rules are from inside a repo that never installed the
+  // plugin — the guidebook ships with the checker, not with the plugin's skill (lib/help.mjs)
+  case 'help':
+  case '--help':
+  case '-h': {
+    const r = renderHelp(positional[0], positional[1]);
+    console.log(r.text);
+    if (!r.ok) process.exitCode = 2;
     break;
   }
 
@@ -361,20 +491,16 @@ switch (cmd) {
     process.exit(2);
     break;
 
+  case '--version':
+  case 'version':
+    console.log(`${toolVersion()} (${SPEC_VERSION})`);
+    break;
+
+  // cm:guard an unknown verb is exit 2, not a usage dump at exit 0 — `cm verfiy` in a CI step was a
+  // green gate that checked nothing, the same fail-open shape as a mistyped flag value (§9.1)
   default:
-    console.log(`cm — codemap/${SPEC_VERSION.split('/')[1]}
-
-  cm init                       write .forge/codemap.json + freeze legacy comments
-  cm verify [--since <ref>]     grammar + referential + structural tiers  [--tier T] [--json]
-  cm fmt [paths...]             normalize annotations to canonical form
-  cm impact <path>              declared blast radius of a file  [--json]
-  cm flow [name]                ordered trace of a flow  [--mermaid]
-  cm ls                         every annotation in the repo
-  cm sweep [paths...]           list the prose the baseline is hiding  [--limit N] [--json]
-                                  [--prune-baseline] drop keys that match nothing (no source edits)
-  cm baseline                   re-freeze legacy prose by content
-  cm new flow <name>            declare a flow in the registry
-  cm codes                      diagnostic reference
-
-spec: SPEC.md next to this script`);
+    console.error(red(`codemap: unknown verb "${cmd}"`));
+    console.error(dim(`  verbs: ${VERBS.map(([v]) => v).join(', ')}`));
+    console.error(dim('  guidebook: cm help  ·  cm help topics'));
+    process.exit(2);
 }

@@ -1,4 +1,12 @@
 // Per-file analysis: comments -> annotations + grammar diagnostics (codemap/1 §7 grammar tier).
+//
+// `proseKeys` is the file's answer to "what prose text do I contain" — the set the baseline is built
+// from, and the set `cm verify` and `cm sweep --prune-baseline` diff against to decide a frozen comment
+// is GONE. Sited prose belongs in it. Leaving it out looked like a saving (freezing a key that decides
+// nothing today) and cost the baseline its only guarantee: annotating one block reported its untouched
+// neighbours as cleaned debt, prune then dropped their keys as stale, and deleting the annotation turned
+// legacy prose nobody had edited into a permanent CM001 with no way back but a full re-freeze. Siting is
+// applied where the verdict is (`sited` below), which is what keeps that block reported regardless.
 
 import { profileFor, isGenerated } from './languages.mjs';
 import { scanComments, nextCodeLine } from './scan.mjs';
@@ -27,7 +35,9 @@ export function analyzeFile({ relPath, src, reg }) {
 
   const header = moduleHeader(lines, comments, codeLines);
   const headerMax = reg.enforce?.headerMaxLines ?? 20;
-  if (header && header.count > headerMax) {
+  // cm:guard CM011 is prose-family (PROSE_CODES), so `grammar: false` must silence it too — a repo
+  // adopting the graph without the comment discipline was still getting header-length errors
+  if (grammar && header && header.count > headerMax) {
     raw.push({ ...diag('CM011', relPath, header.start, `${header.count} lines (max ${headerMax})`), text: `header:${header.count}` });
   }
   const inHeader = (c) => !!header && c.line >= header.start && c.endLine <= header.end;
@@ -63,11 +73,14 @@ export function analyzeFile({ relPath, src, reg }) {
         continue;
       }
       if (parsed.diags) { raw.push(...parsed.diags); continue; }
-      const ann = { ...parsed.ann, indent: c.indent ?? '', leader: c.leader };
+      const ann = { ...parsed.ann, indent: c.indent ?? '', leader: c.leader, col: c.col };
       annotations.push(ann);
       annLines.set(c.line, c.leader);
       const want = canonical(ann);
-      if (text !== want) raw.push({ ...diag('CM009', relPath, c.line, text), canonical: want });
+      // cm:why col + leader travel with the diagnostic so the rewrite is positional, not a re-match
+      if (text !== want) {
+        raw.push({ ...diag('CM009', relPath, c.line, text), canonical: want, col: c.col, leader: c.leader });
+      }
       continue;
     }
 
@@ -104,14 +117,13 @@ export function analyzeFile({ relPath, src, reg }) {
   return {
     annotations,
     diags,
-    // cm:why sited prose can never be spared, so freezing its key would only add a hash that decides nothing
-    proseKeys: [...new Set(diags.filter((d) => PROSE_CODES.has(d.code) && !d.sited)
+    // cm:guard every prose violation belongs here, sited ones included — see the header for what breaks
+    proseKeys: [...new Set(diags.filter((d) => PROSE_CODES.has(d.code))
       .map((d) => baselineKey(d.text ?? d.message)))],
     skipped: null,
   };
 }
 
-// cm:edge lockstep -> plugins/forge-codemap/scripts/hook-post-edit.mjs — the `sited` flag is what overrides the baseline there
 // cm:why the baseline spares legacy prose everywhere except a block its author has just annotated: that
 // is the one place the tool can tell "you worked here and left the noise" from "this predates you" (§8)
 function siteProse(comments, annotations, diags) {

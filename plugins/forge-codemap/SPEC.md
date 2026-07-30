@@ -184,6 +184,26 @@ Tier decides where it runs: **grammar** in `PostToolUse` (blocking), **referenti
 Steps are **not** declared — they are derived from the code (§1.1). The registry only closes the
 vocabulary of flow *names*.
 
+### §8.1 Where the checker lives
+
+The registry is the repo's contract, so the repo must be able to check it. `cm install` vendors the CLI
+into `.forge/codemap/` — a `cm` shim, `cm.mjs`, `lib/`, `SPEC.md` and a `VERSION` stamp — and that
+directory is committed. From then on:
+
+| Enforcement point | Runs | Needs the plugin |
+|---|---|---|
+| CI | `.forge/codemap/cm verify --since <base>` | no |
+| pre-commit | `.forge/codemap/cm verify --staged` (`cm install --git-hook`) | no |
+| the agent, mid-edit | plugin hooks, which **prefer** `.forge/codemap/cm.mjs` | yes, and only for this |
+
+The plugin is therefore the guide and the edit-time UX, never the authority. A repo pinned to an older
+vendored copy keeps that copy's verdicts, and a contributor without the plugin is held to exactly what
+CI holds them to — the asymmetry that used to leave one contributor unconstrained and hand the next one
+their violations.
+
+`.forge/codemap/**` is excluded from scanning unconditionally, not via the registry's `exclude` list: a
+project onboarded by an older `cm init` carries that list frozen in its file.
+
 **No registry ⇒ prose enforcement is off.** The `cm verify` CLI still reports `CM001`/`CM010` so an
 operator can size the problem before onboarding, but the edit hook blocks only on malformed
 annotations (`CM002`–`CM008`). Prose enforcement begins at `cm init`, which also writes the baseline.
@@ -201,7 +221,12 @@ eighty frozen comments surfaced all eighty, because a count cannot say *which* c
 content hash can. It is also line-independent, so reformatting, moving code, and deleting legacy
 comments are all free.
 
-A pre-0.2 count-format baseline is detected, ignored, and reported — never silently trusted.
+A pre-0.2 count-format baseline is detected, ignored, and reported — never silently trusted. While it is
+unreadable, prose is **not** enforced at all: nothing can tell new prose from legacy, so blocking an
+author for a comment they did not write is the wrong half of the trade. The edit hook says so instead.
+
+A frozen key is dropped only when its text is **gone from the file**. Sited prose (below) is still in the
+file, so it stays frozen: it is reported anyway, and the annotation that sited it may be removed later.
 
 **Sited prose is never frozen.** A `CM001`/`CM010` violation sharing a comment block with a `cm:`
 annotation is reported regardless of the baseline. Contiguous standalone comment lines form one
@@ -215,6 +240,22 @@ prose they never touched stays frozen. `cm sweep` lists what the baseline is hid
 `cm sweep --prune-baseline` drops keys matching nothing, so paid-off debt stops being counted.
 
 ## §9 Stability
+
+### §9.1 Exit codes
+
+| Code | Means |
+|---|---|
+| 0 | the gate ran; nothing but structural warnings |
+| 1 | the gate ran and found violations |
+| 2 | **the gate could not run** — bad flag, unknown `--tier`, unresolvable `--since`, path that matches nothing |
+
+The 1/2 split is load-bearing. Every fail-open bug this tool has shipped had the same shape: a broken
+invocation that produced an empty scope and a green summary — a mistyped `--tier` value silently dropping
+every diagnostic, an unresolvable ref exiting 1 from a raw stack trace so CI could not tell it from a lint
+failure, a mistyped path scanning zero files. A scope that cannot be computed is never an empty scope.
+
+A diagnostic must also be *fixable by its own fix line*. `CM009`'s fix is `cm fmt`, so `cm fmt` may never
+report a rewrite it did not perform (it once could not rewrite a CRLF line at all, and said it had).
 
 - `specVersion` is checked by every command; a tool older than the registry refuses to run.
 - A grammar change ships with a codemod (`cm migrate --to <n>`). Annotations are structured

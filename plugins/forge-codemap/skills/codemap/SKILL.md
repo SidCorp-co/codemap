@@ -7,32 +7,57 @@ description: Query and maintain the codemap/1 declared-edge layer — impact ana
 
 `cm:` annotations carry the couplings **no tool can derive** — cross-language contracts,
 cross-process flows, edit-time invariants. LSP keeps its job (references, symbols); this layer is
-strictly the complement. The full contract is `SPEC.md` beside this skill's plugin root.
+strictly the complement.
+
+**The tool carries its own guidebook — ask it, do not guess.** It is rendered from the constants the
+checker actually runs on, so it cannot be out of date, and it works in a repo that never installed
+this plugin:
+
+```bash
+cm help                 # what it is, where it runs, every verb, the topic list
+cm help workflow        # what to run before an edit, and how to answer each diagnostic
+cm help annotations     # the five tags and their exact form
+cm help codes           # every diagnostic: tier, section, cause, fix
+cm help baseline        # how legacy prose is frozen, and how the total falls
+cm help config          # .forge/codemap.json knobs and the three adoption modes
+cm help ci              # exit codes (0/1/2), scoping, pre-commit
+cm help spec [§N]       # the contract itself, sliced out of SPEC.md
+```
+
+Read `cm help workflow` before resolving a CM0xx you have not seen before, and `cm help annotations`
+before writing one. Everything below is the short version of those two.
 
 ## Running the CLI
 
-Resolve it once per session, then reuse `$CM`. A `cm` on `PATH` wins; otherwise take the newest copy
-under **this session's** config dir — a Forge runner sets `CLAUDE_CONFIG_DIR` to an isolated directory,
-so globbing `~/.claude` finds either nothing or a different install than the one actually loaded.
+Resolve it once per session, then reuse `$CM`. **The repo's own copy wins** — a project that ran
+`cm install` is pinned to that copy, and its CI, its pre-commit hook and the edit hooks all use it, so
+anything you check with a different one can disagree with the gate the change has to pass.
 
 ```bash
-CM=cm
-command -v cm >/dev/null 2>&1 || \
-  CM="node $(ls -td "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/forge-codemap/*/scripts/cm.mjs 2>/dev/null | head -1)"
+CM=""
+[ -x .forge/codemap/cm ] && CM=./.forge/codemap/cm                       # the repo's own, pinned copy
+[ -z "$CM" ] && command -v cm >/dev/null 2>&1 && CM=cm
+# last resort: this session's plugin cache. A Forge runner sets CLAUDE_CONFIG_DIR to an isolated
+# directory, so globbing ~/.claude finds either nothing or a different install than the loaded one.
+[ -z "$CM" ] && CM="node $(ls -td "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/forge-codemap/*/scripts/cm.mjs 2>/dev/null | head -1)"
 $CM verify
 ```
 
 If that resolves to nothing, the plugin is not installed for this user — say so rather than
 guessing a path. A one-time `ln -s <plugin>/bin/cm ~/.local/bin/cm` makes `cm` available directly.
 
+Exit codes matter when you script it: `0` clean, `1` violations, `2` the gate could not run at all
+(bad flag, unresolvable `--since`, path matching nothing). Never report a 2 as a pass.
+
 | Verb | Use |
 |---|---|
 | `cm impact <path>` | before changing a file: guards, edges both directions, flow steps and their neighbours |
 | `cm flow [name] [--mermaid]` | ordered trace across languages; mermaid for a living sequence diagram |
-| `cm verify [--since <ref>]` | all three tiers; `--since HEAD~1` in CI |
+| `cm verify [--since <ref>]` | all three tiers; `--since HEAD~1` in CI, `--staged` for a commit |
 | `cm fmt` | normalize annotations (the tool owns the format) |
 | `cm ls` | every annotation in the repo |
 | `cm init` / `cm baseline` | onboard a repo; freeze its legacy comments |
+| `cm install [--git-hook]` | vendor cm into `.forge/codemap/` so the rules hold with no plugin |
 | `cm new flow <name>` | declare a flow before annotating its steps |
 | `cm codes` | diagnostic reference |
 
@@ -60,9 +85,14 @@ never declared in the registry — they are derived from the code.
 
 ## Onboarding a repo
 
-`cm init` writes the registry and freezes existing prose comments as a baseline, so a legacy
-codebase starts green and only fails when a file's comment count *rises*. Do not mass-delete legacy
-comments; that is a separate, reviewable change.
+`cm init` writes the registry and freezes existing prose comments as a baseline **by content hash**, so
+a legacy codebase starts green and only a comment whose *text* is new gets flagged — reformatting,
+moving code and deleting legacy comments are all free. Do not mass-delete legacy comments; that is a
+separate, reviewable change.
+
+Then `cm install`, and commit `.forge/codemap/`. Without it the repo's rules only exist for people who
+have this plugin: CI cannot check them, and a contributor without the plugin leaves violations for the
+next one who has it. Offer `--git-hook` for a local `pre-commit` gate (per-clone, never committed).
 
 Then annotate from evidence, not from a sweep: take the couplings that have already caused a manual
 intervention or a broken deploy, and declare those. A flow nobody has been burned by does not earn

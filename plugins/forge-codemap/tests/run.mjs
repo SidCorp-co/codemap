@@ -10,6 +10,8 @@ import { baselineKey } from '../scripts/lib/parse.mjs';
 import { analyzeCases, baselineCases, graphCases } from './cases.mjs';
 import { wiringCases } from './wiring.mjs';
 import { cliCases } from './cli.mjs';
+import { installCases } from './install.mjs';
+import { helpCases } from './help.mjs';
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -26,7 +28,10 @@ function sortedCodes(diags) {
 }
 
 for (const t of analyzeCases) {
-  const res = analyzeFile({ relPath: t.file, src: t.src, reg: DEFAULT_REGISTRY });
+  const reg = t.reg
+    ? { ...DEFAULT_REGISTRY, ...t.reg, enforce: { ...DEFAULT_REGISTRY.enforce, ...(t.reg.enforce ?? {}) } }
+    : DEFAULT_REGISTRY;
+  const res = analyzeFile({ relPath: t.file, src: t.src, reg });
 
   if (t.skipped) {
     check(t.name, res.skipped === t.skipped, `expected skipped=${t.skipped}, got ${res.skipped}`);
@@ -49,8 +54,8 @@ for (const t of analyzeCases) {
   }
 
   if (t.proseKeyCount !== undefined) {
-    check(`${t.name} (proseKeys exclude sited)`, res.proseKeys.length === t.proseKeyCount,
-      `proseKeys: expected ${t.proseKeyCount} got ${res.proseKeys.length} — a sited key would freeze nothing`);
+    check(`${t.name} (proseKeys)`, res.proseKeys.length === t.proseKeyCount,
+      `proseKeys: expected ${t.proseKeyCount} got ${res.proseKeys.length} — this set is what tells verify/prune a frozen comment is GONE`);
   }
 
   if (t.canonical) {
@@ -95,6 +100,8 @@ for (const t of graphCases) {
 
 wiringCases(PLUGIN_ROOT, check);
 cliCases(PLUGIN_ROOT, check);
+installCases(PLUGIN_ROOT, check);
+helpCases(PLUGIN_ROOT, check);
 
 console.log(`codemap golden corpus: ${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.error(`  FAIL ${f}`);
