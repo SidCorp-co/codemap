@@ -102,6 +102,10 @@ const P = {
     // to kill, and that is always a line comment. So doc blocks are exempt and `//` prose is not —
     // simpler and more predictable than trying to decide which declarations deserve docs.
     docBlocksAllowed: true,
+    // An ECMAScript directive prologue is the one construct the language itself requires ABOVE
+    // everything else, so a header comment cannot get above it. Closed vocabulary (principle 3):
+    // a general "string literal as a statement" rule would swallow a stray expression statement.
+    prologue: /^\s*(['"])use (client|server|strict)\1\s*;?\s*$/,
     exempt: [...COMMON_EXEMPT, ...TS_EXEMPT],
   },
   go: {

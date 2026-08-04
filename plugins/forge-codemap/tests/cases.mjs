@@ -247,6 +247,49 @@ export const analyzeCases = [
     annotations: [],
   },
   {
+    name: 'module header: allowed after a "use client" directive prologue (§4.1)',
+    file: 'hdr5.tsx',
+    src: [
+      '"use client";',
+      '',
+      '// Agent MCP servers panel. Renders what the dispatch-time resolvers inject.',
+      '',
+      'export function Panel() {}',
+    ].join('\n'),
+    codes: [],
+    annotations: [],
+  },
+  {
+    name: 'module header: the prologue is a closed vocabulary, not any string statement',
+    file: 'hdr6.ts',
+    src: ['"side effect";', '', '// Load the config', '', 'run();'].join('\n'),
+    codes: ['CM001'],
+    annotations: [],
+  },
+  {
+    name: 'module header: over the cap after a prologue is still CM011',
+    file: 'hdr7.tsx',
+    src: [
+      "'use strict';",
+      '',
+      ...Array.from({ length: 21 }, (_, i) => `// line ${i + 1}`),
+      '',
+      'run();',
+    ].join('\n'),
+    codes: ['CM011'],
+    annotations: [],
+  },
+  {
+    // cm:why the near-miss must stay REPORTED — exempting it would license narration above the first
+    // statement, which is §4.1's whole subject; only the fix line changes
+    name: 'module header: a top-of-file run glued to the code is still CM001, with a blank-line fix',
+    file: 'hdr8.ts',
+    src: ['// Dispatch gates.', '// Cheap enough to run every tick.', 'export function gate() {}'].join('\n'),
+    codes: ['CM001', 'CM001'],
+    annotations: [],
+    fixMatches: /blank line/,
+  },
+  {
     // cm:why a repo can adopt the graph without the comment discipline (`enforce.grammar: false`), and
     // every prose-family code has to go quiet together or that mode ships surprise header errors
     name: 'enforce.grammar: false silences the whole prose family, never the annotation grammar',

@@ -146,8 +146,9 @@ WHICH ONE
 ${table(pick).join('\n')}
 
   Multi-line rationale goes in the MODULE HEADER (first comment run, followed by a blank line,
-  before any code). One-line rationale at a call site is cm:why. There is no cm:todo — the tracker
-  owns outstanding work; file an issue at draft instead (CM010).
+  before any code — a shebang and a "use client"/"use server"/"use strict" directive may precede it).
+  One-line rationale at a call site is cm:why. There is no cm:todo — the tracker owns outstanding
+  work; file an issue at draft instead (CM010).
 
   cm:flow needs its flow declared first: cm new flow <name>. Steps are never declared — they are
   derived from the code.`;

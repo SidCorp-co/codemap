@@ -58,6 +58,12 @@ for (const t of analyzeCases) {
       `proseKeys: expected ${t.proseKeyCount} got ${res.proseKeys.length} — this set is what tells verify/prune a frozen comment is GONE`);
   }
 
+  if (t.fixMatches) {
+    const bad = res.diags.filter((d) => !t.fixMatches.test(d.fix));
+    check(`${t.name} (fix)`, bad.length === 0,
+      `every diagnostic's fix must match ${t.fixMatches}; got: ${bad.map((d) => d.fix).join(' | ')}`);
+  }
+
   if (t.canonical) {
     const fix = res.diags.find((d) => d.code === 'CM009');
     check(`${t.name} (canonical)`, fix?.canonical === t.canonical,

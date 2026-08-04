@@ -89,12 +89,18 @@ Orientation prose about a whole file is not derivable, and every ecosystem gives
 package doc, Rust's `//!`, Python's module docstring). TypeScript has no idiom, which is exactly why
 agents scatter narration through function bodies instead. So there is **one** legal place for it:
 
-The **module header** is the first contiguous comment run of the file — after an optional shebang —
-**followed by a blank line**, before any code. It is exempt from `CM001`, up to
-`enforce.headerMaxLines` (default 20) lines; beyond that it is `CM011`.
+The **module header** is the first contiguous comment run of the file — after an optional shebang and
+an optional directive prologue — **followed by a blank line**, before any code. It is exempt from
+`CM001`, up to `enforce.headerMaxLines` (default 20) lines; beyond that it is `CM011`.
+
+The **directive prologue** is `"use client"`, `"use server"` or `"use strict"` in TS/JS: constructs
+the language itself requires above everything else, so a header cannot get above them. Measured on a
+Next.js App Router codebase, treating them as code cost 23 legitimate headers. The vocabulary is
+closed (principle 3) — a general "leading string literal" rule would swallow an expression statement.
 
 The trailing blank line is the whole test. A comment glued to the first statement is narration, not
-a header, and is still `CM001`.
+a header, and is still `CM001` — but when that run sits at the top of the file it is one blank line
+away from being legal, so the diagnostic's fix line says so instead of only offering deletion.
 
 Multi-line rationale belongs in the header. One-line rationale at a call site belongs in `cm:why`.
 

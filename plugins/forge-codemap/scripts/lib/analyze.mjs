@@ -33,14 +33,15 @@ export function analyzeFile({ relPath, src, reg }) {
   const ignores = new Map();
   const annLines = new Map();
 
-  const header = moduleHeader(lines, comments, codeLines);
+  const header = moduleHeader(lines, comments, codeLines, prof);
   const headerMax = reg.enforce?.headerMaxLines ?? 20;
   // cm:guard CM011 is prose-family (PROSE_CODES), so `grammar: false` must silence it too — a repo
   // adopting the graph without the comment discipline was still getting header-length errors
-  if (grammar && header && header.count > headerMax) {
+  if (grammar && header && !header.glued && header.count > headerMax) {
     raw.push({ ...diag('CM011', relPath, header.start, `${header.count} lines (max ${headerMax})`), text: `header:${header.count}` });
   }
-  const inHeader = (c) => !!header && c.line >= header.start && c.endLine <= header.end;
+  const inHeader = (c) => !!header && !header.glued && c.line >= header.start && c.endLine <= header.end;
+  const nearHeader = (line) => !!header && !!header.glued && line >= header.start && line <= header.end;
 
   for (const c of comments) {
     if (c.kind !== 'line') {
@@ -112,6 +113,14 @@ export function analyzeFile({ relPath, src, reg }) {
     return !(above?.has(d.code) || same?.has(d.code));
   });
 
+  // cm:why a whole orientation run reported line-by-line with "delete it" reads as a verdict on the prose
+  // when the file is one blank line away from a legal header — say which, and the author can choose
+  for (const d of diags) {
+    if (d.code === 'CM001' && nearHeader(d.line)) {
+      d.fix = `this run is at the top of the file — a blank line between it and the first statement makes it a module header (§4.1, max ${headerMax} lines). Otherwise: ${d.fix}`;
+    }
+  }
+
   siteProse(comments, annotations, diags);
 
   return {
@@ -149,10 +158,18 @@ function siteProse(comments, annotations, diags) {
 }
 
 // cm:why the trailing blank line is what separates a header from narration glued to the first statement (§4.1)
-function moduleHeader(lines, comments, codeLines) {
+// cm:guard `glued` is a REPORTED near-miss, never an exemption — widening the header to cover it would
+//   license narration above the first statement, which is §4.1's whole subject
+function moduleHeader(lines, comments, codeLines, prof) {
   let start = 1;
   if (lines[0]?.startsWith('#!')) start = 2;
-  while (start <= lines.length && lines[start - 1].trim() === '') start++;
+  let prologueEnd = 0;
+  for (;;) {
+    while (start <= lines.length && lines[start - 1].trim() === '') start++;
+    if (!prof?.prologue?.test(lines[start - 1] ?? '')) break;
+    prologueEnd = start;
+    start++;
+  }
 
   const first = comments.find((c) => c.line === start);
   if (!first) return null;
@@ -164,9 +181,9 @@ function moduleHeader(lines, comments, codeLines) {
     end = next.endLine;
   }
 
-  if (lines[end] === undefined || lines[end].trim() !== '') return null;
-  const firstCode = Math.min(...codeLines, Infinity);
+  const firstCode = Math.min(...[...codeLines].filter((l) => l > prologueEnd), Infinity);
   if (firstCode <= end) return null;
+  if (lines[end] === undefined || lines[end].trim() !== '') return { start, end, glued: true };
 
   return { start, end, count: end - start + 1 };
 }
