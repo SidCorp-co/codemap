@@ -189,9 +189,70 @@ which case it is reported regardless. A frozen key is dropped only when its text
 
 Every compiler and linter pragma is exempt in every language. Generated files are skipped.
 
-Real numbers from a smoke test on a large Laravel monorepo: 111 findings across all `.php` files
-(TODOs only — no docblock was touched), against ~73k in its bundled JS/TS assets. The per-language
-profile is what makes that difference, and it is why the framework survives being installed.
+## Field data
+
+Three production repos. Everything in this section is printed by the tool — `cm sweep --json` and the
+debt line `cm verify` ends with — not counted by hand.
+
+**EpodSystem**, 503k lines of Go + Next.js + GraphQL + Liquid, 3 182 files:
+
+```
+27 467 prose lines flagged across 13 696 comment blocks in 1 689 files
+    20 TODO/FIXME · 3 over-long module headers
+```
+
+Of the 16 726 flagged lines in 225k lines of Go across 1 121 files, **zero** sit above an exported
+top-level declaration. `docPolicy: required-on-exported` leaves every godoc comment Go's own tooling
+requires exactly where it is. The framework that flags those gets uninstalled the same day; this is
+the measurement that says this one does not.
+
+**Forge**, 261k lines of TypeScript, 2 100 files: 13 941 lines across 6 143 blocks in 1 090 files.
+
+Two unrelated codebases, different teams, 2× apart in size — **5.5% and 5.3% prose density**. That
+appears to be the size of the surface, not a property of either team.
+
+**A large Laravel monorepo**: 111 findings across every `.php` file (TODOs only — no docblock
+touched), against ~73k in the same repo's bundled JS/TS assets. Three ecosystems, three policies, one
+checker.
+
+The number that matters most is smaller than any of those. **134 flagged comments in EpodSystem name
+another file in the repo** — `(see product_create.go)`, `mirrors audience_helpers.go`,
+`see frontend/.../unknown-filters.ts`. Every one is a coupling a developer found, judged worth
+recording, and had no formal channel for: nothing indexes them, nothing notices when the target
+moves, and they only reach a reader already in the right file. The declared-edge layer is not a new
+thing to write. It is a channel for what people are already writing into the void.
+
+What survives matters more than what goes. On hand-read stratified samples (n=55 and n=50, ±10pp),
+roughly half the flagged lines compress away — but **~45% carry rationale worth keeping**, and it is
+kept, as one- or two-line `cm:` annotations that the hook then injects at edit time. This is a
+format, not a comment remover. Test files skew hard the other way (71% of blocks deletable, against
+24% in source) because narrating a mock is derivable and narrating a design decision is not.
+
+Full method, per-language breakdown, sampled verdicts and four known gaps in the spec:
+[CASE-STUDY.md](CASE-STUDY.md).
+
+### One block, before and after
+
+`frontend/app/api/storefront/blog-comments/route.ts` — a cross-file coupling a developer had already
+found, written down, and had no formal way to express:
+
+```ts
+// RELATIVE redirect path — see api/storefront/product-reviews/route.ts for
+// the full rationale (Next.js req.url = internal localhost host, not the
+// storefront vhost; an absolute Location would kick the browser to
+// localhost:3000 and drop the store subdomain).
+function buildRedirectPath(path: string, flag: string): string {
+```
+
+```ts
+// cm:edge protocol -> frontend/app/api/storefront/product-reviews/route.ts — Next.js req.url is the
+//   internal host; an absolute Location drops the store subdomain
+function buildRedirectPath(path: string, flag: string): string {
+```
+
+Four lines to two — but the saving is not the point. `see <file> for the full rationale` is now data:
+`cm impact` returns it, and the hook injects it when an agent opens **either** file. Before, it was
+prose that only reached a reader already in the right file.
 
 ## Adoption tiers
 
