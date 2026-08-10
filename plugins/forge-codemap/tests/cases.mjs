@@ -116,6 +116,35 @@ export const analyzeCases = [
     annotations: [],
   },
   {
+    name: 'ts: a bare URL in markup text is code, but a trailing comment after one still counts',
+    file: 'b2.tsx',
+    src: [
+      'const a = <p>Visit https://example.com/a//b#frag for docs</p>;',
+      'const b = 1; // cm:why https://example.com/rfc pins this constant',
+      'const c = <a>https://x.dev</a>; // Load the config',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['why'],
+  },
+  {
+    name: 'ts: a colon that is not a known scheme still opens a comment',
+    file: 'b4.ts',
+    src: [
+      'const t = a?b:c// Load the config',
+      'const o = { key://cm:guard callers must hold the run lock',
+      '  1 };',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['guard'],
+  },
+  {
+    name: 'yaml: a #fragment inside a bare URL is not a comment',
+    file: 'b3.yaml',
+    src: ['url: https://example.com#frag', 'other: 1 # a real comment'].join('\n'),
+    codes: [],
+    annotations: [],
+  },
+  {
     name: 'ts: annotation inside a doc comment is CM003',
     file: 'c.ts',
     src: ['/**', ' * cm:guard must not live in a docblock', ' */', 'function f() {}'].join('\n'),

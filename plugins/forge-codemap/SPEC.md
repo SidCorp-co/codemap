@@ -147,6 +147,13 @@ survive contact with ecosystems whose convention is the opposite of "few comment
 A file whose first lines mark it generated (`Code generated ... DO NOT EDIT`, `@generated`,
 drizzle/`_ide_helper` markers) is skipped entirely.
 
+The scanner keeps comment leaders inside string literals from being read as comments, and does the
+same for a **bare URL** outside one — the `//` in JSX text (`<a>https://x.dev</a>`) or a `#fragment`
+in a YAML scalar. The scheme vocabulary is closed (principle 3): an unlisted scheme costs a false
+`CM001` its author can silence, whereas a general `<ident>:` rule reads `{ key://cm:guard … }` as a
+URL and drops the annotation with no diagnostic — and a missed annotation is the one failure this
+scanner does not permit itself.
+
 ## §7 Diagnostics
 
 Tier decides where it runs: **grammar** in `PostToolUse` (blocking), **referential** and

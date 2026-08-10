@@ -13,6 +13,36 @@ function matchLongest(candidates, line, i) {
   return best;
 }
 
+// cm:why a bare URL outside a string is never lexed, so the `//` in JSX text or a `#fragment` in a
+// YAML scalar reads as a leader and turns a line of real code into a phantom CM001
+// cm:guard keep the vocabulary closed — an open `[a-z]+:` rule read `{ key://cm:guard … }` as a URL
+// and swallowed the annotation silently, the one failure direction this scanner's header forbids
+const SCHEMES = new Set([
+  'http', 'https', 'ws', 'wss', 'ftp', 'ftps', 'file',
+  'git', 'git+ssh', 'git+https', 'ssh', 'svn', 'docker', 'oci', 's3', 'gs',
+  'postgres', 'postgresql', 'mysql', 'mongodb', 'mongodb+srv', 'redis', 'rediss', 'amqp', 'amqps',
+]);
+
+/** Does `line[..j)` end in `<scheme>:`, i.e. does a URL start at j? */
+function schemeEndsAt(line, j) {
+  if (line[j - 1] !== ':') return false;
+  let k = j - 1;
+  while (k > 0 && /[a-z0-9+.-]/i.test(line[k - 1])) k--;
+  return SCHEMES.has(line.slice(k, j - 1).toLowerCase());
+}
+
+/** Is j inside a bare URL that started earlier on this line? Whitespace ends the URL. */
+function insideBareUrl(line, j) {
+  let k = j;
+  while (k > 0 && !/\s/.test(line[k - 1])) k--;
+  const m = /^([a-z][a-z0-9+.-]*):\/\//i.exec(line.slice(k, j));
+  return !!m && SCHEMES.has(m[1].toLowerCase());
+}
+
+function insideUrl(line, j, leader) {
+  return insideBareUrl(line, j) || (leader === '//' && schemeEndsAt(line, j));
+}
+
 function findUnescaped(line, delim, from) {
   for (let i = from; i < line.length; i++) {
     if (line[i] === '\\') { i++; continue; }
@@ -82,6 +112,12 @@ export function scanComments(src, prof) {
       // cm:why regex literals are not lexed, and `/https?:\/\//` ends in an escaped slash against its own
       // closing delimiter — read as a leader, that phantom comment is a CM001 on a line of real code
       if (leader && j > 0 && line[j - 1] === '\\') { j++; continue; }
+      if (leader && insideUrl(line, j, leader)) {
+        sawCode = true;
+        codeLines.add(lineNo);
+        j += leader.length;
+        continue;
+      }
       if (leader) {
         comments.push({
           kind: prof.docLineLeaders.includes(leader) ? 'doc' : 'line',
