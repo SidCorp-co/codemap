@@ -158,6 +158,47 @@ function baselineLifecycleCases(pluginRoot, check, roots) {
     `deleting legacy prose is what pays the debt down:\n${deleted.out}`);
 }
 
+// cm:why the fix for ISS-3 attached the wrap positionally, so a legacy comment sitting under a newly added
+//   annotation was adopted into it and injected as part of a guard — with no diagnostic (ISS-22)
+function adoptionCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  const legacy = '// Build the payload for the downstream call';
+  const file = join(root, 'adopt.ts');
+  writeFileSync(file, `export function f() {\n  ${legacy}\n  return 1;\n}\n`);
+  cm(pluginRoot, root, 'baseline');
+
+  writeFileSync(file,
+    'export function f() {\n'
+    + '  // cm:guard the payload shape must match the downstream validator\n'
+    + `  ${legacy}\n`
+    + '  return 1;\n}\n');
+
+  const json = cm(pluginRoot, root, 'impact', 'adopt.ts', '--json');
+  let guard = null;
+  try { guard = JSON.parse(json.out).guards?.[0]; } catch { guard = null; }
+  check('cli: a FROZEN line under an annotation is not adopted as its wrap',
+    Boolean(guard) && guard.text === 'the payload shape must match the downstream validator',
+    `the hook must not be handed a fused invariant; got: ${JSON.stringify(guard?.text)}`);
+
+  const verify = cm(pluginRoot, root, 'verify', 'adopt.ts');
+  check('cli: the rejected line is reported as sited prose, not silently swallowed',
+    verify.status === 1 && /CM001/.test(verify.out) && /Build the payload/.test(verify.out),
+    `the author must be told the prose is still there:\n${verify.out}`);
+
+  writeFileSync(file,
+    'export function f() {\n'
+    + '  // cm:guard the payload shape must match the downstream validator, since the\n'
+    + '  // validator rejects an unknown key rather than ignoring it\n'
+    + '  return 1;\n}\n');
+  const real = cm(pluginRoot, root, 'impact', 'adopt.ts', '--json');
+  let ok = null;
+  try { ok = JSON.parse(real.out).guards?.[0]; } catch { ok = null; }
+  check('cli: a wrap the author actually wrote is still carried whole',
+    Boolean(ok) && ok.text.includes('rejects an unknown key'),
+    `ISS-3 must not regress while fixing ISS-22; got: ${JSON.stringify(ok?.text)}`);
+}
+
 // cm:why the wrap is the hook's payload, and the hook reads `impact --json` from whatever cm the repo has
 // installed — so the join has to be asserted through the real CLI, not just through analyzeFile (ISS-3)
 function wrapCases(pluginRoot, check, roots) {
@@ -515,6 +556,7 @@ export function cliCases(pluginRoot, check) {
     rewriteCases(pluginRoot, check, roots);
     baselineLifecycleCases(pluginRoot, check, roots);
     wrapCases(pluginRoot, check, roots);
+    adoptionCases(pluginRoot, check, roots);
     targetCases(pluginRoot, check, roots);
     outputCases(pluginRoot, check, roots);
     diffScopeCases(pluginRoot, check, roots);
