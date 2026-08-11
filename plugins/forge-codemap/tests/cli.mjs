@@ -166,6 +166,8 @@ function adoptionCases(pluginRoot, check, roots) {
   const legacy = '// Build the payload for the downstream call';
   const file = join(root, 'adopt.ts');
   writeFileSync(file, `export function f() {\n  ${legacy}\n  return 1;\n}\n`);
+  git(root, 'add', '-A');
+  git(root, 'commit', '-qm', 'legacy');
   cm(pluginRoot, root, 'baseline');
 
   writeFileSync(file,
@@ -395,7 +397,8 @@ function diffScopeCases(pluginRoot, check, roots) {
   const scopedBaseline = cm(pluginRoot, root, 'baseline', 'since.ts');
   const bl = JSON.parse(readFileSync(join(root, '.forge', 'codemap-baseline.json'), 'utf8'));
   check('cli: cm baseline <path> freezes that file and MERGES, leaving others alone',
-    /re-froze 1 file/.test(scopedBaseline.out) && bl['since.ts']?.length === 4
+    /re-froze 1 file/.test(scopedBaseline.out) && bl['since.ts']?.filter((k) => !k.startsWith('b:')).length === 3
+    && /1 comment\(s\) are NOT in HEAD/.test(scopedBaseline.out)
     && bl['legacy.ts'] === undefined && bl['brandnew.ts'] === undefined,
     `a scoped re-freeze must not touch, or absolve, any other file:\n${scopedBaseline.out}\n${JSON.stringify(bl)}`);
 
@@ -475,6 +478,61 @@ function advisoryCases(pluginRoot, check, roots) {
   check('cli: an imported package DIRECTORY counts as evidence, which is all Go ever names',
     !/repo\.go/.test(goDir.out),
     `Go's import model must not read as missing evidence:\n${goDir.out}`);
+}
+
+// cm:why prose is judged on form and position; an annotation's text was judged on nothing but being
+//   non-empty. Under a blocking hook that made a six-character prefix the cheapest way out (ISS-27, ISS-26)
+function escapeHatchCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  const file = join(root, 'relabel.ts');
+  writeFileSync(file, 'export function f() {\n  // Build the payload for the downstream call\n  return 1;\n}\n');
+  git(root, 'add', '-A');
+  git(root, 'commit', '-qm', 'legacy');
+  cm(pluginRoot, root, 'baseline');
+
+  writeFileSync(file,
+    'export function f() {\n'
+    + '  // cm:why Build the payload for the downstream call\n'
+    + '  return 1;\n}\n');
+  const relabel = cm(pluginRoot, root, 'verify');
+  check('cli: relabeled prose is still counted as debt, never as cleaned',
+    /3 distinct still frozen · 0 cleaned/.test(relabel.out),
+    `a tag is not a deletion:\n${relabel.out}`);
+
+  const advisory = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
+  check('cli: CM302 names an annotation whose words the baseline already froze',
+    /CM302/.test(advisory.out) && /Build the payload/.test(advisory.out) && advisory.status === 0,
+    `expected a warning-only CM302:\n${advisory.out}`);
+
+  // cm:guard cm:why had no reader at all, which is principle 1's own test — the tag that absorbs rationale
+  //   was the one nothing consumed, and that is what made relabeling invisible rather than merely possible
+  const impact = cm(pluginRoot, root, 'impact', 'relabel.ts', '--json');
+  let whys = null;
+  try { whys = JSON.parse(impact.out).whys; } catch { whys = null; }
+  check('cli: cm:why is readable — impact carries it, so the tag has a consumer',
+    Array.isArray(whys) && whys.length === 1 && /Build the payload/.test(whys[0].text),
+    `whys must be queryable: ${JSON.stringify(whys)}`);
+  check('cli: cm ls lists whys', /whys/.test(cm(pluginRoot, root, 'ls').out),
+    'cm ls must have a whys section');
+
+  const fresh = join(root, 'fresh.ts');
+  writeFileSync(fresh, 'export function g() {\n  // Loop over the items\n  // TODO: refactor this later\n  return 1;\n}\n');
+  const blocked = cm(pluginRoot, root, 'verify', 'fresh.ts');
+  check('cli: freshly written prose is a violation', blocked.status === 1 && /CM001/.test(blocked.out) && /CM010/.test(blocked.out),
+    `expected CM001 + CM010:\n${blocked.out}`);
+
+  const bl = cm(pluginRoot, root, 'baseline');
+  const after = cm(pluginRoot, root, 'verify', 'fresh.ts');
+  check('cli: cm baseline refuses to absolve a comment that is not in HEAD',
+    /2 comment\(s\) are NOT in HEAD/.test(bl.out) && after.status === 1 && /CM001/.test(after.out),
+    `baseline must not be a way to resolve a diagnostic:\n${bl.out}\n${after.out}`);
+
+  const forced = cm(pluginRoot, root, 'baseline', '--include-new');
+  const green = cm(pluginRoot, root, 'verify', 'fresh.ts');
+  check('cli: --include-new still allows it, as a stated operator decision',
+    green.status === 0 && !/NOT in HEAD/.test(forced.out),
+    `the escape must remain available, just not silent:\n${forced.out}\n${green.out}`);
 }
 
 export function cliCases(pluginRoot, check) {
@@ -557,6 +615,7 @@ export function cliCases(pluginRoot, check) {
     baselineLifecycleCases(pluginRoot, check, roots);
     wrapCases(pluginRoot, check, roots);
     adoptionCases(pluginRoot, check, roots);
+    escapeHatchCases(pluginRoot, check, roots);
     targetCases(pluginRoot, check, roots);
     outputCases(pluginRoot, check, roots);
     diffScopeCases(pluginRoot, check, roots);

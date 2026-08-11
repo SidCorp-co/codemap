@@ -214,12 +214,20 @@ Tier decides where it runs: **grammar** in `PostToolUse` (blocking), **referenti
 | `CM105` | referential | duplicate `<flow>/<step>` id |
 | `CM106` | referential | `cm:edge` `#symbol` is not in the target file, or the target is a directory (§4). A word-boundary match on the anchor's first dot-segment — not resolution, which stays LSP's job |
 | `CM107` | referential | `cm:edge` names an `external:` that the registry does not declare (§8) |
+| `CM302` | advisory | an annotation's text is prose the baseline already froze — a tag worn by legacy narration (§7.1) |
 | `CM301` | advisory | a `contract`/`lockstep` edge with a `#symbol` where NEITHER file names the other — the coupling may be intention rather than code (§7.1) |
 | `CM201` | structural | flow has a single step — either it is not a flow, or steps are missing |
 | `CM202` | structural | `after:` chain is cyclic or the flow has several roots |
 | `CM104` | reserved | stale `cm:hack` (issue closed) — requires the Forge integration, tier 3 |
 
 ### §7.1 The advisory tier
+
+Both codes here ask a question the other tiers cannot: not *is this well-formed* or *does this resolve*,
+but *does this annotation carry what it claims to*. `CM302` exists because the rigour was one-sided —
+prose was judged on form and position with twelve codes, while an annotation's text was judged only on
+being non-empty, so under a blocking hook a six-character prefix was the cheapest way to clear `CM001`.
+It is content-blind: it asks whether those exact words were already frozen as legacy, which the baseline
+already knows.
 
 `CM102` answers *does the target exist*; `CM106`, *is the symbol still there*. Neither answers *is the
 coupling real* — a function can declare `cm:edge contract -> other.ts` that `other.ts` has never called,

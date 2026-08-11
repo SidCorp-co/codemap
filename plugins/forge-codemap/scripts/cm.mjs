@@ -11,7 +11,8 @@ import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join, relative, resolve, dirname, normalize } from 'node:path';
 import {
   findRoot, loadRegistry, saveRegistry, loadBaseline, saveBaseline,
-  selects, walk, changedSince, changedStaged, changedRanges, toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
+  selects, walk, changedSince, changedStaged, changedRanges, headBlob, dirtyFiles,
+  toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
 } from './lib/registry.mjs';
 import { analyzeFile } from './lib/analyze.mjs';
 import { buildGraph, referentialDiags, structuralDiags, advisoryDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
@@ -300,13 +301,20 @@ switch (cmd) {
     let cleaned = 0;
     for (const f of perFile) {
       const frozen = baseline[f.relPath] ?? new Set();
-      const keep = f.diags.filter(
-        (d) => !PROSE_CODES.has(d.code) || d.sited || !frozen.has(baselineKey(d.text ?? d.message)),
-      );
+      // cm:guard a line is spared when its OWN key is frozen or when its block's is — the block key is what
+      //   survives a reflow, and the line keys are what keep a newly added line in a legacy block reported
+      const keep = f.diags.filter((d) => !PROSE_CODES.has(d.code) || d.sited
+        || !(frozen.has(baselineKey(d.text ?? d.message)) || (d.blockKey && frozen.has(d.blockKey))));
       diags.push(...keep);
 
-      const present = new Set(f.proseKeys ?? []);
-      for (const k of frozen) (present.has(k) ? debt++ : cleaned++);
+      const present = new Set(f.presentKeys ?? f.proseKeys ?? []);
+      // cm:guard a reflow changes every LINE key while the block key survives, so a frozen line whose block
+      //   is still here is still debt — coarse per file, which over-reports debt rather than progress (ISS-21)
+      const blockAlive = (f.blockKeys ?? []).some((b) => frozen.has(b));
+      for (const k of frozen) {
+        if (k.startsWith('b:')) continue;
+        (present.has(k) || blockAlive ? debt++ : cleaned++);
+      }
     }
 
     const ranges = lineScope(flagValue('--since'), flags.has('--staged'));
@@ -320,7 +328,7 @@ switch (cmd) {
     if (tier === 'all' || tier === 'structural') diags.push(...structuralDiags(g));
     // cm:guard advisory is opt-in until its false-positive rate is MEASURED on a real repo — a warning
     //   nobody trusts is how a tier gets switched off, and this one guesses where CM102/CM106 know (§7.1)
-    if (tier === 'advisory' || (tier === 'all' && reg.enforce?.advisory)) diags.push(...advisoryDiags(g, { root }));
+    if (tier === 'advisory' || (tier === 'all' && reg.enforce?.advisory)) diags.push(...advisoryDiags(g, { root, baseline }));
 
     // cm:guard the graph tiers raise their diagnostics here, long after analyzeFile applied its own
     //   ignore map — so cm:ignore CM102 / CM301 silently did nothing, though both fix lines offer it
@@ -419,13 +427,15 @@ switch (cmd) {
     const rel = target.replace(`${root}/`, '');
     const r = impact(g, rel);
     if (flags.has('--json')) { console.log(JSON.stringify(r, null, 2)); break; }
-    const empty = !r.guards.length && !r.outgoing.length && !r.incoming.length && !r.flows.length && !r.hacks.length;
+    const empty = !r.guards.length && !r.outgoing.length && !r.incoming.length && !r.flows.length
+      && !r.hacks.length && !r.whys.length;
     if (empty) { console.log(`${rel}: no declared couplings. LSP references are still your job (§1).`); break; }
     console.log(bold(`impact of ${rel}`));
     for (const a of r.guards) console.log(`  ${red('guard')}   ${a.text}  ${dim(`(:${a.line})`)}`);
     for (const a of r.hacks) console.log(`  ${yellow('hack')}    ${a.issue} until:${a.until} — ${a.text}  ${dim(`(:${a.line})`)}`);
     for (const e of r.outgoing) console.log(`  edge →   ${e.kind} ${e.target}${e.text ? ` — ${e.text}` : ''}  ${dim(`(:${e.line})`)}`);
     for (const e of r.incoming) console.log(`  edge ←   ${e.kind} from ${e.file}:${e.line}${e.text ? ` — ${e.text}` : ''}`);
+    for (const a of r.whys) console.log(`  ${dim('why')}     ${annText(a)}  ${dim(`(:${a.line})`)}`);
     for (const f of r.flows) {
       console.log(`  flow     ${f.name}: ${f.steps.map((s) => s.step).join(', ')}`);
       for (const n of f.neighbours) console.log(`             ${dim(`↔ ${n.step} @ ${n.file}:${n.line}`)}`);
@@ -466,6 +476,8 @@ switch (cmd) {
     for (const a of g.guards) console.log(`  ${a.file}:${a.line}  ${annText(a)}`);
     console.log(bold('hacks'));
     for (const a of g.hacks) console.log(`  ${a.issue}  ${a.file}:${a.line}  until:${a.until}`);
+    console.log(bold('whys'));
+    for (const a of g.whys) console.log(`  ${a.file}:${a.line}  ${annText(a)}`);
     break;
   }
 
@@ -490,13 +502,16 @@ switch (cmd) {
       if (!frozen) continue;
       for (const d of f.diags) {
         if (!PROSE_CODES.has(d.code) || d.sited) continue;
-        if (frozen.has(baselineKey(d.text ?? d.message))) {
+        if (frozen.has(baselineKey(d.text ?? d.message)) || (d.blockKey && frozen.has(d.blockKey))) {
           rows.push({ file: f.relPath, line: d.line, code: d.code, text: d.text ?? d.message });
         }
       }
-      const present = new Set(f.proseKeys ?? []);
-      const keep = [...frozen].filter((k) => present.has(k));
-      stale += frozen.size - keep.length;
+      // cm:guard prune reads presentKeys, so a key whose words are still in the file under a cm: tag is not
+      //   dropped as stale — dropping it made legacy prose permanently unabsolvable (ISS-21, ISS-25)
+      const present = new Set(f.presentKeys ?? f.proseKeys ?? []);
+      const alive = (f.blockKeys ?? []).some((b) => frozen.has(b));
+      const keep = [...frozen].filter((k) => present.has(k) || (alive && !k.startsWith('b:')));
+      stale += [...frozen].filter((k) => !k.startsWith('b:') && !present.has(k) && !alive).length;
       if (keep.length) pruned[f.relPath] = keep;
     }
 
@@ -508,7 +523,7 @@ switch (cmd) {
         process.exit(2);
       }
       saveBaseline(root, pruned);
-      console.log(`codemap sweep: dropped ${stale} stale key(s); ${Object.values(pruned).reduce((a, b) => a + b.length, 0)} remain frozen`);
+  console.log(`codemap sweep: dropped ${stale} stale key(s); ${Object.values(pruned).flat().filter((k) => !k.startsWith('b:')).length} remain frozen`);
       console.log(dim('bookkeeping only — no source file was touched, and no new comment was absolved'));
       break;
     }
@@ -555,18 +570,47 @@ switch (cmd) {
         if (!file.startsWith('__')) keys[file] = [...set];
       }
     }
+    // cm:guard "pre-existing" must mean pre-existing, not "in the tree right now" — this command is the
+    //   cheapest escape from a blocking CM001, and it was the one baseline command with no guard (ISS-26)
+    const dirty = flags.has('--include-new') ? null : dirtyFiles(root);
+    const heads = new Map();
+    const isOld = (f, text) => {
+      if (!dirty || !dirty.has(f)) return true;
+      if (!heads.has(f)) {
+        const blob = headBlob(root, f);
+        heads.set(f, blob === null ? null : blob.replace(/\s+/g, ' '));
+      }
+      const head = heads.get(f);
+      return head === null ? false : head.includes(String(text).replace(/\s+/g, ' ').trim());
+    };
+
     const touched = [];
+    let skipped = 0;
     for (const f of perFile) {
-      if (f.proseKeys?.length) keys[f.relPath] = f.proseKeys;
+      const prose = f.diags.filter((d) => PROSE_CODES.has(d.code));
+      const old = new Set(prose.filter((d) => isOld(f.relPath, d.text ?? d.message))
+        .map((d) => baselineKey(d.text ?? d.message)));
+      skipped += (f.proseKeys ?? []).filter((k) => !old.has(k)).length;
+      // cm:why a block's reflow key is frozen only when EVERY line in it is old — one new line in a legacy
+      //   block would otherwise have the block vouch for it
+      const mixed = new Set(prose.filter((d) => !old.has(baselineKey(d.text ?? d.message))).map((d) => d.blockKey));
+      const all = [...old, ...(f.blockKeys ?? []).filter((b) => !mixed.has(b))];
+      if (all.length) keys[f.relPath] = all;
       else delete keys[f.relPath];
       touched.push(f.relPath);
     }
     saveBaseline(root, keys);
-    const total = Object.values(keys).reduce((a, b) => a + b.length, 0);
+    // cm:why a block key is a reflow shadow, not a comment, so the count a human reads must exclude it
+    const total = Object.values(keys).flat().filter((k) => !k.startsWith('b:')).length;
     console.log(scoped
       ? `codemap baseline: re-froze ${plural(touched.length, 'file')}; ${total} comments frozen across ${Object.keys(keys).length} files`
       : `codemap baseline: froze ${total} pre-existing prose comments across ${Object.keys(keys).length} files`);
     if (scoped) console.log(dim('other files\' entries were left exactly as they were — this is a scoped re-freeze'));
+    if (skipped) {
+      console.log(yellow(`${skipped} comment(s) are NOT in HEAD and were not frozen — a comment written since the`
+        + ' last commit is not legacy. Delete it, or convert it if it records something non-derivable.'));
+      console.log(dim('  freeze them anyway (an operator decision about debt, not a way to resolve a diagnostic): cm baseline --include-new'));
+    }
     console.log(dim('legacy is frozen by CONTENT (§8 / principle 7) — only a comment whose text is new is flagged'));
     break;
   }
@@ -578,9 +622,12 @@ switch (cmd) {
     //   re-init against its own output would treat a frozen line as prose it had never seen
     const perFile = analyzeAll(reg, allFiles(reg), {});
     const keys = {};
-    for (const f of perFile) if (f.proseKeys?.length) keys[f.relPath] = f.proseKeys;
+    for (const f of perFile) {
+      const all = [...(f.proseKeys ?? []), ...(f.blockKeys ?? [])];
+      if (all.length) keys[f.relPath] = all;
+    }
     saveBaseline(root, keys);
-    const total = Object.values(keys).reduce((a, b) => a + b.length, 0);
+    const total = Object.values(keys).flat().filter((k) => !k.startsWith('b:')).length;
     console.log(`codemap ${SPEC_VERSION} initialised at ${root}`);
     console.log(`  .forge/codemap.json`);
     console.log(`  .forge/codemap-baseline.json  ${dim(`${total} legacy comments frozen by content`)}`);
