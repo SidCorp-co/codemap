@@ -161,6 +161,12 @@ there means the comment sits in a body, where narration is narration — capital
 policy exists to catch. `func (` is not a group opener: it is a method receiver, and admitting it would
 exempt every unexported method.
 
+A godoc-shaped comment above an **unexported** declaration stays flagged. revive's `exported` rule
+covers exported names only, so documenting an unexported one is a choice its author makes rather than a
+convention the ecosystem imposes — and `docPolicy: required-on-exported` exists to exempt the second,
+not the first. This is the largest bucket left in a Go repo after the member rule (4 347 lines measured);
+a repo that wants those spared should set `docPolicy: allowed` for Go rather than widen the exemption.
+
 A file whose first lines mark it generated (`Code generated ... DO NOT EDIT`, `@generated`,
 drizzle/`_ide_helper` markers) is skipped entirely.
 
