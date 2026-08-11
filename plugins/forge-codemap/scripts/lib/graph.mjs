@@ -3,7 +3,9 @@
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { diag } from './parse.mjs';
+import { diag, baselineKey } from './parse.mjs';
+
+const trim = (t) => (t.length > 60 ? `${t.slice(0, 57)}...` : t);
 
 /**
  * Does `anchor` appear in the target's source at all?
@@ -110,7 +112,7 @@ export function referentialDiags(g, { root, reg }) {
 const FAMILY = { ts: 'js', tsx: 'js', js: 'js', jsx: 'js', mjs: 'js', cjs: 'js', go: 'go', php: 'php', py: 'py', rs: 'rs' };
 const family = (p) => FAMILY[p.split('.').pop()] ?? null;
 
-export function advisoryDiags(g, { root }) {
+export function advisoryDiags(g, { root, baseline = {} }) {
   const out = [];
   const cache = new Map();
   const stem = (p) => p.split('/').pop().replace(/\.\w+$/, '');
@@ -119,6 +121,15 @@ export function advisoryDiags(g, { root }) {
   // cm:guard evidence must come from CODE — the edge's own annotation names the target, so counting
   //   comments made the check unable to fire at all, silently passing everything it was built to find
   const codeOnly = (src) => src.split('\n').filter((l) => !/^\s*(\/\/|#|--|\*|\/\*)/.test(l)).join('\n');
+  // cm:why prose prefixed with a tag was the cheapest way to clear CM001, and nothing looked at what the
+  //   tag carried — the baseline already holds the evidence, since those exact words are frozen (ISS-27)
+  for (const a of [...g.guards, ...g.whys, ...g.hacks, ...g.edges]) {
+    const frozen = baseline[a.file];
+    if (frozen && a.text && frozen.has(baselineKey(a.text))) {
+      out.push(diag('CM302', a.file, a.line, trim(a.text)));
+    }
+  }
+
   for (const e of g.edges) {
     if (e.external || !['contract', 'lockstep'].includes(e.kind)) continue;
     const [path, anchor] = e.target.split('#');
@@ -208,6 +219,9 @@ export function impact(g, relPath) {
     const t = e.target.split('#')[0];
     return e.file !== relPath && (t === relPath || relPath.startsWith(`${t}/`) || t.startsWith(`${relPath}/`));
   }).map(full);
+  // cm:guard cm:why now has a reader — principle 1 says a kind exists only if a tool consumes it, and this
+  //   was the one tag nothing read, which is what made relabeling prose into it invisible (ISS-27)
+  const whys = g.whys.filter((a) => a.file === relPath).map(full);
   const flows = [];
   for (const [name, flow] of g.flows) {
     const mine = flow.steps.filter((s) => s.file === relPath);
@@ -223,7 +237,7 @@ export function impact(g, relPath) {
     }
     flows.push({ name, steps: mine.map(full), neighbours });
   }
-  return { guards, hacks, outgoing, incoming, flows };
+  return { guards, hacks, whys, outgoing, incoming, flows };
 }
 
 export function mermaid(flow) {

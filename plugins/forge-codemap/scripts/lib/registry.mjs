@@ -239,6 +239,27 @@ export function toolVersion() {
   try { return readFileSync(resolve(here, '..', 'VERSION'), 'utf8').trim() || 'unknown'; } catch { return 'unknown'; }
 }
 
+/**
+ * The file's content at HEAD, or null when git cannot answer (no commit, untracked, no repo).
+ *
+ * `cm baseline` uses it to tell "pre-existing" from "written seconds ago". null means the question is
+ * unanswerable, and the caller then treats the file as new rather than as legacy.
+ */
+export function headBlob(root, relPath) {
+  try {
+    return execFileSync('git', ['-C', root, 'show', `HEAD:${relPath}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch { return null; }
+}
+
+/** Files that differ from HEAD, plus untracked ones — the only files that CAN carry a new comment. */
+export function dirtyFiles(root) {
+  try {
+    const changed = execFileSync('git', ['-C', root, 'diff', '--name-only', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const untracked = execFileSync('git', ['-C', root, 'ls-files', '--others', '--exclude-standard'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return new Set(`${changed}\n${untracked}`.split('\n').map((l) => l.trim()).filter(Boolean));
+  } catch { return null; }
+}
+
 export function isTracked(root, relPath) {
   return existsSync(join(root, relPath));
 }

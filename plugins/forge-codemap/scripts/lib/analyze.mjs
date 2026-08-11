@@ -140,7 +140,20 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     }
   }
 
-  siteProse(comments, annotations, diags);
+  const blocks = siteProse(comments, annotations, diags);
+
+  const proseKeys = [...new Set(diags.filter((d) => PROSE_CODES.has(d.code))
+    .map((d) => baselineKey(d.text ?? d.message)))];
+  // cm:why a reflow moves no words but changes every line key, which unfroze whole comments and had sweep
+  //   advise pruning them — a BLOCK key survives rewrapping, and the line keys beside it stay granular (ISS-21)
+  const blockKeys = [];
+  for (const b of blocks) {
+    const mine = diags.filter((d) => PROSE_CODES.has(d.code) && d.line >= b.start && d.line <= b.end);
+    if (!mine.length) continue;
+    const key = `b:${baselineKey(b.text)}`;
+    for (const d of mine) d.blockKey = key;
+    blockKeys.push(key);
+  }
 
   return {
     annotations,
@@ -149,8 +162,16 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     //   offer it, and they are raised from the graph long after this function's own filter has run
     ignores,
     // cm:guard every prose violation belongs here, sited ones included — see the header for what breaks
-    proseKeys: [...new Set(diags.filter((d) => PROSE_CODES.has(d.code))
-      .map((d) => baselineKey(d.text ?? d.message)))],
+    proseKeys,
+    // cm:guard frozen but never COUNTED — a block key is one comment's reflow-invariant shadow, not a
+    //   comment, so counting it would inflate the debt line the case study quotes as ground truth
+    blockKeys,
+    // cm:guard the "is that frozen comment GONE" test reads THIS, never proseKeys — words that moved into a
+    //   cm: tag are still in the file, so a relabel cannot report the debt as paid (ISS-25)
+    presentKeys: [...new Set([
+      ...proseKeys, ...blockKeys,
+      ...annotations.flatMap((a) => [a.text, a.wrap].filter(Boolean).map((t) => baselineKey(t))),
+    ])],
     skipped: null,
   };
 }
@@ -159,7 +180,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
 // is the one place the tool can tell "you worked here and left the noise" from "this predates you" (§8)
 function siteProse(comments, annotations, diags) {
   const annLines = new Set(annotations.map((a) => a.line));
-  if (!annLines.size) return;
+  const blocks = [];
 
   const standalone = comments.filter((c) => c.firstOnLine !== false).sort((a, b) => a.line - b.line);
   for (let i = 0; i < standalone.length;) {
@@ -170,13 +191,21 @@ function siteProse(comments, annotations, diags) {
       end = Math.max(end, standalone[j].endLine);
       j++;
     }
-    if ([...annLines].some((l) => l >= start && l <= end)) {
+    if (annLines.size && [...annLines].some((l) => l >= start && l <= end)) {
       for (const d of diags) {
         if (SITEABLE.has(d.code) && d.line >= start && d.line <= end) d.sited = true;
       }
     }
+    // cm:why the block is the unit a human actually deletes, and the one a reflow preserves — CASE-STUDY's
+    //   Method folds contiguous standalone lines by hand for the same reason (ISS-21)
+    blocks.push({
+      start,
+      end,
+      text: standalone.slice(i, j).map((c) => c.text).filter(Boolean).join(' '),
+    });
     i = j;
   }
+  return blocks;
 }
 
 // cm:why the trailing blank line is what separates a header from narration glued to the first statement (§4.1)

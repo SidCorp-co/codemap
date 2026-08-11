@@ -29,7 +29,7 @@ export const VERBS = [
   ['flow', '[name]', 'ordered trace of a flow across files and languages  [--mermaid]'],
   ['ls', '', 'every annotation in the repo'],
   ['sweep', '[paths...]', 'list the prose the baseline is hiding  [--limit N] [--json] [--prune-baseline]'],
-  ['baseline', '[paths...]', 're-freeze legacy prose by content hash; a path scopes it and MERGES'],
+  ['baseline', '[paths...]', 're-freeze legacy prose by content hash; a path scopes it and MERGES  [--include-new]'],
   ['new flow', '<name>', 'declare a flow before annotating its steps  [--description "..."]'],
   ['new external', '<name>', 'declare an out-of-tree system a cm:edge may target  [--description "..."]'],
   ['codes', '', 'diagnostic reference (same as: cm help codes)'],
@@ -188,6 +188,13 @@ gets flagged. Reformatting, moving code and deleting old comments are all free.
   A pre-0.2 count-format baseline is detected, ignored and reported — never silently trusted. While
   it is unreadable prose is NOT enforced at all: nothing can tell new prose from legacy, and blocking
   an author for a comment they did not write is the wrong half of the trade. Fix: cm baseline.
+
+  A reflow is free: beside each line's key sits a block key over the whole comment run, and that one
+  survives re-wrapping. Relabeling is NOT progress — the words a cm: tag carries still count as present,
+  so the debt line only falls when a comment is deleted or genuinely reworded.
+
+  cm baseline refuses to freeze a comment that is not in git HEAD. Freezing what you wrote a minute ago
+  is not onboarding legacy, it is clearing a diagnostic; --include-new does it anyway and says so.
 
 THE ONE EXCEPTION, or the total never falls
 

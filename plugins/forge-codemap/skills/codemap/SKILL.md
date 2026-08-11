@@ -109,3 +109,17 @@ Every code has a fix line and a `SPEC.md` section — `cm codes` lists them. Two
 
 Last resort: `cm:ignore <CODE> — <reason>` on the line above. Both the code and the reason are
 mandatory.
+
+## What is not a fix for CM001
+
+Three moves look like resolutions and are not, and each now reports itself:
+
+- **prefixing prose with a tag.** `cm:why Load the config` is the same non-fact wearing a label, and the
+  words still count as debt. `cm verify --tier advisory` names it (`CM302`). Delete the sentence, or
+  rewrite it to say the thing that is not derivable.
+- **`cm baseline`.** It is an operator decision about inherited debt, not a step in resolving a
+  diagnostic. It refuses to freeze a comment that is not in `git HEAD`.
+- **`cm sweep --prune-baseline`.** Bookkeeping only; it never absolves a comment that is still in the file.
+
+The two real resolutions are deleting the comment and converting it into an annotation whose text says
+something the compiler, the types, the path and the LSP cannot state.
