@@ -138,7 +138,8 @@ ${TAGS.map((t) => `  ${forms[t]}`).join('\n')}
 
   ONE LINE, ONE ANNOTATION. Only the annotation's own line is parsed.
   A wrap is ONE line: the single standalone comment directly below, same leader, is its
-  continuation. A second such line is prose again.
+  continuation. A second such line is prose again. cm impact / cm flow / cm ls render the
+  annotation and its wrap as one sentence; cm fmt still rewrites only the annotation's own line.
   Ordering in a flow comes from after:, never from numbers, so inserting a step renumbers nothing.
 
 WHICH ONE

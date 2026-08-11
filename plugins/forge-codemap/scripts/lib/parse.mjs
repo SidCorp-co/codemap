@@ -39,13 +39,14 @@ const CODES = {
   CM002: { tier: 'grammar', section: '§3', message: 'unknown cm: tag', fix: `use one of: ${TAGS.join(', ')}` },
   CM003: { tier: 'grammar', section: '§4', message: 'cm: annotation inside a block or doc comment', fix: 'move it to a line comment — block/doc comments are parsed by TSDoc, PHPStan, Psalm and rustdoc' },
   CM004: { tier: 'grammar', section: '§5', message: 'cm:edge needs a known kind', fix: `kind must be one of: ${EDGE_KINDS.join(', ')}` },
-  CM005: { tier: 'grammar', section: '§4', message: 'cm:edge needs "-> <repo-relative-target>"', fix: 'write: cm:edge <kind> -> path/to/file.ts[#symbol] — <why they are coupled>' },
+  CM005: { tier: 'grammar', section: '§4', message: 'cm:edge needs "-> <repo-relative-target>"', fix: 'write: cm:edge <kind> -> path/to/file.ts[#symbol] — <why they are coupled>; if this is rationale rather than a coupling, use cm:why' },
   CM006: { tier: 'grammar', section: '§4', message: 'cm:flow needs "<flow>/<step>"', fix: 'write: cm:flow <flow>/<step> [after:<step>] — <what this step does>' },
   CM007: { tier: 'grammar', section: '§4', message: 'cm:hack needs "ISS-<n> until:<condition> — <text>"', fix: 'a workaround without an exit condition is permanent; name the issue and what would remove it' },
   CM008: { tier: 'grammar', section: '§4', message: 'annotation body is empty', fix: 'say the one thing that is not derivable, or delete the annotation' },
   CM009: { tier: 'grammar', section: '§4', message: 'annotation is not in canonical form', fix: 'run: cm fmt' },
   CM010: { tier: 'grammar', section: '§3', message: 'new TODO/FIXME introduced', fix: 'the tracker owns outstanding work — file an issue at draft status; use cm:hack ISS-<n> until:<cond> only for a workaround that is in the code right now' },
   CM011: { tier: 'grammar', section: '§4.1', message: 'module header is too long', fix: 'a header orients a reader in a few lines; move the rest to docs/ and leave a pointer' },
+  CM012: { tier: 'grammar', section: '§4', message: 'cm:edge target is followed by prose with no " — "', fix: 'put " — " before the rationale: cm:edge <kind> -> <target> — <why they are coupled>' },
   CM101: { tier: 'referential', section: '§8', message: 'flow is not declared in the registry', fix: 'run: cm new flow <name> (closed vocabulary keeps typos from forking the graph)' },
   CM102: { tier: 'referential', section: '§4', message: 'cm:edge target does not exist', fix: 'fix the path, or if the target moved, update the edge — a dangling edge is drift, not documentation' },
   CM103: { tier: 'referential', section: '§4', message: 'after: names a step that does not exist', fix: 'point at a real <step> of the same flow' },
@@ -103,14 +104,20 @@ export function parseAnnotation(text, file, line) {
   }
 
   if (tag === 'edge') {
-    const em = /^(\S+)\s*->\s*(\S+)$/.exec(splitProse(body)[0]);
-    if (!em) return { diags: [diag('CM005', file, line, body)] };
+    const [head, prose] = splitProse(body);
+    const em = /^(\S+)\s*->\s*(\S+)$/.exec(head);
+    if (!em) {
+      // cm:why one CM005 covered three authoring mistakes: for a valid kind and target with the separator
+      //   forgotten it named the "->" that was already right, sending the author to fix that (ISS-6)
+      const unseparated = !prose && /^\S+\s*->\s*\S+\s+\S/.test(head);
+      return { diags: [diag(unseparated ? 'CM012' : 'CM005', file, line, body)] };
+    }
     const [, kind, target] = em;
     if (!EDGE_KINDS.includes(kind)) return { diags: [diag('CM004', file, line, kind)] };
     if (/^(\/|[a-z]+:\/\/|~)/.test(target)) {
       return { diags: [diag('CM005', file, line, `"${target}" must be repo-relative`)] };
     }
-    return { ann: { ...base, kind, target, text: splitProse(body)[1] } };
+    return { ann: { ...base, kind, target, text: prose } };
   }
 
   if (tag === 'hack') {

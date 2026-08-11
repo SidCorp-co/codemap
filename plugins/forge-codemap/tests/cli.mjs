@@ -158,6 +158,49 @@ function baselineLifecycleCases(pluginRoot, check, roots) {
     `deleting legacy prose is what pays the debt down:\n${deleted.out}`);
 }
 
+// cm:why the wrap is the hook's payload, and the hook reads `impact --json` from whatever cm the repo has
+// installed — so the join has to be asserted through the real CLI, not just through analyzeFile (ISS-3)
+function wrapCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  const src = '// cm:guard the run lock is held for the whole batch, never per row —\n'
+    + '// releasing between rows lets a second dispatcher claim the tail of this one\n'
+    + 'export const f = 1;\n';
+  writeFileSync(join(root, 'wrapped.ts'), src);
+  cm(pluginRoot, root, 'baseline');
+
+  const clean = cm(pluginRoot, root, 'verify', 'wrapped.ts');
+  check('cli: a wrapped annotation is not CM009 and not CM001',
+    clean.status === 0 && !/CM0/.test(clean.out),
+    `a wrapped annotation must verify clean:\n${clean.out}`);
+
+  const fmt = cm(pluginRoot, root, 'fmt');
+  check('cli: cm fmt leaves a wrapped annotation byte-identical',
+    readFileSync(join(root, 'wrapped.ts'), 'utf8') === src,
+    `cm fmt rewrote across lines — the wrap was joined before canonical():\n${fmt.out}`);
+
+  const tail = 'releasing between rows lets a second dispatcher claim the tail of this one';
+  const text = cm(pluginRoot, root, 'impact', 'wrapped.ts');
+  check('cli: cm impact prints the wrap, not half a guard', text.out.includes(tail),
+    `impact dropped the second half:\n${text.out}`);
+
+  const json = cm(pluginRoot, root, 'impact', 'wrapped.ts', '--json');
+  let guard = null;
+  try { guard = JSON.parse(json.out).guards?.[0]; } catch { guard = null; }
+  check('cli: impact --json carries the whole sentence in text',
+    Boolean(guard) && guard.text.includes(tail) && guard.wrap === undefined,
+    `the hook reads this payload; got: ${JSON.stringify(guard)}`);
+
+  writeFileSync(join(root, 'malformed.ts'),
+    '// cm:edge lockstep -> wrapped.ts writes these refs; the\n'
+    + '// provenance gate allows them through via this predicate\n'
+    + 'export const g = 1;\n');
+  const one = cm(pluginRoot, root, 'verify', 'malformed.ts');
+  check('cli: a forgotten em-dash is one diagnostic, and it names the em-dash',
+    one.status === 1 && /CM012/.test(one.out) && !/CM001/.test(one.out) && /1 error,/.test(one.out),
+    `expected a single CM012 naming " — ", got:\n${one.out}`);
+}
+
 export function cliCases(pluginRoot, check) {
   const roots = [];
   try {
@@ -236,6 +279,7 @@ export function cliCases(pluginRoot, check) {
     failOpenCases(pluginRoot, check, roots);
     rewriteCases(pluginRoot, check, roots);
     baselineLifecycleCases(pluginRoot, check, roots);
+    wrapCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
   }

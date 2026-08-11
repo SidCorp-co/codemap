@@ -14,7 +14,7 @@ import {
   selects, walk, changedSince, changedStaged, toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
 } from './lib/registry.mjs';
 import { analyzeFile } from './lib/analyze.mjs';
-import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact, mermaid } from './lib/graph.mjs';
+import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
 import { canonical, CODE_TABLE, PROSE_CODES, baselineKey } from './lib/parse.mjs';
 import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
@@ -315,7 +315,7 @@ switch (cmd) {
     for (const s of orderFlow(flow).ordered) {
       const pad = '  '.repeat(s.depth + 1);
       console.log(`${pad}${s.step}${s.detached ? red(' (detached)') : ''}  ${dim(`${s.file}:${s.line}`)}`);
-      if (s.text) console.log(`${pad}  ${dim(s.text)}`);
+      if (annText(s)) console.log(`${pad}  ${dim(annText(s))}`);
     }
     break;
   }
@@ -329,7 +329,7 @@ switch (cmd) {
     console.log(bold('edges'));
     for (const e of g.edges) console.log(`  ${e.kind.padEnd(10)} ${e.file}:${e.line} -> ${e.target}`);
     console.log(bold('guards'));
-    for (const a of g.guards) console.log(`  ${a.file}:${a.line}  ${a.text}`);
+    for (const a of g.guards) console.log(`  ${a.file}:${a.line}  ${annText(a)}`);
     console.log(bold('hacks'));
     for (const a of g.hacks) console.log(`  ${a.issue}  ${a.file}:${a.line}  until:${a.until}`);
     break;

@@ -32,6 +32,7 @@ export function analyzeFile({ relPath, src, reg }) {
   const raw = [];
   const ignores = new Map();
   const annLines = new Map();
+  const annAt = new Map();
 
   const header = moduleHeader(lines, comments, codeLines, prof);
   const headerMax = reg.enforce?.headerMaxLines ?? 20;
@@ -73,10 +74,13 @@ export function analyzeFile({ relPath, src, reg }) {
         ignores.set(c.line, set);
         continue;
       }
+      // cm:guard register the LINE before the parse verdict — §4 makes the comment below a cm: line its
+      //   continuation parsed or not, and a malformed one that forfeits its wrap bills it as prose (ISS-6)
+      annLines.set(c.line, c.leader);
       if (parsed.diags) { raw.push(...parsed.diags); continue; }
       const ann = { ...parsed.ann, indent: c.indent ?? '', leader: c.leader, col: c.col };
       annotations.push(ann);
-      annLines.set(c.line, c.leader);
+      annAt.set(c.line, ann);
       const want = canonical(ann);
       // cm:why col + leader travel with the diagnostic so the rewrite is positional, not a re-match
       if (text !== want) {
@@ -94,7 +98,13 @@ export function analyzeFile({ relPath, src, reg }) {
 
     // cm:why an annotation may wrap onto exactly ONE following line — enough for a sentence that does not
     // fit, while a third line is prose again, so this cannot become a licence to dump a paragraph (§4)
-    if (c.firstOnLine !== false && annLines.get(c.line - 1) === c.leader) continue;
+    // cm:guard the wrap goes in `wrap`, never joined into `text` — canonical() reads `text` and cm fmt
+    //   writes it back at the annotation's own column, so joining duplicates the wrap onto line one (ISS-3)
+    if (c.firstOnLine !== false && annLines.get(c.line - 1) === c.leader) {
+      const prev = annAt.get(c.line - 1);
+      if (prev) prev.wrap = text;
+      continue;
+    }
 
     if (!grammar || inHeader(c)) continue;
 
