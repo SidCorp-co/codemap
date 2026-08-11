@@ -105,10 +105,17 @@ export function referentialDiags(g, { root, reg }) {
  * (`index`, `types`) matches easily and the check stays quiet. A false negative costs nothing; a false
  * positive is what gets a warning tier switched off.
  */
+// cm:guard a pair of files in different languages CANNOT reference each other — measured, that was 26 of
+//   36 hits in one repo, so firing there is a bug in the check and not a threshold to tune (§7.1)
+const FAMILY = { ts: 'js', tsx: 'js', js: 'js', jsx: 'js', mjs: 'js', cjs: 'js', go: 'go', php: 'php', py: 'py', rs: 'rs' };
+const family = (p) => FAMILY[p.split('.').pop()] ?? null;
+
 export function advisoryDiags(g, { root }) {
   const out = [];
   const cache = new Map();
   const stem = (p) => p.split('/').pop().replace(/\.\w+$/, '');
+  // cm:why an import names the file in JS and the package DIRECTORY in Go, so both count as evidence
+  const names = (p) => [stem(p), p.split('/').slice(-2, -1)[0]].filter(Boolean);
   // cm:guard evidence must come from CODE — the edge's own annotation names the target, so counting
   //   comments made the check unable to fire at all, silently passing everything it was built to find
   const codeOnly = (src) => src.split('\n').filter((l) => !/^\s*(\/\/|#|--|\*|\/\*)/.test(l)).join('\n');
@@ -116,11 +123,15 @@ export function advisoryDiags(g, { root }) {
     if (e.external || !['contract', 'lockstep'].includes(e.kind)) continue;
     const [path, anchor] = e.target.split('#');
     if (!anchor || path === e.file) continue;
+    const fam = family(e.file);
+    if (!fam || fam !== family(path)) continue;
     const target = readTarget(root, path, cache);
     const source = readTarget(root, e.file, cache);
     if (target.src === undefined || source.src === undefined) continue;
-    if (anchorPresent(codeOnly(source.src), stem(path))
-      || anchorPresent(codeOnly(target.src), stem(e.file))) continue;
+    const src = codeOnly(source.src);
+    const tgt = codeOnly(target.src);
+    if (names(path).some((n) => anchorPresent(src, n))
+      || names(e.file).some((n) => anchorPresent(tgt, n))) continue;
     out.push(diag('CM301', e.file, e.line, `${e.kind} -> ${e.target}`));
   }
   return out;

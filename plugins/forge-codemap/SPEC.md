@@ -226,11 +226,22 @@ HTTP-mediated. So the tier is warning-only, never gating (it cannot change the e
 only `contract` and `lockstep`, only with a `#symbol`, only when neither file names the other. Evidence
 is a basename match, biased toward silence — a generic stem matches easily and the check says nothing.
 
-It is **off by default**: `--tier advisory` runs it on demand, `enforce.advisory: true` includes it in a
-`--tier all` run. The reason is honesty about what is known. Every other check here fires on a fact;
-this one fires on a heuristic whose false-positive rate has not been measured on a real repo, and a
-warning nobody trusts is how a tier gets switched off — which is exactly what happened to the
-referential tier when 38 dangling `CM102` were allowed to stand. Measure before flipping it on:
+It is **off by default**, and the measurement says it should stay that way. Two production repos
+(2 234 and 3 277 files, 204 edges, 69 of them anchored) reported **40** `CM301` before two structural
+corrections and **5** after; of those 5, **one** was actionable — an edge whose anchor is a slug string,
+so its kind should be `naming` (§5) rather than `contract`. The other four are the shape the check cannot
+see: two sides that must implement the SAME RULE with nothing linking them (a frontend predicate and a
+backend selector; the same SQL ordering in two loaders). For those, the absence of a reference is not
+drift — it is the normal state of the most valuable edge in the repo, which inverts the check's premise.
+
+The two corrections were bugs rather than thresholds, and both are cases where evidence *cannot* exist:
+
+- a pair of files in **different languages** (26 of 36 hits in one repo) — Go cannot import a `.ts` file
+- **Go**, which names the imported package DIRECTORY and never the file (10 of 10 same-language hits
+  there), so a filename-only test warned on every correctly wired Go edge
+
+Measure before flipping it on for a repo, and expect the answer to depend on how that repo's edges are
+shaped:
 
 ```bash
 cm verify --tier advisory --json | jq '[.diags[] | select(.code=="CM301")] | length'

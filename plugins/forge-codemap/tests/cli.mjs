@@ -412,6 +412,28 @@ function advisoryCases(pluginRoot, check, roots) {
   check('cli: once the other side names this file, the warning goes away',
     !/CM301/.test(wired.out),
     `evidence at either end is enough:\n${wired.out}`);
+
+  // cm:guard measured on two production repos: 26 of 36 hits in one were cross-language pairs, where a
+  //   reference CANNOT exist — firing there is a bug in the check, not a threshold to tune (§7.1)
+  mkdirSync(join(root, 'api'), { recursive: true });
+  writeFileSync(join(root, 'api', 'handler.go'),
+    '// cm:edge contract -> engine.ts#unrelated — the Go side must return the same shape\npackage api\n');
+  const crossLang = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
+  check('cli: a cross-language pair is never judged — no reference is possible either way',
+    !/handler\.go/.test(crossLang.out),
+    `Go cannot import a .ts file:\n${crossLang.out}`);
+
+  // cm:why Go names the imported DIRECTORY, never the file, so a filename-only test warned on every
+  //   correctly-wired Go edge — 10 of 10 same-language hits in the measured repo (§7.1)
+  mkdirSync(join(root, 'pkg', 'search'), { recursive: true });
+  writeFileSync(join(root, 'pkg', 'search', 'loader.go'), 'package search\n\nfunc publicFlagsSQL() string { return "" }\n');
+  writeFileSync(join(root, 'api', 'repo.go'),
+    '// cm:edge contract -> pkg/search/loader.go#publicFlagsSQL — the same predicate must gate both paths\n'
+    + 'package api\n\nimport "example.com/pkg/search"\n\nvar _ = search.Anything\n');
+  const goDir = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
+  check('cli: an imported package DIRECTORY counts as evidence, which is all Go ever names',
+    !/repo\.go/.test(goDir.out),
+    `Go's import model must not read as missing evidence:\n${goDir.out}`);
 }
 
 export function cliCases(pluginRoot, check) {

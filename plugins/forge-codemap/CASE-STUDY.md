@@ -254,6 +254,35 @@ is a spec decision, not a bug fix, and it is unresolved.
 
 ---
 
+## The advisory tier, measured (CM301)
+
+`CM301` (§7.1) asks whether a declared coupling has any evidence at the other end. Run on both repos at
+`0.9.0`, then again after two structural corrections:
+
+| | Edges | Anchored | CM301 raw | After corrections | Actionable |
+|---|---|---|---|---|---|
+| Forge | 67 | 5 | 4 | 3 | 1 |
+| EpodSystem | 137 | 64 | 36 | 2 | 0 |
+
+The corrections were bugs, not thresholds — both fire where evidence *cannot* exist:
+
+- **cross-language pairs**: 26 of EpodSystem's 36 hits. Go cannot import a `.ts` file, and a `.js` client
+  cannot import a `.graphql` schema.
+- **Go's import model**: 10 of 10 of its same-language hits. Go names the imported package *directory*
+  (`internal/pkg/search`), never the file, so a filename-only evidence test warns on every correctly
+  wired Go edge.
+
+The one actionable hit is an edge whose anchor is a slug string (`registry.ts#update-pipeline-reconcile`)
+— by §5 that coupling is `naming`, not `contract`.
+
+The four remaining false positives are one shape, and it is the interesting result: two sides that must
+implement the SAME RULE with nothing linking them — a frontend selectability predicate and the backend
+selector it must agree with, the same SQL ordering in two loaders. Those edges carry the most information
+in the repo precisely because no type or import connects them. For them, absence of a reference is the
+normal state, not drift, which inverts the check's premise. Hence the tier ships off by default.
+
+---
+
 ## Method
 
 Everything above is reproducible on any onboarded repo:
