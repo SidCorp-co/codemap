@@ -42,6 +42,7 @@
       "additionalProperties": false,
       "properties": {
         "grammar": { "type": "boolean", "default": true },
+        "advisory": { "type": "boolean", "default": false, "description": "Run the advisory tier (CM301) in a --tier all run. Warning-only and never gating; off by default because its false-positive rate is unmeasured (SPEC.md §7.1)." },
         "include": { "type": "array", "items": { "type": "string" }, "default": ["**"] },
         "exclude": { "type": "array", "items": { "type": "string" } },
         "headerMaxLines": { "type": "integer", "minimum": 1, "default": 20 }

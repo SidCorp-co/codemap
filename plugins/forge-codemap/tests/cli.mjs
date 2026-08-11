@@ -367,6 +367,53 @@ function diffScopeCases(pluginRoot, check, roots) {
     `entries changed outside the scope:\n${scoped2.out}\n${JSON.stringify(bl2)}`);
 }
 
+// cm:why an edge is one-sided: nothing checked that the coupling it claims exists at the other end, so a
+//   function could declare a contract its target had never called and cm reported green (ISS-8)
+function advisoryCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  writeFileSync(join(root, 'engine.ts'), 'export function unrelated() { return 1; }\n');
+  writeFileSync(join(root, 'caller.ts'),
+    '// cm:edge contract -> engine.ts#unrelated — the engine must consume this\n'
+    + 'export function listThings() { return []; }\n');
+  writeFileSync(join(root, 'named.ts'),
+    '// cm:edge naming -> engine.ts#unrelated — the coupling IS the string, by definition no reference\n'
+    + 'export const key = "unrelated";\n');
+  cm(pluginRoot, root, 'baseline');
+
+  const off = cm(pluginRoot, root, 'verify');
+  check('cli: the advisory tier is silent unless asked for',
+    off.status === 0 && !/CM301/.test(off.out),
+    `a heuristic must not fire in a default run:\n${off.out}`);
+
+  const on = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
+  check('cli: --tier advisory warns on an edge with no evidence at the other end',
+    /CM301/.test(on.out) && /caller\.ts:1/.test(on.out),
+    `expected CM301 for the unwired contract:\n${on.out}`);
+  check('cli: CM301 never gates — it cannot change the exit code',
+    on.status === 0 && /1 warning/.test(on.out),
+    `advisory is warning-only; got exit ${on.status}\n${on.out}`);
+  check('cli: a naming edge is never judged — the coupling IS the string',
+    !/named\.ts/.test(on.out),
+    `reference-free kinds must be skipped:\n${on.out}`);
+
+  writeFileSync(join(root, 'caller.ts'),
+    '// cm:ignore CM301 — the engine reaches this over HTTP, so no reference exists either way\n'
+    + '// cm:edge contract -> engine.ts#unrelated — the engine must consume this\n'
+    + 'export function listThings() { return []; }\n');
+  const silenced = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
+  check('cli: CM301 is silenced by cm:ignore, which demands a written reason',
+    !/CM301/.test(silenced.out),
+    `the existing escape hatch must work here:\n${silenced.out}`);
+
+  writeFileSync(join(root, 'engine.ts'),
+    'import { listThings } from "./caller";\nexport function unrelated() { return listThings(); }\n');
+  const wired = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
+  check('cli: once the other side names this file, the warning goes away',
+    !/CM301/.test(wired.out),
+    `evidence at either end is enough:\n${wired.out}`);
+}
+
 export function cliCases(pluginRoot, check) {
   const roots = [];
   try {
@@ -449,6 +496,7 @@ export function cliCases(pluginRoot, check) {
     targetCases(pluginRoot, check, roots);
     outputCases(pluginRoot, check, roots);
     diffScopeCases(pluginRoot, check, roots);
+    advisoryCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
   }

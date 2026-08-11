@@ -209,9 +209,32 @@ Tier decides where it runs: **grammar** in `PostToolUse` (blocking), **referenti
 | `CM105` | referential | duplicate `<flow>/<step>` id |
 | `CM106` | referential | `cm:edge` `#symbol` is not in the target file, or the target is a directory (§4). A word-boundary match on the anchor's first dot-segment — not resolution, which stays LSP's job |
 | `CM107` | referential | `cm:edge` names an `external:` that the registry does not declare (§8) |
+| `CM301` | advisory | a `contract`/`lockstep` edge with a `#symbol` where NEITHER file names the other — the coupling may be intention rather than code (§7.1) |
 | `CM201` | structural | flow has a single step — either it is not a flow, or steps are missing |
 | `CM202` | structural | `after:` chain is cyclic or the flow has several roots |
 | `CM104` | reserved | stale `cm:hack` (issue closed) — requires the Forge integration, tier 3 |
+
+### §7.1 The advisory tier
+
+`CM102` answers *does the target exist*; `CM106`, *is the symbol still there*. Neither answers *is the
+coupling real* — a function can declare `cm:edge contract -> other.ts` that `other.ts` has never called,
+and the annotation then documents an intention rather than the code.
+
+That question must stay **weak**, because several kinds are deliberately reference-free: `naming` IS a
+string, `sideeffect` happens in SQL or a cron, and a `contract` across a process boundary is
+HTTP-mediated. So the tier is warning-only, never gating (it cannot change the exit code), and narrow:
+only `contract` and `lockstep`, only with a `#symbol`, only when neither file names the other. Evidence
+is a basename match, biased toward silence — a generic stem matches easily and the check says nothing.
+
+It is **off by default**: `--tier advisory` runs it on demand, `enforce.advisory: true` includes it in a
+`--tier all` run. The reason is honesty about what is known. Every other check here fires on a fact;
+this one fires on a heuristic whose false-positive rate has not been measured on a real repo, and a
+warning nobody trusts is how a tier gets switched off — which is exactly what happened to the
+referential tier when 38 dangling `CM102` were allowed to stand. Measure before flipping it on:
+
+```bash
+cm verify --tier advisory --json | jq '[.diags[] | select(.code=="CM301")] | length'
+```
 
 ## §8 Registry
 
