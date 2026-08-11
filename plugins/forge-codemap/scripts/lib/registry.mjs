@@ -27,6 +27,7 @@ const HARD_EXCLUDE = ['**/.forge/codemap/**', '**/node_modules/**', '**/.git/**'
 export const DEFAULT_REGISTRY = {
   specVersion: SPEC_VERSION,
   flows: [],
+  externals: [],
   enforce: { grammar: true, include: ['**'], exclude: DEFAULT_EXCLUDE },
   languages: {},
 };

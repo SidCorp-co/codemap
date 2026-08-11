@@ -73,7 +73,14 @@ export function referentialDiags(g, { root, reg }) {
   }
 
   const targets = new Map();
+  const externals = new Set((reg.externals ?? []).map((x) => x.name));
   for (const e of g.edges) {
+    // cm:guard an external target is checked only as far as its NAME — the path inside it is not in the
+    //   tree, so CM102's promise cannot cover it, and pretending otherwise is worse than saying so (§8)
+    if (e.external) {
+      if (registryPresent && !externals.has(e.external)) out.push(diag('CM107', e.file, e.line, e.external));
+      continue;
+    }
     const [path, anchor] = e.target.split('#');
     if (!existsSync(join(root, path))) { out.push(diag('CM102', e.file, e.line, e.target)); continue; }
     if (!anchor) continue;

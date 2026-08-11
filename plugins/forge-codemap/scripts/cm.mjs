@@ -593,10 +593,28 @@ switch (cmd) {
   }
 
   case 'new': {
-    if (positional[0] !== 'flow' || !positional[1]) { console.error('usage: cm new flow <name> [--description "..."]'); process.exit(2); }
+    const what = positional[0];
+    if (!['flow', 'external'].includes(what) || !positional[1]) {
+      console.error('usage: cm new flow <name> | cm new external <name>   [--description "..."]');
+      process.exit(2);
+    }
     const name = positional[1];
     const reg = loadOrDie();
     if (reg._missing) { console.error('no .forge/codemap.json — run: cm init'); process.exit(2); }
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) { console.error(`"${name}" must be lower-case letters, digits and dashes`); process.exit(2); }
+
+    if (what === 'external') {
+      const list = reg.externals ?? (reg.externals = []);
+      if (list.some((x) => x.name === name)) { console.error(`external "${name}" already declared`); process.exit(1); }
+      list.push({ name, description: flagValue('--description') ?? '' });
+      list.sort((a, b) => a.name.localeCompare(b.name));
+      saveRegistry(root, reg);
+      console.log(`declared external "${name}". Target it with:\n`);
+      console.log(`  // cm:edge contract -> external:${name}/<path/inside/it> — <why they are coupled>`);
+      console.log(dim('only the name is checked — nothing in this repo can verify the path inside it (§8)'));
+      break;
+    }
+
     if (reg.flows.some((f) => f.name === name)) { console.error(`flow "${name}" already declared`); process.exit(1); }
     reg.flows.push({ name, description: flagValue('--description') ?? '' });
     reg.flows.sort((a, b) => a.name.localeCompare(b.name));

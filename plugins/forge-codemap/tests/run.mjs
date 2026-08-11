@@ -84,7 +84,7 @@ for (const t of baselineCases) {
 
 for (const t of graphCases) {
   const g = buildGraph(t.files);
-  const reg = { ...DEFAULT_REGISTRY, flows: t.flows ?? [] };
+  const reg = { ...DEFAULT_REGISTRY, flows: t.flows ?? [], externals: t.externals ?? [] };
   const diags = [...referentialDiags(g, { root: PLUGIN_ROOT, reg }), ...structuralDiags(g)];
 
   const got = sortedCodes(diags);
