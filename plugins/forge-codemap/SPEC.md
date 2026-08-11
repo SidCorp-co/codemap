@@ -56,11 +56,17 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
 - **One line. One annotation.** The machine-parsed part — tag, kind, target, `after:`, `until:` —
   must fit on the annotation's own line; nothing after it is parsed.
 - **A wrap is one line, not a paragraph.** The single standalone line comment directly below an
-  annotation, under the same leader, is its continuation: exempt from prose enforcement, and not
-  merged into the annotation's text (so `canonical` and `cm fmt` never rewrite across lines). A
-  second such line is prose again — and, sharing the block, is sited (§8), so it cannot be frozen.
-  Without this, every wrapped annotation in the wild is a hidden `CM001` that the baseline freezes
-  forever, which is how an annotation layer ends up *adding* comments.
+  annotation, under the same leader, is its continuation: exempt from prose enforcement, and carried
+  on the annotation as `wrap` rather than merged into its `text` (so `canonical` and `cm fmt` never
+  rewrite across lines). A second such line is prose again — and, sharing the block, is sited (§8),
+  so it cannot be frozen. Without this, every wrapped annotation in the wild is a hidden `CM001` that
+  the baseline freezes forever, which is how an annotation layer ends up *adding* comments.
+  A line below a cm: comment is its continuation whether or not the annotation parsed — otherwise a
+  malformed annotation is reported twice, the second time telling the author to delete a legal wrap.
+- **A query returns the whole sentence.** `cm impact`, `cm flow` and `cm ls` render `text` and `wrap`
+  joined, and the `PreToolUse` hook consumes that JSON. Handing an agent the first half of an
+  invariant is worse than handing it nothing: authors write the rule first and the consequence
+  second, so the missing half is the actionable one.
 - **Line comments only.** Never inside a block or doc comment (`/* */`, `/** */`, `///`, `//!`,
   `{{-- --}}`) — that is `CM003`. Rationale: block/doc comments are parsed by TSDoc, PHPStan,
   Psalm, and rustdoc; staying out of them means no other toolchain ever sees a `cm:` line.
@@ -165,13 +171,14 @@ Tier decides where it runs: **grammar** in `PostToolUse` (blocking), **referenti
 | `CM002` | grammar | unknown `cm:` tag (§3) |
 | `CM003` | grammar | `cm:` annotation inside a block/doc comment (§4) |
 | `CM004` | grammar | `cm:edge` missing or unknown `<kind>` (§5) |
-| `CM005` | grammar | `cm:edge` target missing, absolute, or a URL (§4) |
+| `CM005` | grammar | `cm:edge` target missing, absolute, or a URL (§4). Also when `->` is used inside what should have been a `cm:why` |
 | `CM006` | grammar | `cm:flow` needs `<flow>/<step>` (§4) |
 | `CM007` | grammar | `cm:hack` needs `ISS-<n>` and `until:<condition>` (§4) |
 | `CM008` | grammar | annotation body empty |
 | `CM009` | grammar | non-normalized form — `cm fmt` fixes it |
 | `CM010` | grammar | new `TODO`/`FIXME` introduced (§3). Marker-shaped only — at the start of a comment, or followed by `:`/`(` — so identifiers like `TC-XXX` are not flagged |
 | `CM011` | grammar | module header longer than `headerMaxLines` (§4.1) |
+| `CM012` | grammar | `cm:edge` kind and target parse, but the rationale follows with no ` — ` (§4). Split from `CM005`, which blamed the `->` that was already correct |
 | `CM101` | referential | flow not declared in the registry (§8) |
 | `CM102` | referential | `cm:edge` target does not exist |
 | `CM103` | referential | `after:` names a step that does not exist |

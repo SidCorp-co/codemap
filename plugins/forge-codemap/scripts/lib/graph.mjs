@@ -97,17 +97,33 @@ export function orderFlow(flow) {
 }
 
 /**
+ * One annotation's full sentence: its own line plus its §4 continuation.
+ *
+ * Authors put the rule first and the consequence second, so the half a truncating reader loses is
+ * systematically the actionable one — `… is the ONLY authority on which URLs are` with the
+ * `… must not import` gone. Joining here rather than in the parser is what keeps `canonical` and
+ * `cm fmt` line-local (§4).
+ */
+export function annText(a) {
+  return [a.text, a.wrap].filter(Boolean).join(' ');
+}
+
+// cm:guard every branch of the result is projected through annText — the PreToolUse hook reads this JSON,
+//   so an unprojected field hands an agent half an invariant with no sign a second half existed (ISS-3)
+const full = (a) => (a.wrap ? { ...a, text: annText(a), wrap: undefined } : a);
+
+/**
  * Blast radius of a path: what the type system and LSP cannot tell you.
  * Derivable references stay LSP's job on purpose (codemap/1 §1).
  */
 export function impact(g, relPath) {
-  const guards = g.guards.filter((a) => a.file === relPath);
-  const hacks = g.hacks.filter((a) => a.file === relPath);
-  const outgoing = g.edges.filter((e) => e.file === relPath);
+  const guards = g.guards.filter((a) => a.file === relPath).map(full);
+  const hacks = g.hacks.filter((a) => a.file === relPath).map(full);
+  const outgoing = g.edges.filter((e) => e.file === relPath).map(full);
   const incoming = g.edges.filter((e) => {
     const t = e.target.split('#')[0];
     return e.file !== relPath && (t === relPath || relPath.startsWith(`${t}/`) || t.startsWith(`${relPath}/`));
-  });
+  }).map(full);
   const flows = [];
   for (const [name, flow] of g.flows) {
     const mine = flow.steps.filter((s) => s.file === relPath);
@@ -118,10 +134,10 @@ export function impact(g, relPath) {
       const i = ordered.findIndex((o) => o.step === s.step);
       for (const j of [i - 1, i + 1]) {
         const n = ordered[j];
-        if (n && n.file !== relPath) neighbours.push(n);
+        if (n && n.file !== relPath) neighbours.push(full(n));
       }
     }
-    flows.push({ name, steps: mine, neighbours });
+    flows.push({ name, steps: mine.map(full), neighbours });
   }
   return { guards, hacks, outgoing, incoming, flows };
 }

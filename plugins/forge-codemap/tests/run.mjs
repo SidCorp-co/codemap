@@ -4,7 +4,7 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { analyzeFile } from '../scripts/lib/analyze.mjs';
-import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact } from '../scripts/lib/graph.mjs';
+import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact, annText } from '../scripts/lib/graph.mjs';
 import { DEFAULT_REGISTRY } from '../scripts/lib/registry.mjs';
 import { baselineKey } from '../scripts/lib/parse.mjs';
 import { analyzeCases, baselineCases, graphCases } from './cases.mjs';
@@ -46,6 +46,12 @@ for (const t of analyzeCases) {
   const wantTags = t.annotations ?? [];
   check(`${t.name} (annotations)`, JSON.stringify(gotTags) === JSON.stringify(wantTags),
     `annotations: expected [${wantTags}] got [${gotTags}]`);
+
+  if (t.texts) {
+    const got2 = res.annotations.map((a) => annText(a));
+    check(`${t.name} (text)`, JSON.stringify(got2) === JSON.stringify(t.texts),
+      `annText: expected ${JSON.stringify(t.texts)} got ${JSON.stringify(got2)} — the hook injects this, so a dropped wrap is a truncated invariant`);
+  }
 
   if (t.sited) {
     const got2 = res.diags.filter((d) => d.sited).map((d) => d.line).sort((a, b) => a - b);

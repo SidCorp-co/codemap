@@ -32,6 +32,43 @@ export const analyzeCases = [
     codes: ['CM001'],
     annotations: ['why'],
     sited: [3],
+    texts: ['the retry budget is per-run because a per-attempt one lets a flapping step spend it all'
+      + ' and the dispatcher cannot tell that apart from genuine progress'],
+  },
+  {
+    // cm:why the wrap must reach a QUERY without reaching canonical(): joining it into `text` makes every
+    // wrapped annotation a CM009 whose --fix duplicates the wrap onto line one (§4, ISS-3)
+    name: 'ts: a wrapped annotation is carried whole and is still canonical',
+    file: 'wrap-canonical.ts',
+    src: [
+      '// cm:guard the run lock is held for the whole batch, never per row —',
+      '// releasing between rows lets a second dispatcher claim the tail of this one',
+      'function f() {}',
+    ].join('\n'),
+    codes: [],
+    annotations: ['guard'],
+    texts: ['the run lock is held for the whole batch, never per row —'
+      + ' releasing between rows lets a second dispatcher claim the tail of this one'],
+  },
+  {
+    name: 'ts: a malformed annotation keeps its wrap, so one mistake is one diagnostic (ISS-6)',
+    file: 'wrap-malformed.ts',
+    src: [
+      '// cm:edge lockstep -> packages/core/refs.ts writes these refs; the',
+      '// provenance gate allows them through via this predicate',
+      'const x = 1;',
+    ].join('\n'),
+    codes: ['CM012'],
+    annotations: [],
+    fixMatches: /put " — " before the rationale/,
+  },
+  {
+    name: 'edge: a target followed by prose AFTER a separator is still CM005, not CM012',
+    file: 'wrap-separated.ts',
+    src: '// cm:edge lockstep -> packages/core/refs.ts and also x.ts — two targets is not a thing',
+    codes: ['CM005'],
+    annotations: [],
+    fixMatches: /use cm:why/,
   },
   {
     name: 'ts: a wrapped line under a DIFFERENT leader is not a continuation',
