@@ -19,7 +19,7 @@ const STRUCTURED_DOC = /@(param|returns?|type|template|satisfies|throws|var|prop
 // cm:why CM011 measures a header's LENGTH, not one comment's text, so it can never be owned by a site
 const SITEABLE = new Set(['CM001', 'CM010']);
 
-export function analyzeFile({ relPath, src, reg }) {
+export function analyzeFile({ relPath, src, reg, frozen }) {
   const prof = profileFor(relPath);
   if (!prof) return { skipped: 'no-profile', annotations: [], diags: [], proseKeys: [] };
   if (isGenerated(src)) return { skipped: 'generated', annotations: [], diags: [], proseKeys: [] };
@@ -106,9 +106,13 @@ export function analyzeFile({ relPath, src, reg }) {
     // cm:guard the wrap goes in `wrap`, never joined into `text` — canonical() reads `text` and cm fmt
     //   writes it back at the annotation's own column, so joining duplicates the wrap onto line one (ISS-3)
     if (c.firstOnLine !== false && annLines.get(c.line - 1) === c.leader) {
-      const prev = annAt.get(c.line - 1);
-      if (prev) prev.wrap = text;
-      continue;
+      // cm:guard a line already FROZEN was prose when the baseline was taken, so it cannot be a wrap the
+      //   annotation's author wrote — adopting one fused a stranger's sentence into an injected guard (ISS-22)
+      if (!frozen?.has(baselineKey(text))) {
+        const prev = annAt.get(c.line - 1);
+        if (prev) prev.wrap = text;
+        continue;
+      }
     }
 
     if (!grammar || inHeader(c)) continue;

@@ -63,6 +63,11 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
   the baseline freezes forever, which is how an annotation layer ends up *adding* comments.
   A line below a cm: comment is its continuation whether or not the annotation parsed — otherwise a
   malformed annotation is reported twice, the second time telling the author to delete a legal wrap.
+  A line the baseline has FROZEN is never a continuation: it was prose when the baseline was taken, so
+  the annotation's author did not write it. Adopting one fuses a stranger's sentence into an injected
+  guard, which is worse than the comment it replaces — the reader is told to honour it. Such a line falls
+  through to prose enforcement, where siting (§8) reports it, so it is refused visibly rather than
+  silently.
 - **A query returns the whole sentence.** `cm impact`, `cm flow` and `cm ls` render `text` and `wrap`
   joined, and the `PreToolUse` hook consumes that JSON. Handing an agent the first half of an
   invariant is worse than handing it nothing: authors write the rule first and the consequence

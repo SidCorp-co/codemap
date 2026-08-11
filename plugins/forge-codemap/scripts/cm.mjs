@@ -136,12 +136,14 @@ function annotatedFiles(reg) {
   return candidateFiles(root, reg);
 }
 
-function analyzeAll(reg, files) {
+// cm:guard every command must analyze against the SAME frozen set — a command that skips it disagrees
+//   with verify about which line is an annotation's wrap, and the graph it builds is then a different graph
+function analyzeAll(reg, files, baseline = loadBaseline(root)) {
   const perFile = [];
   for (const rel of files) {
     let src;
     try { src = readFileSync(join(root, rel), 'utf8'); } catch { continue; }
-    const r = analyzeFile({ relPath: rel, src, reg });
+    const r = analyzeFile({ relPath: rel, src, reg, frozen: baseline?.[rel] });
     perFile.push({ relPath: rel, ...r });
   }
   return perFile;
@@ -286,10 +288,12 @@ switch (cmd) {
     if (!TIERS.has(tier)) die(`unknown --tier "${tier}"`, `one of: ${[...TIERS].join(', ')}`);
 
     const files = fileList(reg);
-    let perFile = analyzeAll(reg, files);
-    const normalized = flags.has('--fix') ? fixCanonical(perFile) : [];
-    if (normalized.length) perFile = analyzeAll(reg, files);
+    // cm:guard the baseline is loaded BEFORE the analysis, not after — a frozen line is the evidence that
+    //   the comment below an annotation is legacy prose rather than that annotation's wrap (ISS-22)
     const baseline = flags.has('--no-baseline') ? {} : loadBaseline(root);
+    let perFile = analyzeAll(reg, files, baseline);
+    const normalized = flags.has('--fix') ? fixCanonical(perFile) : [];
+    if (normalized.length) perFile = analyzeAll(reg, files, baseline);
 
     let diags = [];
     let debt = 0;
@@ -570,7 +574,9 @@ switch (cmd) {
   case 'init': {
     const reg = existsSync(join(root, '.forge', 'codemap.json')) ? loadOrDie() : { ...DEFAULT_REGISTRY };
     saveRegistry(root, reg);
-    const perFile = analyzeAll(reg, allFiles(reg));
+    // cm:why init freezes from scratch, so it must not consult a baseline that may already be there — a
+    //   re-init against its own output would treat a frozen line as prose it had never seen
+    const perFile = analyzeAll(reg, allFiles(reg), {});
     const keys = {};
     for (const f of perFile) if (f.proseKeys?.length) keys[f.relPath] = f.proseKeys;
     saveBaseline(root, keys);
