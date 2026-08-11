@@ -23,7 +23,7 @@ const SCRIPTS = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const VERBS = [
   ['init', '', 'write .forge/codemap.json + freeze existing comments as a baseline'],
   ['install', '[--git-hook] [--force]', 'vendor cm into .forge/codemap/ so the rules hold with no plugin'],
-  ['verify', '[paths...]', 'all three tiers  [--since <ref>] [--staged] [--tier T] [--fix] [--json] [--no-baseline]'],
+  ['verify', '[paths...]', 'all three tiers  [--since <ref>] [--staged] [--tier T] [--fix] [--json] [--no-baseline] [--verbose]'],
   ['fmt', '[paths...]', 'normalize annotations to canonical form (the tool owns the format)'],
   ['impact', '<path>', 'declared blast radius of a file: guards, edges both ways, flow neighbours  [--json]'],
   ['flow', '[name]', 'ordered trace of a flow across files and languages  [--mermaid]'],
@@ -294,6 +294,14 @@ SCOPING A RUN
   cm verify --staged                 staged files only — what a pre-commit hook must gate
   cm verify <paths...>               explicit paths; resolved against the CWD first, then the repo root
   cm verify --tier grammar           one tier: all | grammar | referential | structural
+
+READING A BIG RUN
+
+  Above 20 diagnostics a whole-tree run groups by code and prints each fix ONCE, worst code first,
+  with the files that carry it. Per-line output is kept for a small run and whenever explicit paths
+  are passed — the hook and a single-file run are where the line number is the point.
+  cm verify --verbose               every line, however many there are
+  --json is never grouped: tools consume it.
 
 RECIPES
 

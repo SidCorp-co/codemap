@@ -211,6 +211,41 @@ function printDiag(d) {
   console.log(`  ${dim(`fix: ${d.fix}  (${CODE_TABLE[d.code]?.section ?? ''})`)}`);
 }
 
+// cm:why 677 diagnostics at two lines each trains people to run this under `| tail`, which is how 38
+//   standing CM102 stayed unnoticed long enough to switch the tier off — volume gates in practice (ISS-9)
+const GROUP_ABOVE = 20;
+const FILES_SHOWN = 10;
+
+function printGrouped(diags, legacy) {
+  // cm:guard the group key is the FIX, not the code — CM001 carries a different fix line near a module
+  //   header, and printing whichever came first would hand most of the group the wrong advice
+  const byFix = new Map();
+  for (const d of diags) {
+    const key = `${d.code} ${d.fix}`;
+    const g = byFix.get(key) ?? { code: d.code, tier: d.tier, fix: d.fix, files: new Map(), n: 0 };
+    g.files.set(d.file, (g.files.get(d.file) ?? 0) + 1);
+    g.n++;
+    byFix.set(key, g);
+  }
+  const order = [...byFix.values()].sort((a, b) => b.n - a.n);
+  for (const g of order) {
+    const code = g.code;
+    const debt = PROSE_CODES.has(code) && legacy.debt
+      ? dim(`   (baseline: ${legacy.debt} frozen, ${legacy.share}% cleaned)`)
+      : '';
+    const sev = g.tier === 'structural' ? yellow(code) : red(code);
+    console.log(`${bold(sev)}  ${g.tier}  ${g.n} in ${plural(g.files.size, 'file')}${debt}`);
+    console.log(`  ${dim(`fix: ${g.fix}  (${CODE_TABLE[code]?.section ?? ''})`)}`);
+    const files = [...g.files].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    const width = Math.min(60, Math.max(...files.slice(0, FILES_SHOWN).map(([f]) => f.length)));
+    for (const [file, n] of files.slice(0, FILES_SHOWN)) console.log(`  ${file.padEnd(width)}  ${n}`);
+    if (files.length > FILES_SHOWN) {
+      console.log(dim(`  … ${files.length - FILES_SHOWN} more files (--verbose lists every line)`));
+    }
+    console.log('');
+  }
+}
+
 switch (cmd) {
   case 'verify': {
     const reg = loadOrDie();
@@ -271,7 +306,15 @@ switch (cmd) {
     }
 
     diags.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
-    for (const d of diags) printDiag(d);
+    const share = debt + cleaned ? Math.round((cleaned / (debt + cleaned)) * 100) : 0;
+    // cm:guard per-line stays the default for a SMALL run and for explicit paths — the hook and a
+    //   single-file run are exactly where line-by-line is right, and grouping there hides the line
+    if (diags.length > GROUP_ABOVE && !flags.has('--verbose') && !positional.length) {
+      printGrouped(diags, { debt, share });
+      console.log(dim(`${diags.length} diagnostics grouped by code — cm verify --verbose for every line`));
+    } else {
+      for (const d of diags) printDiag(d);
+    }
 
     const errors = diags.filter((d) => d.tier !== 'structural').length;
     const warns = diags.length - errors;
@@ -282,7 +325,6 @@ switch (cmd) {
     console.log(`${errors ? red(plural(errors, 'error')) : 'no errors'}, ${plural(warns, 'warning')}`);
     if (normalized.length) console.log(dim(`${plural(normalized.length, 'annotation')} normalized by --fix`));
     if (debt || cleaned) {
-      const share = debt + cleaned ? Math.round((cleaned / (debt + cleaned)) * 100) : 0;
       console.log(`legacy prose: ${bold(String(debt))} distinct still frozen · ${cleaned} cleaned (${share}%)` +
         `${scoped ? dim(' — scoped run, whole-tree figures need a bare `cm verify`') : ''}`);
       if (debt) console.log(dim('frozen comments are debt, not absolution — list them with: cm sweep <path>'));
