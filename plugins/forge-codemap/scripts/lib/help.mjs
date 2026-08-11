@@ -23,13 +23,13 @@ const SCRIPTS = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const VERBS = [
   ['init', '', 'write .forge/codemap.json + freeze existing comments as a baseline'],
   ['install', '[--git-hook] [--force]', 'vendor cm into .forge/codemap/ so the rules hold with no plugin'],
-  ['verify', '[paths...]', 'all three tiers  [--since <ref>] [--staged] [--tier T] [--fix] [--json] [--no-baseline] [--verbose]'],
+  ['verify', '[paths...]', 'all three tiers  [--since <ref>] [--staged] [--tier T] [--fix] [--json] [--no-baseline] [--verbose] [--all-lines]'],
   ['fmt', '[paths...]', 'normalize annotations to canonical form (the tool owns the format)'],
   ['impact', '<path>', 'declared blast radius of a file: guards, edges both ways, flow neighbours  [--json]'],
   ['flow', '[name]', 'ordered trace of a flow across files and languages  [--mermaid]'],
   ['ls', '', 'every annotation in the repo'],
   ['sweep', '[paths...]', 'list the prose the baseline is hiding  [--limit N] [--json] [--prune-baseline]'],
-  ['baseline', '', 're-freeze legacy prose by content hash'],
+  ['baseline', '[paths...]', 're-freeze legacy prose by content hash; a path scopes it and MERGES'],
   ['new flow', '<name>', 'declare a flow before annotating its steps  [--description "..."]'],
   ['codes', '', 'diagnostic reference (same as: cm help codes)'],
   ['help', '[topic]', 'this guidebook'],
@@ -290,7 +290,10 @@ one shape — a broken invocation producing an empty scope and a green summary.
 SCOPING A RUN
 
   cm verify                          whole tree
-  cm verify --since <ref>            files changed against a ref (ACMR)
+  cm verify --since <ref>            files changed against a ref (ACMR), grammar tier scoped to the
+                                     CHANGED LINES — referential and structural are never line-scoped,
+                                     since a dangling edge can be caused by a change elsewhere
+  cm verify --since <ref> --all-lines   every line of every changed file
   cm verify --staged                 staged files only — what a pre-commit hook must gate
   cm verify <paths...>               explicit paths; resolved against the CWD first, then the repo root
   cm verify --tier grammar           one tier: all | grammar | referential | structural

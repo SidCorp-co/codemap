@@ -190,6 +190,43 @@ export function changedStaged(root) {
 }
 
 /**
+ * Changed LINE ranges per file: `Map<relPath, Array<[start, end]>>`.
+ *
+ * `--name-only` was the whole of `--since`'s scoping, so a five-hunk change to one file reported every
+ * diagnostic in it — 24 errors of which zero came from the diff. This is the `clang-tidy-diff` model,
+ * and the reason those tools are adoptable on legacy code.
+ *
+ * A file with no entry is NOT "nothing changed": an untracked file never appears in `git diff` at all,
+ * so callers must treat a missing entry as "do not filter" (see cm.mjs). Fail-closed on purpose — the
+ * other way round lets an agent write a brand-new file full of prose past the hook.
+ */
+export function changedRanges(root, args, what) {
+  let out;
+  try {
+    out = execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    const detail = String(e.stderr ?? e.message ?? '').split('\n')[0].replace(/^fatal:\s*/, '');
+    throw new Error(`cannot resolve ${what}: ${detail || 'git failed'}`);
+  }
+  const ranges = new Map();
+  let file = null;
+  for (const line of out.split('\n')) {
+    const plus = /^\+\+\+ (?:b\/)?(.+)$/.exec(line);
+    if (plus) { file = plus[1] === '/dev/null' ? null : plus[1].trim(); continue; }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (!hunk || !file) continue;
+    const start = Number(hunk[1]);
+    const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
+    // cm:why a pure deletion is `+c,0`: it changed no line that still exists, so it contributes no range
+    if (count === 0) { if (!ranges.has(file)) ranges.set(file, []); continue; }
+    const arr = ranges.get(file) ?? [];
+    arr.push([start, start + count - 1]);
+    ranges.set(file, arr);
+  }
+  return ranges;
+}
+
+/**
  * Version of the tool that is actually running. Read from wherever this copy lives — the plugin's
  * manifest, or the VERSION file `cm install` stamps beside a vendored copy — so a project pinned to
  * an older vendored `cm` reports its own version rather than the plugin's.

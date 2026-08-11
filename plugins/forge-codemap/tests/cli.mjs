@@ -305,6 +305,68 @@ function outputCases(pluginRoot, check, roots) {
     `expected 27 diags in the JSON payload, got ${n}`);
 }
 
+// cm:why #7 and #12 are one defect seen twice: cm had no idea what the author actually touched, so a
+//   five-hunk change reported 24 errors from zero of them, and the only remedy was a repo-wide re-freeze
+function diffScopeCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  const lines = ['export const a0 = 0;'];
+  for (let i = 1; i < 40; i++) {
+    if (i % 10 === 0) lines.push(`// legacy narration number ${i} that nobody froze`);
+    lines.push(`export const a${i} = ${i};`);
+  }
+  const file = join(root, 'since.ts');
+  writeFileSync(file, `${lines.join('\n')}\n`);
+  git(root, 'add', '-A');
+  git(root, 'commit', '-qm', 'since');
+
+  const whole = cm(pluginRoot, root, 'verify', 'since.ts');
+  check('cli: an explicit path still reports the whole file',
+    (whole.out.match(/CM001/g) ?? []).length === 3,
+    `a path is not a diff — every line still counts:\n${whole.out}`);
+
+  lines[1] = 'export const a1 = 100;';
+  writeFileSync(file, `${lines.join('\n')}\n`);
+  const since = cm(pluginRoot, root, 'verify', '--since', 'HEAD');
+  check('cli: --since reports nothing from lines the diff never touched',
+    since.status === 0 && !/CM001/.test(since.out) && /3 grammar diagnostic\(s\) on lines this diff did not touch/.test(since.out),
+    `expected a clean scoped run that says what it withheld:\n${since.out}`);
+
+  const allLines = cm(pluginRoot, root, 'verify', '--since', 'HEAD', '--all-lines');
+  check('cli: --all-lines restores the whole changed file',
+    allLines.status === 1 && (allLines.out.match(/CM001/g) ?? []).length === 3,
+    `a deliberate cleanup pass must still see everything:\n${allLines.out}`);
+
+  writeFileSync(file, `${lines.join('\n')}\n// a comment written INSIDE the diff\nexport const z = 1;\n`);
+  const mine = cm(pluginRoot, root, 'verify', '--since', 'HEAD');
+  check('cli: --since still reports prose the author actually added',
+    mine.status === 1 && /written INSIDE the diff/.test(mine.out),
+    `line filtering must not become an amnesty:\n${mine.out}`);
+
+  // cm:guard an untracked file has NO diff, so "no ranges" must mean "do not filter" — the other way
+  //   round lets an agent create a whole file of prose and have the hook call it clean (ISS-7)
+  writeFileSync(join(root, 'brandnew.ts'), '// narration in a file git has never seen\nexport const n = 1;\n');
+  const untracked = cm(pluginRoot, root, 'verify', '--changed-lines', 'brandnew.ts');
+  check('cli: an untracked file is not filtered to nothing',
+    untracked.status === 1 && /CM001/.test(untracked.out),
+    `a new file must be fully checked, not treated as unchanged:\n${untracked.out}`);
+
+  const scopedBaseline = cm(pluginRoot, root, 'baseline', 'since.ts');
+  const bl = JSON.parse(readFileSync(join(root, '.forge', 'codemap-baseline.json'), 'utf8'));
+  check('cli: cm baseline <path> freezes that file and MERGES, leaving others alone',
+    /re-froze 1 file/.test(scopedBaseline.out) && bl['since.ts']?.length === 4
+    && bl['legacy.ts'] === undefined && bl['brandnew.ts'] === undefined,
+    `a scoped re-freeze must not touch, or absolve, any other file:\n${scopedBaseline.out}\n${JSON.stringify(bl)}`);
+
+  cm(pluginRoot, root, 'baseline');
+  const afterFull = JSON.parse(readFileSync(join(root, '.forge', 'codemap-baseline.json'), 'utf8'));
+  const scoped2 = cm(pluginRoot, root, 'baseline', 'brandnew.ts');
+  const bl2 = JSON.parse(readFileSync(join(root, '.forge', 'codemap-baseline.json'), 'utf8'));
+  check('cli: a scoped re-freeze keeps every pre-existing entry byte for byte',
+    Object.keys(afterFull).every((k) => JSON.stringify(bl2[k]) === JSON.stringify(afterFull[k])),
+    `entries changed outside the scope:\n${scoped2.out}\n${JSON.stringify(bl2)}`);
+}
+
 export function cliCases(pluginRoot, check) {
   const roots = [];
   try {
@@ -386,6 +448,7 @@ export function cliCases(pluginRoot, check) {
     wrapCases(pluginRoot, check, roots);
     targetCases(pluginRoot, check, roots);
     outputCases(pluginRoot, check, roots);
+    diffScopeCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
   }

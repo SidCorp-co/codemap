@@ -38,8 +38,10 @@ const rel = (isAbsolute(target) ? relative(root, target) : target).split('\\').j
 // cm:why a path cm cannot see is not a violation — and `cm verify <missing path>` is exit 2 by design
 if (rel.startsWith('..') || !existsSync(join(root, rel))) process.exit(0);
 
+// cm:guard --changed-lines is what makes the "frozen and not your problem" line below TRUE — a whole-file
+//   run blocked an edit on 44 legacy comments it never touched, with a repo-wide re-freeze as the only way out
 const cm = resolveCm(root);
-const res = spawnSync(process.execPath, [cm.path, 'verify', '--fix', '--json', rel], {
+const res = spawnSync(process.execPath, [cm.path, 'verify', '--fix', '--json', '--changed-lines', rel], {
   cwd: root, encoding: 'utf8', timeout: 12_000,
 });
 
@@ -86,6 +88,9 @@ const extra = blocking.length > MAX_LISTED ? `\n… and ${blocking.length - MAX_
 const debt = report.legacy?.debt
   ? `\n${report.legacy.debt} pre-existing comment(s) here are frozen by the baseline and are not your problem — only the ones listed above are.`
   : '';
+const untouched = report.outsideDiff
+  ? `\n${report.outsideDiff} further violation(s) sit on lines this edit did not touch and are not being held against you.`
+  : '';
 
 // cm:why the pointer goes in the block reason because that is the moment the rules are actually needed,
 // and `cm help` works from inside a repo that never installed this plugin (lib/help.mjs)
@@ -94,7 +99,7 @@ const guide = cm.source === 'project' ? '.forge/codemap/cm' : 'cm';
 process.stdout.write(JSON.stringify({
   decision: 'block',
   reason:
-    `codemap/1 violations in ${rel} — fix them before continuing.\n${lines.join('\n')}${extra}${debt}\n` +
+    `codemap/1 violations in ${rel} — fix them before continuing.\n${lines.join('\n')}${extra}${debt}${untouched}\n` +
     `${notes.join('\n')}${notes.length ? '\n' : ''}` +
     `Rule: a comment is valid only if it says something the compiler, the types, the path or the LSP cannot derive. ` +
     `Otherwise delete it. Non-derivable facts belong in cm:guard / cm:edge / cm:flow / cm:why.\n` +
