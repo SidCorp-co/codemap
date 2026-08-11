@@ -141,6 +141,9 @@ export function analyzeFile({ relPath, src, reg }) {
   return {
     annotations,
     diags,
+    // cm:why an ignore is a property of the SITE, not of one tier — the fix line for CM102 and CM301 both
+    //   offer it, and they are raised from the graph long after this function's own filter has run
+    ignores,
     // cm:guard every prose violation belongs here, sited ones included — see the header for what breaks
     proseKeys: [...new Set(diags.filter((d) => PROSE_CODES.has(d.code))
       .map((d) => baselineKey(d.text ?? d.message)))],

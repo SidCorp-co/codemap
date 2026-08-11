@@ -14,7 +14,7 @@ import {
   selects, walk, changedSince, changedStaged, changedRanges, toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
 } from './lib/registry.mjs';
 import { analyzeFile } from './lib/analyze.mjs';
-import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
+import { buildGraph, referentialDiags, structuralDiags, advisoryDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
 import { canonical, CODE_TABLE, PROSE_CODES, baselineKey } from './lib/parse.mjs';
 import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
@@ -34,7 +34,7 @@ const cmd = argv[0] ?? 'help';
 // cm:guard every flag that takes a value MUST be listed here — an unlisted one has its value parsed as a
 // path, which silently narrowed `cm verify --since <ref>` to zero files and made the CI gate a no-op
 const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description']);
-const TIERS = new Set(['all', 'grammar', 'referential', 'structural']);
+const TIERS = new Set(['all', 'grammar', 'referential', 'structural', 'advisory']);
 
 // cm:guard exit 2 is "the gate could not run", exit 1 is "the gate ran and failed" — CI must be able to
 // tell a missing ref or a mistyped flag from a real violation, or a broken invocation reads as a lint error
@@ -206,7 +206,7 @@ function migrateTargets(perFile) {
 }
 
 function printDiag(d) {
-  const sev = d.tier === 'structural' ? yellow('warn') : red('error');
+  const sev = d.tier === 'structural' || d.tier === 'advisory' ? yellow('warn') : red('error');
   console.log(`${bold(`${d.file}:${d.line}`)} ${sev} ${d.code} ${d.message}`);
   console.log(`  ${dim(`fix: ${d.fix}  (${CODE_TABLE[d.code]?.section ?? ''})`)}`);
 }
@@ -264,7 +264,7 @@ function printGrouped(diags, legacy) {
     const debt = PROSE_CODES.has(code) && legacy.debt
       ? dim(`   (baseline: ${legacy.debt} frozen, ${legacy.share}% cleaned)`)
       : '';
-    const sev = g.tier === 'structural' ? yellow(code) : red(code);
+    const sev = g.tier === 'structural' || g.tier === 'advisory' ? yellow(code) : red(code);
     console.log(`${bold(sev)}  ${g.tier}  ${g.n} in ${plural(g.files.size, 'file')}${debt}`);
     console.log(`  ${dim(`fix: ${g.fix}  (${CODE_TABLE[code]?.section ?? ''})`)}`);
     const files = [...g.files].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
@@ -314,6 +314,17 @@ switch (cmd) {
     if (tier !== 'all' && tier !== 'grammar') diags = [];
     if (tier === 'all' || tier === 'referential') diags.push(...referentialDiags(g, { root, reg }));
     if (tier === 'all' || tier === 'structural') diags.push(...structuralDiags(g));
+    // cm:guard advisory is opt-in until its false-positive rate is MEASURED on a real repo — a warning
+    //   nobody trusts is how a tier gets switched off, and this one guesses where CM102/CM106 know (§7.1)
+    if (tier === 'advisory' || (tier === 'all' && reg.enforce?.advisory)) diags.push(...advisoryDiags(g, { root }));
+
+    // cm:guard the graph tiers raise their diagnostics here, long after analyzeFile applied its own
+    //   ignore map — so cm:ignore CM102 / CM301 silently did nothing, though both fix lines offer it
+    const ignores = new Map(perFile.map((f) => [f.relPath, f.ignores ?? new Map()]));
+    diags = diags.filter((d) => {
+      const byLine = ignores.get(d.file);
+      return !(byLine?.get(d.line)?.has(d.code) || byLine?.get(d.line - 1)?.has(d.code));
+    });
 
     // cm:why a baselined file that no longer exists (or left the scope) has had its comments deleted too,
     // but only a full scan can tell that apart from "not looked at this run"
@@ -328,7 +339,7 @@ switch (cmd) {
 
     if (flags.has('--json')) {
       // cm:why process.exit() truncates a piped stdout that has not drained, so only the code is set
-      process.exitCode = diags.some((d) => d.tier !== 'structural') ? 1 : 0;
+      process.exitCode = diags.some((d) => d.tier !== 'structural' && d.tier !== 'advisory') ? 1 : 0;
       console.log(JSON.stringify({
         specVersion: SPEC_VERSION, toolVersion: toolVersion(), files: files.length, diags,
         // cm:edge contract -> plugins/forge-codemap/scripts/hook-post-edit.mjs — the hook decides what blocks
@@ -355,7 +366,7 @@ switch (cmd) {
       for (const d of diags) printDiag(d);
     }
 
-    const errors = diags.filter((d) => d.tier !== 'structural').length;
+    const errors = diags.filter((d) => d.tier !== 'structural' && d.tier !== 'advisory').length;
     const warns = diags.length - errors;
     const skipped = perFile.filter((f) => f.skipped).length;
     console.log('');

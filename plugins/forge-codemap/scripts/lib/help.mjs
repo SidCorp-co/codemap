@@ -166,7 +166,8 @@ function codes() {
   return `DIAGNOSTICS
 
 Tier decides where it runs: grammar in the edit hook (blocking) and everywhere; referential and
-structural in CI. Every code has a cause, a fix and a § pointer — see the fix line cm prints.
+structural in CI; advisory is warning-only, cannot change the exit code, and is off unless asked for
+(--tier advisory, or enforce.advisory). Every code has a cause, a fix and a § pointer.
 
 ${table(rows).join('\n')}
 
@@ -300,7 +301,9 @@ SCOPING A RUN
   cm verify --since <ref> --all-lines   every line of every changed file
   cm verify --staged                 staged files only — what a pre-commit hook must gate
   cm verify <paths...>               explicit paths; resolved against the CWD first, then the repo root
-  cm verify --tier grammar           one tier: all | grammar | referential | structural
+  cm verify --tier grammar           one tier: all | grammar | referential | structural | advisory
+  cm verify --tier advisory          warning-only evidence check (CM301), off in --tier all unless
+                                     the registry sets enforce.advisory — see §7.1 for why
 
 READING A BIG RUN
 

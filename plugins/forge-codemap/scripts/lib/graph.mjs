@@ -92,6 +92,40 @@ export function referentialDiags(g, { root, reg }) {
   return out;
 }
 
+/**
+ * codemap/1 §7.1 — is there any evidence the declared coupling exists at the other end?
+ *
+ * `CM102` answers *does the target exist* and `CM106` *is the symbol still there*. This asks the weaker
+ * question neither can: *is the coupling real*. It must stay weak, because several kinds are deliberately
+ * reference-free — `naming` IS a string, `sideeffect` happens in SQL or a cron, and a `contract` across a
+ * process boundary is HTTP-mediated — so it is warning-only, never gating, and narrow by construction:
+ * only `contract` and `lockstep`, only with a `#symbol`, only when NEITHER file names the other.
+ *
+ * Evidence is a basename match, not an import graph, and it is biased toward silence: a generic name
+ * (`index`, `types`) matches easily and the check stays quiet. A false negative costs nothing; a false
+ * positive is what gets a warning tier switched off.
+ */
+export function advisoryDiags(g, { root }) {
+  const out = [];
+  const cache = new Map();
+  const stem = (p) => p.split('/').pop().replace(/\.\w+$/, '');
+  // cm:guard evidence must come from CODE — the edge's own annotation names the target, so counting
+  //   comments made the check unable to fire at all, silently passing everything it was built to find
+  const codeOnly = (src) => src.split('\n').filter((l) => !/^\s*(\/\/|#|--|\*|\/\*)/.test(l)).join('\n');
+  for (const e of g.edges) {
+    if (e.external || !['contract', 'lockstep'].includes(e.kind)) continue;
+    const [path, anchor] = e.target.split('#');
+    if (!anchor || path === e.file) continue;
+    const target = readTarget(root, path, cache);
+    const source = readTarget(root, e.file, cache);
+    if (target.src === undefined || source.src === undefined) continue;
+    if (anchorPresent(codeOnly(source.src), stem(path))
+      || anchorPresent(codeOnly(target.src), stem(e.file))) continue;
+    out.push(diag('CM301', e.file, e.line, `${e.kind} -> ${e.target}`));
+  }
+  return out;
+}
+
 export function structuralDiags(g) {
   const out = [];
   for (const [name, flow] of g.flows) {

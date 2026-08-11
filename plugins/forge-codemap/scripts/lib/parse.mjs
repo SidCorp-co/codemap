@@ -53,6 +53,7 @@ const CODES = {
   CM105: { tier: 'referential', section: '§4', message: 'duplicate <flow>/<step> id', fix: 'one step id per flow — rename one of them' },
   CM106: { tier: 'referential', section: '§4', message: 'cm:edge #symbol is not in the target file', fix: 'the symbol was renamed or moved — update the anchor, or drop it and point the edge at the file' },
   CM107: { tier: 'referential', section: '§8', message: 'external is not declared in the registry', fix: 'run: cm new external <name> — an out-of-tree target is verifiable only as far as its name, so the name at least is closed vocabulary' },
+  CM301: { tier: 'advisory', section: '§7.1', message: 'declared coupling has no evidence at the other end', fix: 'check the other side is really wired — if the coupling is real but reference-free (HTTP, SQL, a cron), say so with: cm:ignore CM301 — <why there is no reference>' },
   CM201: { tier: 'structural', section: '§7', message: 'flow has a single step', fix: 'either the remaining steps are unannotated, or this is not a flow' },
   CM202: { tier: 'structural', section: '§7', message: 'after: chain is cyclic or the flow has several roots', fix: 'exactly one step may omit after:' },
 };
