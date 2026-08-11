@@ -11,7 +11,7 @@ import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join, relative, resolve, dirname, normalize } from 'node:path';
 import {
   findRoot, loadRegistry, saveRegistry, loadBaseline, saveBaseline,
-  selects, walk, changedSince, changedStaged, toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
+  selects, walk, changedSince, changedStaged, changedRanges, toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
 } from './lib/registry.mjs';
 import { analyzeFile } from './lib/analyze.mjs';
 import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
@@ -216,6 +216,37 @@ function printDiag(d) {
 const GROUP_ABOVE = 20;
 const FILES_SHOWN = 10;
 
+/**
+ * Which changed-line ranges scope this run, or null for "report every line".
+ *
+ * Only the GRAMMAR tier may be line-filtered. A dangling edge or a broken after: chain can be *caused*
+ * by a change elsewhere in the diff, so scoping the referential and structural tiers to changed lines
+ * would hide real breakage — the opposite of what a gate is for.
+ */
+function lineScope(sinceRef, staged) {
+  if (flags.has('--all-lines')) return null;
+  try {
+    if (sinceRef) return changedRanges(root, ['diff', '--unified=0', '--diff-filter=ACMR', sinceRef], `--since ${sinceRef}`);
+    if (staged) return changedRanges(root, ['diff', '--cached', '--unified=0', '--diff-filter=ACMR'], '--staged');
+    if (flags.has('--changed-lines')) return changedRanges(root, ['diff', '--unified=0', '--diff-filter=ACMR', 'HEAD'], '--changed-lines');
+  } catch (e) {
+    // cm:guard a range set that cannot be computed means NO filtering, never an empty one — the whole
+    //   point of a filter that fails is that it stops narrowing, so nothing slips past unexamined
+    console.error(yellow(`codemap: ${e.message} — reporting every line`));
+    return null;
+  }
+  return null;
+}
+
+// cm:guard a file with NO entry is not filtered — an untracked file never appears in `git diff`, and
+//   treating "no ranges" as "nothing changed" lets a brand-new file of prose through the hook (ISS-7)
+function inScope(ranges, d) {
+  if (!ranges || d.tier !== 'grammar' || d.sited) return true;
+  const spans = ranges.get(d.file);
+  if (!spans) return true;
+  return spans.some(([a, b]) => d.line >= a && d.line <= b);
+}
+
 function printGrouped(diags, legacy) {
   // cm:guard the group key is the FIX, not the code — CM001 carries a different fix line near a module
   //   header, and printing whichever came first would hand most of the group the wrong advice
@@ -274,6 +305,11 @@ switch (cmd) {
       for (const k of frozen) (present.has(k) ? debt++ : cleaned++);
     }
 
+    const ranges = lineScope(flagValue('--since'), flags.has('--staged'));
+    const beforeScope = diags.length;
+    if (ranges) diags = diags.filter((d) => inScope(ranges, d));
+    const outsideDiff = beforeScope - diags.length;
+
     const g = buildGraph(perFile);
     if (tier !== 'all' && tier !== 'grammar') diags = [];
     if (tier === 'all' || tier === 'referential') diags.push(...referentialDiags(g, { root, reg }));
@@ -301,6 +337,9 @@ switch (cmd) {
         baselineUnreadable: Boolean(baseline.__legacyFormat),
         normalized,
         legacy: { debt, cleaned, scoped },
+        // cm:edge contract -> plugins/forge-codemap/scripts/hook-post-edit.mjs — the hook prints this count
+        // to say why a pre-existing comment is not in the list it is blocking on
+        outsideDiff,
       }, null, 2));
       break;
     }
@@ -324,6 +363,10 @@ switch (cmd) {
       `${g.flows.size} flows · ${g.edges.length} edges · ${g.guards.length} guards · ${g.hacks.length} hacks`);
     console.log(`${errors ? red(plural(errors, 'error')) : 'no errors'}, ${plural(warns, 'warning')}`);
     if (normalized.length) console.log(dim(`${plural(normalized.length, 'annotation')} normalized by --fix`));
+    if (outsideDiff) {
+      console.log(dim(`${outsideDiff} grammar diagnostic(s) on lines this diff did not touch were not reported`
+        + ' — add --all-lines to see them'));
+    }
     if (debt || cleaned) {
       console.log(`legacy prose: ${bold(String(debt))} distinct still frozen · ${cleaned} cleaned (${share}%)` +
         `${scoped ? dim(' — scoped run, whole-tree figures need a bare `cm verify`') : ''}`);
@@ -486,12 +529,29 @@ switch (cmd) {
     }
     // cm:guard the baseline must see EVERY selected file, never the git-grep shortlist — a file with no
     // annotation is exactly the one whose legacy prose needs freezing
-    const perFile = analyzeAll(reg, allFiles(reg));
+    const scoped = positional.length > 0;
+    const perFile = analyzeAll(reg, scoped ? fileList(reg) : allFiles(reg));
+
+    // cm:guard a scoped re-freeze MERGES — writing only the scanned files' keys would drop every other
+    //   file's entry and absolve the whole repo at once, the same fail-open shape --prune-baseline refuses
     const keys = {};
-    for (const f of perFile) if (f.proseKeys?.length) keys[f.relPath] = f.proseKeys;
+    if (scoped) {
+      for (const [file, set] of Object.entries(loadBaseline(root))) {
+        if (!file.startsWith('__')) keys[file] = [...set];
+      }
+    }
+    const touched = [];
+    for (const f of perFile) {
+      if (f.proseKeys?.length) keys[f.relPath] = f.proseKeys;
+      else delete keys[f.relPath];
+      touched.push(f.relPath);
+    }
     saveBaseline(root, keys);
     const total = Object.values(keys).reduce((a, b) => a + b.length, 0);
-    console.log(`codemap baseline: froze ${total} pre-existing prose comments across ${Object.keys(keys).length} files`);
+    console.log(scoped
+      ? `codemap baseline: re-froze ${plural(touched.length, 'file')}; ${total} comments frozen across ${Object.keys(keys).length} files`
+      : `codemap baseline: froze ${total} pre-existing prose comments across ${Object.keys(keys).length} files`);
+    if (scoped) console.log(dim('other files\' entries were left exactly as they were — this is a scoped re-freeze'));
     console.log(dim('legacy is frozen by CONTENT (§8 / principle 7) — only a comment whose text is new is flagged'));
     break;
   }
