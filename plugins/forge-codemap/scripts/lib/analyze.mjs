@@ -206,7 +206,24 @@ function moduleHeader(lines, comments, codeLines, prof) {
 function documentsExported(lines, codeLines, fromLine, prof) {
   const next = nextCodeLine(lines, codeLines, fromLine + 1);
   if (!next) return false;
-  return prof.exportedDecl?.test(next.text) ?? false;
+  if (prof.exportedDecl?.test(next.text)) return true;
+  return prof.exportedMember?.test(next.text) ? inMemberBlock(lines, next.line, prof) : false;
+}
+
+/**
+ * Is this line a member of an exported struct / interface / const / var block?
+ *
+ * The nearest line at column ZERO above it is the declaration it belongs to — a bounded backward walk,
+ * not a nesting model. `func` there means we are in a body and narration is narration; `}` means we are
+ * back at top level, where `exportedDecl` already has the answer.
+ */
+function inMemberBlock(lines, fromLine, prof) {
+  for (let i = fromLine - 1; i >= 1; i--) {
+    const raw = lines[i - 1];
+    if (raw === undefined || raw.trim() === '' || /^\s/.test(raw)) continue;
+    return prof.memberBlock.test(raw);
+  }
+  return false;
 }
 
 function trunc(s) {

@@ -147,12 +147,19 @@ survive contact with ecosystems whose convention is the opposite of "few comment
 | Language | Leaders | docPolicy | Notes |
 |---|---|---|---|
 | TS/JS/TSX | `//` | `banned` for `//` and `/* */`; `/** */` doc blocks allowed (§4.2) | pragma allowlist covers `@ts-*`, eslint/biome, bundler hints |
-| Go | `//` | **`required-on-exported`** | only a comment run directly above the package clause or an EXPORTED declaration is exempt — godoc/revive require it there |
+| Go | `//` | **`required-on-exported`** | exempt directly above: the package clause, an EXPORTED top-level declaration, a `type`/`const`/`var` group opener, and a **capitalised member of an exported `struct`/`interface`/group** — godoc renders a field's and a method's doc exactly as a package-level one |
 | PHP | `//` `#` | `allowed` | PHPStan/Psalm/Laravel IDE-helper docblocks are load-bearing; `_ide_helper*` and `vendor/` are excluded outright |
 | Python | `#` | `allowed` | docstrings are strings, not comments, so they are out of scope by construction |
 | Rust | `//` | `allowed` for `///`/`//!` | `// SAFETY:` is exempt (clippy requires it) |
 | SQL | `--` | `allowed`, enforcement off | annotations still parsed, so `sideeffect` edges can live next to a trigger |
 | Shell/YAML/TOML | `#` | `allowed`, enforcement off | annotations parsed for CI/compose edges |
+
+A member is judged by the nearest line at column ZERO above it: `type X struct`/`interface`, or a
+`type`/`const`/`var` group opener, means the capitalised name below it is a documented member. `func`
+there means the comment sits in a body, where narration is narration — capitalisation alone cannot tell
+`Do() error` in an interface from a same-package `DoThing()` call, and the in-body case is what the
+policy exists to catch. `func (` is not a group opener: it is a method receiver, and admitting it would
+exempt every unexported method.
 
 A file whose first lines mark it generated (`Code generated ... DO NOT EDIT`, `@generated`,
 drizzle/`_ide_helper` markers) is skipped entirely.

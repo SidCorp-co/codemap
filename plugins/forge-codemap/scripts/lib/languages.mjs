@@ -119,7 +119,15 @@ const P = {
     docPolicy: 'required-on-exported',
     // godoc requires a comment above the package clause and above every EXPORTED declaration —
     // and only those. An unexported func must not be exempt, or the policy exempts everything.
-    exportedDecl: /^(?:package\s+\w+|(?:func|type|const|var)\s+(?:\(\s*\w+\s+\*?\w+\s*\)\s+)?[A-Z]\w*)/,
+    // cm:guard `func\s*\(` is deliberately NOT a group opener here — that is a method receiver, and
+    //   admitting it would exempt every unexported method too
+    exportedDecl: /^(?:package\s+\w+|(?:type|const|var)\s*\(|(?:func|type|const|var)\s+(?:\(\s*\w+\s+\*?\w+\s*\)\s+)?[A-Z]\w*)/,
+    // cm:why godoc renders a field's and a method's doc exactly as it renders a top-level one, so the
+    //   position-only rule flagged 3036 blocks the ecosystem asks authors to write (ISS-10)
+    exportedMember: /^[A-Z]\w*/,
+    // cm:guard the member rule holds ONLY inside these — capitalisation alone would exempt narration above
+    //   a same-package call like `DoThing()`, which is the in-body bucket the policy exists to catch
+    memberBlock: /^(?:type\s+[A-Z]\w*\s*(?:=\s*)?(?:struct|interface)\b|type\s*\(|const\s*\(|var\s*\()/,
     exempt: [...COMMON_EXEMPT, ...GO_EXEMPT],
   },
   php: {
