@@ -132,7 +132,9 @@ ${TAGS.map((t) => `  ${forms[t]}`).join('\n')}
   <leader>  the language's line-comment leader: // , # or --  (line comments ONLY — inside a
             /* */ or /** */ block it is CM003, so no other toolchain ever parses a cm: line)
   <kind>    ${EDGE_KINDS.join(' | ')}
-  <target>  repo-relative path, optionally path#symbol. Absolute paths and URLs are CM005.
+  <target>  repo-relative path, optionally path#symbol. Absolute paths, URLs and ../ or ./ are
+            CM005 — a target resolves from the REPO ROOT, never from this file. cm fmt rewrites a
+            ../ target that resolves. The #symbol must be present in the target file, or CM106.
   ->        ASCII, it sits in the machine-parsed position. — separates prose; - and -- are
             accepted on input and normalized by cm fmt.
 

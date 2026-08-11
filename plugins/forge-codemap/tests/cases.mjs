@@ -226,6 +226,19 @@ export const analyzeCases = [
     annotations: [],
   },
   {
+    // cm:why the grammar tier is the edit hook, so a target the author can still see on screen is
+    // rejected there — as a referential CM102 it arrived weeks later, in CI, for someone else (ISS-5)
+    name: 'edge: a source-relative target is rejected by the grammar tier, not by CI',
+    file: 'apps/web/src/f.ts',
+    src: [
+      '// cm:edge contract -> ../api/src/routes/thing.ts — the sibling app',
+      '// cm:edge contract -> ./sibling.ts — same directory',
+    ].join('\n'),
+    codes: ['CM005', 'CM005'],
+    annotations: [],
+    fixMatches: /cm fmt rewrites a \.\.\/ target that resolves/,
+  },
+  {
     name: 'flow: needs flow/step, rejects unknown tokens',
     file: 'g.ts',
     src: [
@@ -502,6 +515,35 @@ export const graphCases = [
     ] }],
     flows: [],
     codes: ['CM102'],
+  },
+  {
+    // cm:why 110 of one production repo's 186 edges carry an anchor, so without this the majority of the
+    // edge layer was verified no further than "the file still exists" (ISS-4)
+    name: 'an anchor that is not in the target is CM106, and a live one is green',
+    files: [{ relPath: 'a.ts', annotations: [
+      { tag: 'edge', kind: 'contract', target: 'scripts/lib/parse.mjs#parseAnnotation', file: 'a.ts', line: 1 },
+      { tag: 'edge', kind: 'contract', target: 'scripts/lib/parse.mjs#thisSymbolMovedAway', file: 'a.ts', line: 2 },
+    ] }],
+    flows: [],
+    codes: ['CM106'],
+  },
+  {
+    name: 'an anchor is matched on its first dot-segment, and never as a substring',
+    files: [{ relPath: 'a.ts', annotations: [
+      { tag: 'edge', kind: 'contract', target: 'scripts/lib/parse.mjs#PROSE_CODES.has', file: 'a.ts', line: 1 },
+      { tag: 'edge', kind: 'contract', target: 'scripts/lib/parse.mjs#arseAnnotatio', file: 'a.ts', line: 2 },
+    ] }],
+    flows: [],
+    codes: ['CM106'],
+  },
+  {
+    name: 'an anchor on a directory target is CM106, not a silent pass',
+    files: [{ relPath: 'a.ts', annotations: [
+      { tag: 'edge', kind: 'contract', target: 'scripts/lib#somewhereInThere', file: 'a.ts', line: 1 },
+      { tag: 'edge', kind: 'contract', target: 'scripts/lib', file: 'a.ts', line: 2 },
+    ] }],
+    flows: [],
+    codes: ['CM106'],
   },
   {
     name: 'after: pointing nowhere is CM103, duplicate step id is CM105',

@@ -51,6 +51,7 @@ const CODES = {
   CM102: { tier: 'referential', section: '§4', message: 'cm:edge target does not exist', fix: 'fix the path, or if the target moved, update the edge — a dangling edge is drift, not documentation' },
   CM103: { tier: 'referential', section: '§4', message: 'after: names a step that does not exist', fix: 'point at a real <step> of the same flow' },
   CM105: { tier: 'referential', section: '§4', message: 'duplicate <flow>/<step> id', fix: 'one step id per flow — rename one of them' },
+  CM106: { tier: 'referential', section: '§4', message: 'cm:edge #symbol is not in the target file', fix: 'the symbol was renamed or moved — update the anchor, or drop it and point the edge at the file' },
   CM201: { tier: 'structural', section: '§7', message: 'flow has a single step', fix: 'either the remaining steps are unannotated, or this is not a flow' },
   CM202: { tier: 'structural', section: '§7', message: 'after: chain is cyclic or the flow has several roots', fix: 'exactly one step may omit after:' },
 };
@@ -116,6 +117,12 @@ export function parseAnnotation(text, file, line) {
     if (!EDGE_KINDS.includes(kind)) return { diags: [diag('CM004', file, line, kind)] };
     if (/^(\/|[a-z]+:\/\/|~)/.test(target)) {
       return { diags: [diag('CM005', file, line, `"${target}" must be repo-relative`)] };
+    }
+    // cm:why source-relative targets were accepted here and resolved from the root, so they failed as a
+    //   referential CM102 in CI instead of at the keystroke — and 38 of them took that tier down (ISS-5)
+    if (/^\.\.?\//.test(target)) {
+      const d = diag('CM005', file, line, `"${target}" resolves from the repo root, not from this file`);
+      return { diags: [{ ...d, fix: `${d.fix}; cm fmt rewrites a ../ target that resolves`, relative: { kind, target, text: prose } }] };
     }
     return { ann: { ...base, kind, target, text: prose } };
   }

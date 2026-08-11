@@ -8,7 +8,7 @@
 // as a scope with nothing wrong in it. Hence exit 2 (§9.1) for anything that cannot be resolved.
 
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { join, relative, resolve, dirname, normalize } from 'node:path';
 import {
   findRoot, loadRegistry, saveRegistry, loadBaseline, saveBaseline,
   selects, walk, changedSince, changedStaged, toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
@@ -175,6 +175,36 @@ function fixCanonical(perFile) {
   return done;
 }
 
+// cm:guard cm fmt owns this and `verify --fix` must NOT: the post-edit hook runs --fix, and a target is
+//   CONTENT, so it is only ever rewritten to a path that resolves — never guessed at (ISS-5)
+function migrateTargets(perFile) {
+  const done = [];
+  for (const f of perFile) {
+    const fixes = [];
+    for (const d of f.diags) {
+      if (!d.relative || d.col === undefined) continue;
+      // cm:guard split the #symbol off BEFORE resolving — 110 of 186 edges in the field carry an anchor,
+      //   and resolving it as part of the path made every one of them fail existsSync and stay unmigrated
+      const [rel, anchor] = d.relative.target.split('#');
+      const resolved = normalize(join(dirname(f.relPath), rel)).split('\\').join('/');
+      if (resolved.startsWith('..') || !existsSync(join(root, resolved))) continue;
+      fixes.push({
+        line: d.line, col: d.col, leader: d.leader,
+        canonical: canonical({
+          tag: 'edge', kind: d.relative.kind, text: d.relative.text,
+          target: anchor ? `${resolved}#${anchor}` : resolved,
+        }),
+      });
+    }
+    if (!fixes.length) continue;
+    const abs = join(root, f.relPath);
+    const { src, applied } = applyFmt(readFileSync(abs, 'utf8'), fixes);
+    if (applied.length) writeFileSync(abs, src);
+    done.push(...applied.map((d) => ({ file: f.relPath, line: d.line })));
+  }
+  return done;
+}
+
 function printDiag(d) {
   const sev = d.tier === 'structural' ? yellow('warn') : red('error');
   console.log(`${bold(`${d.file}:${d.line}`)} ${sev} ${d.code} ${d.message}`);
@@ -265,13 +295,17 @@ switch (cmd) {
 
   case 'fmt': {
     const reg = loadOrDie();
-    const perFile = analyzeAll(reg, fileList(reg));
+    const files = fileList(reg);
+    let perFile = analyzeAll(reg, files);
+    const migrated = migrateTargets(perFile);
+    if (migrated.length) perFile = analyzeAll(reg, files);
     const done = fixCanonical(perFile);
     if (!flags.has('--quiet')) {
       const byFile = new Map();
-      for (const d of done) byFile.set(d.file, (byFile.get(d.file) ?? 0) + 1);
-      for (const [file, n] of byFile) console.log(`${file} ${dim(`${n} normalized`)}`);
-      console.log(`codemap fmt: ${plural(done.length, 'annotation')} normalized`);
+      for (const d of [...migrated, ...done]) byFile.set(d.file, (byFile.get(d.file) ?? 0) + 1);
+      for (const [file, n] of byFile) console.log(`${file} ${dim(`${n} rewritten`)}`);
+      console.log(`codemap fmt: ${plural(done.length, 'annotation')} normalized`
+        + (migrated.length ? `, ${plural(migrated.length, 'relative target')} resolved` : ''));
     }
     break;
   }
