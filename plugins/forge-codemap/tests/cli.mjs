@@ -269,6 +269,42 @@ function targetCases(pluginRoot, check, roots) {
     `expected exactly one CM106, got:\n${anchors.out}`);
 }
 
+// cm:why a wall of output is a gating mechanism: 677 diagnostics at two lines each trains people to run
+//   this under `| tail`, which is how 38 standing CM102 stayed invisible long enough to matter (ISS-9)
+function outputCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  const noisy = Array.from({ length: 25 }, (_, i) => `// narration number ${i} that says nothing new\nexport const n${i} = ${i};`);
+  writeFileSync(join(root, 'noisy.ts'), `${noisy.join('\n')}\n`);
+
+  const grouped = cm(pluginRoot, root, 'verify');
+  const fixLines = (out) => (out.match(/^ {2}fix: /gm) ?? []).length;
+  // cm:why 27 diagnostics carry two distinct fixes here — the plain CM001 and the near-header variant — so
+  // "printed once per code" has to mean once per ADVICE, or most of a group is told the wrong thing
+  check('cli: a big run groups by code and prints each distinct fix once',
+    /CM001\s+grammar\s+24 in 1 file/.test(grouped.out) && fixLines(grouped.out) === 2
+    && /grouped by code/.test(grouped.out),
+    `expected two fix lines for 27 diagnostics, got ${fixLines(grouped.out)}:\n${grouped.out}`);
+  check('cli: the grouped run still reports its counts and its debt line',
+    /27 errors, 0 warnings/.test(grouped.out) && /2 files/.test(grouped.out),
+    `the summary must survive grouping:\n${grouped.out}`);
+
+  const verbose = cm(pluginRoot, root, 'verify', '--verbose');
+  check('cli: --verbose restores every line', fixLines(verbose.out) === 27 && /noisy\.ts:1 error/.test(verbose.out),
+    `expected 27 per-line fixes, got ${fixLines(verbose.out)}`);
+
+  const scoped = cm(pluginRoot, root, 'verify', 'noisy.ts');
+  check('cli: an explicit path stays per-line however many there are',
+    fixLines(scoped.out) === 25 && !/grouped by code/.test(scoped.out),
+    `a single-file run is where the line number is the point, got ${fixLines(scoped.out)}:\n${scoped.out}`);
+
+  const json = cm(pluginRoot, root, 'verify', '--json');
+  let n = -1;
+  try { n = JSON.parse(json.out).diags.length; } catch { n = -1; }
+  check('cli: --json is never grouped — tools consume it', n === 27,
+    `expected 27 diags in the JSON payload, got ${n}`);
+}
+
 export function cliCases(pluginRoot, check) {
   const roots = [];
   try {
@@ -349,6 +385,7 @@ export function cliCases(pluginRoot, check) {
     baselineLifecycleCases(pluginRoot, check, roots);
     wrapCases(pluginRoot, check, roots);
     targetCases(pluginRoot, check, roots);
+    outputCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
   }
