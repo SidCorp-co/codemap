@@ -52,6 +52,7 @@ const CODES = {
   CM103: { tier: 'referential', section: '§4', message: 'after: names a step that does not exist', fix: 'point at a real <step> of the same flow' },
   CM105: { tier: 'referential', section: '§4', message: 'duplicate <flow>/<step> id', fix: 'one step id per flow — rename one of them' },
   CM106: { tier: 'referential', section: '§4', message: 'cm:edge #symbol is not in the target file', fix: 'the symbol was renamed or moved — update the anchor, or drop it and point the edge at the file' },
+  CM107: { tier: 'referential', section: '§8', message: 'external is not declared in the registry', fix: 'run: cm new external <name> — an out-of-tree target is verifiable only as far as its name, so the name at least is closed vocabulary' },
   CM201: { tier: 'structural', section: '§7', message: 'flow has a single step', fix: 'either the remaining steps are unannotated, or this is not a flow' },
   CM202: { tier: 'structural', section: '§7', message: 'after: chain is cyclic or the flow has several roots', fix: 'exactly one step may omit after:' },
 };
@@ -115,6 +116,16 @@ export function parseAnnotation(text, file, line) {
     }
     const [, kind, target] = em;
     if (!EDGE_KINDS.includes(kind)) return { diags: [diag('CM004', file, line, kind)] };
+    // cm:why a migration repo's commonest cross-system contract is to a codebase that is not in the tree
+    //   at all, so it was the one coupling codemap could not carry — 354 such comments in one repo (ISS-11)
+    if (/^external:/.test(target)) {
+      const xm = /^external:([a-z0-9][a-z0-9-]*)\/(\S+)$/.exec(target);
+      if (!xm) {
+        const d = diag('CM005', file, line, `"${target}" must be external:<name>/<path-inside-it>`);
+        return { diags: [{ ...d, fix: 'write: cm:edge <kind> -> external:<name>/<path/inside/it> — <why>; the <name> is lower-case and declared with: cm new external <name>' }] };
+      }
+      return { ann: { ...base, kind, target, external: xm[1], text: prose } };
+    }
     if (/^(\/|[a-z]+:\/\/|~)/.test(target)) {
       return { diags: [diag('CM005', file, line, `"${target}" must be repo-relative`)] };
     }

@@ -31,6 +31,7 @@ export const VERBS = [
   ['sweep', '[paths...]', 'list the prose the baseline is hiding  [--limit N] [--json] [--prune-baseline]'],
   ['baseline', '[paths...]', 're-freeze legacy prose by content hash; a path scopes it and MERGES'],
   ['new flow', '<name>', 'declare a flow before annotating its steps  [--description "..."]'],
+  ['new external', '<name>', 'declare an out-of-tree system a cm:edge may target  [--description "..."]'],
   ['codes', '', 'diagnostic reference (same as: cm help codes)'],
   ['help', '[topic]', 'this guidebook'],
   ['version', '', 'tool version + spec version'],
@@ -135,6 +136,9 @@ ${TAGS.map((t) => `  ${forms[t]}`).join('\n')}
   <target>  repo-relative path, optionally path#symbol. Absolute paths, URLs and ../ or ./ are
             CM005 — a target resolves from the REPO ROOT, never from this file. cm fmt rewrites a
             ../ target that resolves. The #symbol must be present in the target file, or CM106.
+            external:<name>/<path> targets a system OUTSIDE the tree (a migration's original, a
+            service in another repo). The name must be declared — cm new external <name> — and that
+            is ALL that is checked: nothing here can see the path inside it.
   ->        ASCII, it sits in the machine-parsed position. — separates prose; - and -- are
             accepted on input and normalized by cm fmt.
 

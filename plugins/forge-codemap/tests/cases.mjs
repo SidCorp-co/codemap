@@ -288,6 +288,20 @@ export const analyzeCases = [
     fixMatches: /cm fmt rewrites a \.\.\/ target that resolves/,
   },
   {
+    // cm:why the target of a migration's original codebase is not in the tree, so it was the one coupling
+    // that had to stay prose — 354 comments in one repo were carrying it that way (ISS-11)
+    name: 'edge: an external target parses, and its shape is still checked',
+    file: 'x.ts',
+    src: [
+      '// cm:edge contract -> external:laravel-app/App/Models/Quote.php — mirrors the original model',
+      '// cm:edge contract -> external:laravel-app — a name with no path inside it',
+      '// cm:edge contract -> external:LaravelApp/x.php — a name that is not registry-shaped',
+    ].join('\n'),
+    codes: ['CM005', 'CM005'],
+    annotations: ['edge'],
+    fixMatches: /cm new external <name>/,
+  },
+  {
     name: 'flow: needs flow/step, rejects unknown tokens',
     file: 'g.ts',
     src: [
@@ -584,6 +598,17 @@ export const graphCases = [
     ] }],
     flows: [],
     codes: ['CM106'],
+  },
+  {
+    name: 'an undeclared external is CM107, and a declared one is green with no path check',
+    files: [{ relPath: 'a.ts', annotations: [
+      { tag: 'edge', kind: 'contract', target: 'external:laravel-app/App/Models/Quote.php', external: 'laravel-app', file: 'a.ts', line: 1 },
+      { tag: 'edge', kind: 'contract', target: 'external:laravel-app/nothing/here/at/all.php', external: 'laravel-app', file: 'a.ts', line: 2 },
+      { tag: 'edge', kind: 'contract', target: 'external:ghost-app/x.php', external: 'ghost-app', file: 'a.ts', line: 3 },
+    ] }],
+    flows: [],
+    externals: [{ name: 'laravel-app' }],
+    codes: ['CM107'],
   },
   {
     name: 'an anchor on a directory target is CM106, not a silent pass',

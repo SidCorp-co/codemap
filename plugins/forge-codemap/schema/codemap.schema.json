@@ -24,6 +24,19 @@
         }
       }
     },
+    "externals": {
+      "type": "array",
+      "description": "Out-of-tree systems a cm:edge may target as external:<name>/<path>. Only the NAME is verifiable — the path inside it is not in the tree, so nothing checks it (SPEC.md §4, §8). An undeclared name is CM107.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+          "description": { "type": "string" }
+        }
+      }
+    },
     "enforce": {
       "type": "object",
       "additionalProperties": false,

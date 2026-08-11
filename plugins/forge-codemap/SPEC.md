@@ -79,6 +79,13 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
   `../` target that resolves is rewritten by `cm fmt`; `cm verify --fix` never rewrites a target,
   because a target is content and the edit hook runs `--fix`.
   The `#symbol` half is checked too: it must appear in the target file, or `CM106` (§7).
+- **`external:<name>/<path>`** targets a system that is **not in the tree** — a migration's original
+  codebase, a service in another repo. `<name>` must be declared in the registry (§8) or it is
+  `CM107`, and that name is *all* that is verified: nothing here can see the path inside it. This is
+  the deliberate trade — `cm:edge`'s promise that a target resolves is kept for in-tree targets by
+  making the out-of-tree case a different shape, rather than by weakening `CM102` for everyone. A
+  migration repo's commonest cross-system contract is otherwise unexpressible, and 354 such comments
+  in one measured repo were carrying it as prose.
 - `->` is ASCII (it sits in the machine-parsed position). `—` separates prose; `-` and `--` are
   accepted on input and normalized to `—` by `cm fmt`.
 - Prefix is `cm:` — deliberately **not** `@`-prefixed. The `@`-in-comment namespace belongs to
@@ -201,6 +208,7 @@ Tier decides where it runs: **grammar** in `PostToolUse` (blocking), **referenti
 | `CM103` | referential | `after:` names a step that does not exist |
 | `CM105` | referential | duplicate `<flow>/<step>` id |
 | `CM106` | referential | `cm:edge` `#symbol` is not in the target file, or the target is a directory (§4). A word-boundary match on the anchor's first dot-segment — not resolution, which stays LSP's job |
+| `CM107` | referential | `cm:edge` names an `external:` that the registry does not declare (§8) |
 | `CM201` | structural | flow has a single step — either it is not a flow, or steps are missing |
 | `CM202` | structural | `after:` chain is cyclic or the flow has several roots |
 | `CM104` | reserved | stale `cm:hack` (issue closed) — requires the Forge integration, tier 3 |
@@ -214,13 +222,16 @@ Tier decides where it runs: **grammar** in `PostToolUse` (blocking), **referenti
 {
   "specVersion": "codemap/1",
   "flows": [{ "name": "job-dispatch", "description": "issue → dispatched job" }],
+  "externals": [{ "name": "laravel-app", "description": "the PHP original this service replaces" }],
   "enforce": { "grammar": true, "include": ["**"], "exclude": ["**/*.test.ts"] },
   "languages": { "sql": { "enforce": false } }
 }
 ```
 
 Steps are **not** declared — they are derived from the code (§1.1). The registry only closes the
-vocabulary of flow *names*.
+vocabulary of flow *names* and of `external` *names*. An external's path is never declared and never
+checked; closing the name is what keeps a typo from forking the graph, which is the same job `CM101`
+does for flows.
 
 ### §8.1 Where the checker lives
 
