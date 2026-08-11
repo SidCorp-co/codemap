@@ -77,7 +77,12 @@ export function analyzeFile({ relPath, src, reg }) {
       // cm:guard register the LINE before the parse verdict — §4 makes the comment below a cm: line its
       //   continuation parsed or not, and a malformed one that forfeits its wrap bills it as prose (ISS-6)
       annLines.set(c.line, c.leader);
-      if (parsed.diags) { raw.push(...parsed.diags); continue; }
+      // cm:why col + leader ride along so `cm fmt` can rewrite a resolvable ../ target positionally, the
+      //   same way CM009 is rewritten — the diagnostic is the only place that knows where the target sits
+      if (parsed.diags) {
+        for (const d of parsed.diags) raw.push(d.relative ? { ...d, col: c.col, leader: c.leader } : d);
+        continue;
+      }
       const ann = { ...parsed.ann, indent: c.indent ?? '', leader: c.leader, col: c.col };
       annotations.push(ann);
       annAt.set(c.line, ann);

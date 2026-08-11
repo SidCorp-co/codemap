@@ -201,6 +201,74 @@ function wrapCases(pluginRoot, check, roots) {
     `expected a single CM012 naming " — ", got:\n${one.out}`);
 }
 
+// cm:guard the migration is cm fmt's and the hook must never inherit it — `verify --fix` is what the
+//   post-edit hook runs, and a target rewritten under an agent is content changed behind its back (ISS-5)
+function targetCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  mkdirSync(join(root, 'apps', 'web', 'src'), { recursive: true });
+  mkdirSync(join(root, 'apps', 'api', 'src'), { recursive: true });
+  writeFileSync(join(root, 'apps', 'api', 'src', 'thing.ts'), 'export function saveThing() { return 1; }\n');
+  const page = join(root, 'apps', 'web', 'src', 'page.ts');
+  const rel = '// cm:edge contract -> ../../api/src/thing.ts — the sibling app owns the write path\n'
+    + 'export const p = 1;\n';
+  writeFileSync(page, rel);
+  cm(pluginRoot, root, 'baseline');
+
+  const grammar = cm(pluginRoot, root, 'verify', '--tier', 'grammar');
+  check('cli: a source-relative target fails the GRAMMAR tier, where the hook runs',
+    grammar.status === 1 && /CM005/.test(grammar.out) && !/CM102/.test(grammar.out),
+    `expected CM005 at grammar tier, got:\n${grammar.out}`);
+
+  const hookPass = cm(pluginRoot, root, 'verify', '--fix', 'apps/web/src/page.ts');
+  check('cli: verify --fix leaves the target alone — it normalizes form, not content',
+    readFileSync(page, 'utf8') === rel && /CM005/.test(hookPass.out),
+    `verify --fix rewrote a target; the hook must never do that:\n${hookPass.out}`);
+
+  const fmt = cm(pluginRoot, root, 'fmt');
+  check('cli: cm fmt resolves a ../ target that exists',
+    readFileSync(page, 'utf8').includes('-> apps/api/src/thing.ts —')
+    && /1 relative target resolved/.test(fmt.out),
+    `cm fmt said:\n${fmt.out}\nfile:\n${readFileSync(page, 'utf8')}`);
+
+  const after = cm(pluginRoot, root, 'verify');
+  check('cli: the migrated edge verifies clean', after.status === 0 && !/CM00|CM10/.test(after.out),
+    `after fmt:\n${after.out}`);
+
+  // cm:why an anchored ../ target is the COMMON case in the field, and resolving the #symbol as part of
+  // the path made existsSync fail on every one of them — the migration silently did nothing (ISS-5)
+  writeFileSync(join(root, 'apps', 'web', 'src', 'anchored.ts'),
+    '// cm:edge contract -> ../../api/src/thing.ts#saveThing — the sibling app owns the writer\n'
+    + 'export const r = 1;\n');
+  const fmtAnchor = cm(pluginRoot, root, 'fmt');
+  check('cli: cm fmt resolves a ../ target that carries a #symbol, anchor intact',
+    readFileSync(join(root, 'apps', 'web', 'src', 'anchored.ts'), 'utf8')
+      .includes('-> apps/api/src/thing.ts#saveThing —'),
+    `the anchor must survive the rewrite:\n${fmtAnchor.out}\n${readFileSync(join(root, 'apps', 'web', 'src', 'anchored.ts'), 'utf8')}`);
+  const anchorClean = cm(pluginRoot, root, 'verify', 'apps/web/src/anchored.ts');
+  check('cli: the migrated anchored edge passes both tiers',
+    anchorClean.status === 0 && !/CM005|CM106/.test(anchorClean.out),
+    `after fmt:\n${anchorClean.out}`);
+
+  const bogus = '// cm:edge contract -> ../nope/gone.ts — nothing resolves here\nexport const q = 1;\n';
+  writeFileSync(join(root, 'apps', 'web', 'src', 'bogus.ts'), bogus);
+  const fmt2 = cm(pluginRoot, root, 'fmt');
+  check('cli: cm fmt does not invent a path for a ../ target that resolves to nothing',
+    readFileSync(join(root, 'apps', 'web', 'src', 'bogus.ts'), 'utf8') === bogus
+    && !/relative target resolved/.test(fmt2.out),
+    `cm fmt must leave an unresolvable target for the author:\n${fmt2.out}`);
+
+  writeFileSync(join(root, 'anchor.ts'),
+    '// cm:edge contract -> apps/api/src/thing.ts#saveThing — the canonical writer\n'
+    + '// cm:edge contract -> apps/api/src/thing.ts#saveThingRenamed — this one moved\n'
+    + 'export const a2 = 1;\n');
+  const anchors = cm(pluginRoot, root, 'verify', '--tier', 'referential');
+  check('cli: a live anchor is green and a moved one is CM106',
+    anchors.status === 1 && (anchors.out.match(/CM106/g) ?? []).length === 1
+    && /saveThingRenamed/.test(anchors.out),
+    `expected exactly one CM106, got:\n${anchors.out}`);
+}
+
 export function cliCases(pluginRoot, check) {
   const roots = [];
   try {
@@ -280,6 +348,7 @@ export function cliCases(pluginRoot, check) {
     rewriteCases(pluginRoot, check, roots);
     baselineLifecycleCases(pluginRoot, check, roots);
     wrapCases(pluginRoot, check, roots);
+    targetCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
   }

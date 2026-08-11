@@ -1,9 +1,36 @@
 // The declared-edge graph: flows, edges, guards, hacks — plus the checks that keep it from
 // rotting (codemap/1 §7 referential + structural tiers) and the impact query.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { diag } from './parse.mjs';
+
+/**
+ * Does `anchor` appear in the target's source at all?
+ *
+ * Deliberately not resolution: no LSP, no parse, no import graph. An anchor is a promise with an
+ * expiry, and a word-boundary match on its first dot-segment is enough to make it self-report when
+ * it expires — `file.ts#someSchema.default` asks only whether `someSchema` is still in that file.
+ * `$` counts as a word character on both sides so `db.$connect` matches and `mysaveThing` does not.
+ */
+function anchorPresent(src, anchor) {
+  const sym = anchor.split('.')[0];
+  if (!sym) return true;
+  const esc = sym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?:^|[^\\w$])${esc}(?:[^\\w$]|$)`).test(src);
+}
+
+// cm:why one target is legitimately named by several edges, so the read is cached per run — and an
+//   unreadable file is skipped rather than reported: existsSync already passed, so cm cannot judge it
+function readTarget(root, path, cache) {
+  if (!cache.has(path)) {
+    let v;
+    try { v = statSync(join(root, path)).isDirectory() ? { dir: true } : { src: readFileSync(join(root, path), 'utf8') }; }
+    catch { v = {}; }
+    cache.set(path, v);
+  }
+  return cache.get(path);
+}
 
 export function buildGraph(perFile) {
   const g = { flows: new Map(), edges: [], guards: [], hacks: [], whys: [], byFile: new Map() };
@@ -45,9 +72,14 @@ export function referentialDiags(g, { root, reg }) {
     }
   }
 
+  const targets = new Map();
   for (const e of g.edges) {
-    const path = e.target.split('#')[0];
-    if (!existsSync(join(root, path))) out.push(diag('CM102', e.file, e.line, e.target));
+    const [path, anchor] = e.target.split('#');
+    if (!existsSync(join(root, path))) { out.push(diag('CM102', e.file, e.line, e.target)); continue; }
+    if (!anchor) continue;
+    const t = readTarget(root, path, targets);
+    if (t.dir) out.push(diag('CM106', e.file, e.line, `${e.target} — the target is a directory, so it has no symbols`));
+    else if (t.src !== undefined && !anchorPresent(t.src, anchor)) out.push(diag('CM106', e.file, e.line, e.target));
   }
 
   return out;

@@ -74,7 +74,11 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
 - `<flow>/<step>` is the step's durable id. Ordering comes from `after:`, never from numbers, so
   inserting a step never renumbers the flow.
 - `<kind>` ∈ `contract | ordering | lockstep | sideeffect | naming | protocol` (§5).
-- `<target>` is a repo-relative path, optionally `path#symbol`. Absolute paths and URLs are `CM005`.
+- `<target>` is a repo-relative path, optionally `path#symbol`. Absolute paths, URLs and
+  source-relative paths (`../`, `./`) are `CM005` — rejected at the keystroke, not later in CI. A
+  `../` target that resolves is rewritten by `cm fmt`; `cm verify --fix` never rewrites a target,
+  because a target is content and the edit hook runs `--fix`.
+  The `#symbol` half is checked too: it must appear in the target file, or `CM106` (§7).
 - `->` is ASCII (it sits in the machine-parsed position). `—` separates prose; `-` and `--` are
   accepted on input and normalized to `—` by `cm fmt`.
 - Prefix is `cm:` — deliberately **not** `@`-prefixed. The `@`-in-comment namespace belongs to
@@ -183,6 +187,7 @@ Tier decides where it runs: **grammar** in `PostToolUse` (blocking), **referenti
 | `CM102` | referential | `cm:edge` target does not exist |
 | `CM103` | referential | `after:` names a step that does not exist |
 | `CM105` | referential | duplicate `<flow>/<step>` id |
+| `CM106` | referential | `cm:edge` `#symbol` is not in the target file, or the target is a directory (§4). A word-boundary match on the anchor's first dot-segment — not resolution, which stays LSP's job |
 | `CM201` | structural | flow has a single step — either it is not a flow, or steps are missing |
 | `CM202` | structural | `after:` chain is cyclic or the flow has several roots |
 | `CM104` | reserved | stale `cm:hack` (issue closed) — requires the Forge integration, tier 3 |
