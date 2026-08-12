@@ -20,6 +20,7 @@ Write the placeholder literally in skill text. The agent resolves it from the na
 | `<documentId>` | current issue context | issue's documentId UUID — required by `forge_coolify_deploy → deploy` |
 | `<id>` | short ISS number for a specific issue | `42` |
 | `<stagingUrl>` | `forge_projects → get .previewDeploy.testingUrls[].url` | the project's staging URL |
+| `<productionUrl>` | `forge_projects → get` (project's production URL field) | the project's production URL — used by CI-on-push profiles for the post-deploy health poll |
 | `<testCredentials>` | `forge_projects → get .previewDeploy.testCredentials` | username/password for staging |
 | `<agentName>` | profile / project config | `release-agent`, `qa-agent`, … (avoid character names) |
 | `<resourceUuid>` | `forge_coolify_deploy → list[].resourceUuid` | Coolify resource — never hardcode |

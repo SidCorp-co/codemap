@@ -1,0 +1,16 @@
+{
+  "name": "webapp-ci-epic-gitflow",
+  "description": "Multi-component webapp · epic decomposition onto a shared integration (feature) branch · GitFlow-lite + CI-on-push deploy (no Coolify) · only the parent promotes to baseBranch (squash); staging-URL E2E verification",
+  "stack": "multi-component-webapp",
+  "branching": "epic-integration-branch",
+  "deploy": "ci-on-push",
+  "verification": "staging-url-e2e",
+  "overlayFiles": [
+    "forge-plan/SKILL.md",
+    "forge-code/SKILL.md",
+    "forge-test/SKILL.md",
+    "forge-release/SKILL.md",
+    "forge-promote/SKILL.md"
+  ],
+  "excludeSkills": []
+}

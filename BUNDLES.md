@@ -48,6 +48,23 @@ Multi-component webapp · GitFlow-lite (baseBranch = staging, productionBranch =
 - **Excluded**: none.
 - **Bundle size**: 20 skill files across 9 skills.
 
+### `webapp-ci-epic-gitflow`
+
+Multi-component webapp · epic decomposition onto a shared **integration (feature) branch** · GitFlow-lite · **CI-on-push deploy (no Coolify)** · only the parent promotes to `<baseBranch>` (squash); production promotion is a separate gated step.
+
+| Axis | Value |
+|---|---|
+| Stack | multi-component webapp (backend + frontend + auxiliaries) |
+| Branching | epic-integration-branch — large issues decompose into children that branch off and merge back into one `feature/ISS-<n>`; the parent squash-merges that branch to `<baseBranch>` |
+| Deploy | CI-on-push — pushing `<baseBranch>` deploys staging, pushing `<productionBranch>` deploys production; no deploy API call |
+| Verification | staging-URL Playwright E2E on the parent after the integration branch lands on `<baseBranch>` (readiness = poll `<stagingUrl>` health) |
+
+- **How it differs from `webapp-coolify-gitflow`**: that profile ships each issue (or each `decomposes` child) straight to production. This profile adds an **integration-branch epic model** — children merge into a shared feature branch, the parent runs one integration test over the combined result, and only the parent promotes. The parent waits for children via `child --blocks--> parent` edges (not `kind='decomposes'`). Children run **serially** (cap=1). Deploys are triggered by CI/CD on branch push (no `forge_coolify_deploy` calls); `forge-test`/`forge-promote` poll the staging/production URL health endpoint for readiness, and deployMode is detected purely from whether `previewDeploy` exposes a staging URL.
+- **Overlay**: 5 `SKILL.md` (`forge-plan`, `forge-code`, `forge-test`, `forge-release`, and a new `forge-promote`) + 1 reference (`forge-plan/references/epic-branch-model.md`, the deploy-agnostic shared model every overlay reads).
+- **Excluded**: none.
+- **Bundle size**: 26 skill files across 10 skills.
+- **Requires**: the `forge_issues → mark_merged` / `unmark` MCP action for explicit `merged_at` stamping (falls back to the leave-release-state side-effect if absent); a CI/CD pipeline wired to deploy on `<baseBranch>` / `<productionBranch>` push; and a `<stagingUrl>` / `<productionUrl>` health endpoint to poll.
+
 ---
 
 ## Planned
