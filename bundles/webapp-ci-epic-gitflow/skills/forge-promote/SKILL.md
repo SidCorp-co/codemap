@@ -83,7 +83,7 @@ CI deploys `<productionBranch>` on push. Poll the production URL health endpoint
 ```bash
 curl -fsS <productionUrl>/health      # or the app root / a known version endpoint
 ```
-`<productionUrl>` comes from `forge_config → get` (the project's production URL field). Re-check every ~30s, up to ~5 min; if still not healthy, note it in the report and continue to smoke cautiously.
+`<productionUrl>` comes from `forge_projects → get` (the project's production URL field) — the same place `<stagingUrl>` comes from; `forge_config` carries pipeline config, not URLs. Re-check every ~30s, up to ~5 min; if still not healthy, note it in the report and continue to smoke cautiously.
 
 ### Step 6: Production smoke
 
