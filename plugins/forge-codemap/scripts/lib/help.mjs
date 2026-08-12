@@ -33,6 +33,7 @@ export const VERBS = [
   ['baseline', '[paths...]', 're-freeze legacy prose by content hash; a path scopes it and MERGES  [--include-new]'],
   ['new flow', '<name>', 'declare a flow before annotating its steps  [--description "..."]'],
   ['new external', '<name>', 'declare an out-of-tree system a cm:edge may target  [--description "..."]'],
+  ['onboard', '', 'read this repo and print the setup steps for it  [--json] [--prompt]'],
   ['doctor', '', 'versions, registry, baseline — and whether CI gates on an older checker'],
   ['codes', '', 'diagnostic reference (same as: cm help codes)'],
   ['help', '[topic]', 'this guidebook'],
@@ -325,6 +326,9 @@ READING A BIG RUN
 RECIPES
 
   CI            .forge/codemap/cm verify --since $(git merge-base origin/main HEAD)
+  CI (no vendor) git clone --depth 1 --branch codemap-v<x.y.z> <repo> /tmp/cm
+                 node /tmp/cm/plugins/forge-codemap/scripts/cm.mjs verify   (pin a TAG, never a branch)
+  staying current  cm doctor  ·  cm install --upgrade  ·  agent-setup/codemap-upgrade.yml opens the PR
   pre-commit    .forge/codemap/cm verify --staged --tier grammar     (cm install --git-hook writes it)
   agent-side    cm verify --fix --json <file>                        what the PostToolUse hook runs
 

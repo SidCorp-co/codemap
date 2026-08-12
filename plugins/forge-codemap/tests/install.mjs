@@ -134,4 +134,14 @@ export function installCases(pluginRoot, check) {
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
   }
+
+  // cm:guard the shipped prompt.md is generated, never hand-written — a setup document that drifts from
+  //   the checker it sets up is the exact artifact class this project keeps finding rotted elsewhere
+  {
+    const gen = spawnSync(process.execPath, [join(pluginRoot, 'scripts', 'cm.mjs'), 'onboard', '--prompt'],
+      { encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }).stdout;
+    const onDisk = readFileSync(join(pluginRoot, 'agent-setup', 'prompt.md'), 'utf8');
+    check('install: agent-setup/prompt.md matches `cm onboard --prompt`', gen === onDisk,
+      'regenerate it: node scripts/cm.mjs onboard --prompt > agent-setup/prompt.md');
+  }
 }
