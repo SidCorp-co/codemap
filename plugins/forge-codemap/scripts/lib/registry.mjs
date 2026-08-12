@@ -260,6 +260,20 @@ export function dirtyFiles(root) {
   } catch { return null; }
 }
 
+/** The version of the checker a repo has VENDORED (`cm install`), or null when there is none. */
+export function vendoredVersion(root) {
+  try { return readFileSync(join(root, '.forge', 'codemap', 'VERSION'), 'utf8').trim() || null; }
+  catch { return null; }
+}
+
+/** -1 / 0 / 1, on the leading numeric triple. Unparseable input sorts equal, never "newer". */
+export function compareVersions(a, b) {
+  const n = (v) => String(v ?? '').split('.').map((x) => parseInt(x, 10) || 0);
+  const [x, y] = [n(a), n(b)];
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  return 0;
+}
+
 export function isTracked(root, relPath) {
   return existsSync(join(root, relPath));
 }

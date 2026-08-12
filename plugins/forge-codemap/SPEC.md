@@ -192,7 +192,10 @@ scanner does not permit itself.
 ## §7 Diagnostics
 
 Tier decides where it runs: **grammar** in `PostToolUse` (blocking), **referential** and
-**structural** in CI.
+**structural** in CI, **advisory** only when asked for (§7.1). Only the grammar tier may block an edit:
+the others are judged against the whole graph, and a scoped run cannot tell "broken" from "the other end
+is out of scope". For the same reason the graph is always built from the whole tree even when reporting
+is scoped — a one-file graph made a legal two-step flow report `CM103`/`CM201` against itself.
 
 | Code | Tier | Meaning |
 |---|---|---|
@@ -281,6 +284,11 @@ checked; closing the name is what keeps a typo from forking the graph, which is 
 does for flows.
 
 ### §8.1 Where the checker lives
+
+A repo's CI gates on the checker it **committed**, so a newer plugin reporting green says nothing about
+that gate. `cm verify` warns on the skew, `cm doctor` reports it in one place, and `cm install --upgrade`
+moves it forward — refusing a downgrade unless forced. Without this the pin meant to stop drift becomes
+the mechanism by which a repo cannot receive a fix.
 
 The registry is the repo's contract, so the repo must be able to check it. `cm install` vendors the CLI
 into `.forge/codemap/` — a `cm` shim, `cm.mjs`, `lib/`, `SPEC.md` and a `VERSION` stamp — and that

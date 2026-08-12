@@ -35,7 +35,7 @@ const TODO_RE = /^(TODO|FIXME|HACK)\b|\b(TODO|FIXME)\s*[:(]/;
 const ID = '[a-z0-9][a-z0-9-]*';
 
 const CODES = {
-  CM001: { tier: 'grammar', section: '§1.1', message: 'prose comment is not allowed here', fix: 'delete it — the compiler already states this; keep it only as cm:why (rationale) or cm:guard (something whoever edits this must know)' },
+  CM001: { tier: 'grammar', section: '§1.1', message: 'prose comment is not allowed here', fix: 'if it records something the compiler, the types, the path and the LSP cannot state, keep it as cm:why (rationale) or cm:guard (something whoever edits this must know); if it restates the code, delete it' },
   CM002: { tier: 'grammar', section: '§3', message: 'unknown cm: tag', fix: `use one of: ${TAGS.join(', ')}` },
   CM003: { tier: 'grammar', section: '§4', message: 'cm: annotation inside a block or doc comment', fix: 'move it to a line comment — block/doc comments are parsed by TSDoc, PHPStan, Psalm and rustdoc' },
   CM004: { tier: 'grammar', section: '§5', message: 'cm:edge needs a known kind', fix: `kind must be one of: ${EDGE_KINDS.join(', ')}` },
