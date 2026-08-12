@@ -64,7 +64,7 @@ v1 epic flags in `forge/core/src/lib/feature-flags.ts`: `chatProvider`, `runnerF
 
 Detect from `git diff --name-only` which packages changed; build/test only those.
 
-**Pre-existing flakies (don't block on these):** `db/schema.test.ts` (`is_ceo` column drift), 2 flaky route mocks (agent-sessions, chat-sessions). If only these fail, proceed. New failures → fix.
+**Pre-existing flakies (don't block on these):** 2 flaky route mocks (agent-sessions, chat-sessions). If only these fail, proceed. New failures → fix.
 
 ### Worktree mode (default ON)
 
