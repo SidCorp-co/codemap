@@ -144,4 +144,16 @@ export function installCases(pluginRoot, check) {
     check('install: agent-setup/prompt.md matches `cm onboard --prompt`', gen === onDisk,
       'regenerate it: node scripts/cm.mjs onboard --prompt > agent-setup/prompt.md');
   }
+
+  // cm:guard the hook a TEAM is gated by must be COMMITTED — .git/hooks is per-clone, so a repo relying
+  //   on it is gated only on the machines that ran a setup command, which is what does not scale
+  {
+    const root = mkdtempSync(join(tmpdir(), 'cm-hooks-'));
+    spawnSync(process.execPath, [join(pluginRoot, 'scripts', 'cm.mjs'), 'install'], { cwd: root, encoding: 'utf8' });
+    const hook = join(root, '.forge', 'codemap', 'hooks', 'pre-commit');
+    check('install: writes a committed pre-commit hook, executable', existsSync(hook)
+      && (statSync(hook).mode & 0o111) !== 0 && /verify --staged/.test(readFileSync(hook, 'utf8')),
+      'a per-clone hook cannot gate a team');
+    rmSync(root, { recursive: true, force: true });
+  }
 }

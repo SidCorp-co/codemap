@@ -145,6 +145,27 @@ cm install --git-hook     # + .git/hooks/pre-commit → cm verify --staged   (pe
 | pre-commit | `.forge/codemap/cm verify --staged` | no |
 | the agent, mid-edit | the plugin's hooks, which drive the same `cm` | yes — and only here |
 
+### Nothing is installed per device
+
+The checker is committed (`cm install`), so a clone has it. The commit hook is committed too —
+`.forge/codemap/hooks/pre-commit` — and one line wires it to whatever the team already runs:
+
+| The repo already runs | Wire it with |
+|---|---|
+| `npm install` / `pnpm install` | `"prepare": "git config core.hooksPath .forge/codemap/hooks"` in `package.json` |
+| the `pre-commit` framework | a `repo: local` hook whose `entry` is `.forge/codemap/cm verify --staged --tier grammar` |
+| `make setup` | `git config core.hooksPath .forge/codemap/hooks` |
+
+`.git/hooks/pre-commit` (`cm install --git-hook`) still exists, but it is per-clone: a repo whose
+only gate lives there is gated on exactly the machines that remembered to run one command.
+
+CI templates that need no runner-side setup beyond a node image: `agent-setup/gitlab-ci.yml`,
+`agent-setup/codemap-upgrade.yml`.
+
+**The Claude Code plugin is optional and gates nothing.** It adds one thing: injecting a file's
+declared couplings into an agent's context before it edits that file, and holding the grammar tier
+after. Every check that can fail a commit or a pipeline runs from the committed copy.
+
 ### Three ways a repo can run it, and what each costs
 
 | | How | Cost |

@@ -1,0 +1,19 @@
+# codemap gate for GitLab CI. Runs the checker COMMITTED under .forge/codemap/ — no plugin, no
+# npm install, no runner-side setup beyond a node image. Merge this into .gitlab-ci.yml.
+codemap:
+  stage: test
+  image: node:20-alpine
+  needs: []
+  variables: { GIT_DEPTH: "0" }        # --since needs history to find the merge base
+  script:
+    - |
+      if [ -n "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" ]; then
+        git fetch -q origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+        BASE=$(git merge-base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" HEAD)
+        .forge/codemap/cm verify --since "$BASE"
+      else
+        .forge/codemap/cm verify
+      fi
+  rules:
+    - if: $CI_MERGE_REQUEST_IID
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
