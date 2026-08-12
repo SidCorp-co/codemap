@@ -65,11 +65,19 @@ const PROSE = new Set(['CM001', 'CM010', 'CM011']);
 const diags = report.diags ?? [];
 
 const enforceProse = report.onboarded && !report.baselineUnreadable;
-const blocking = diags.filter((d) => d.code !== 'CM009' && (enforceProse || !PROSE.has(d.code)));
+// cm:guard ONLY the grammar tier blocks — structural is a warning by §7 and advisory cannot gate at all,
+//   and letting them through here blocked an author for a flow step whose sibling was simply out of scope
+const blocking = diags.filter((d) => d.tier === 'grammar'
+  && d.code !== 'CM009' && (enforceProse || !PROSE.has(d.code)));
+const nonBlocking = diags.filter((d) => d.tier !== 'grammar');
 
 const notes = [];
 if (report.baselineUnreadable) {
   notes.push('This repo\'s .forge/codemap-baseline.json is in the pre-0.2 count format, so legacy prose cannot be told from new prose — comment rules are NOT being enforced here. Run `cm baseline` to re-freeze by content.');
+}
+if (nonBlocking.length) {
+  notes.push(`${nonBlocking.length} non-grammar diagnostic(s) here are for CI, not for this edit: `
+    + `${[...new Set(nonBlocking.map((d) => d.code))].join(', ')}.`);
 }
 if (report.normalized?.length) {
   notes.push(`${report.normalized.length} annotation(s) were normalized for you (cm owns the format).`);

@@ -535,6 +535,65 @@ function escapeHatchCases(pluginRoot, check, roots) {
     `the escape must remain available, just not silent:\n${forced.out}\n${green.out}`);
 }
 
+// cm:why the hook is ALWAYS scoped, and a scoped run built a one-file graph — so a legal two-step flow
+//   reported CM103/CM201 against itself and the hook blocked the author for the step they had just written
+function scopedGraphCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  writeFileSync(join(root, '.forge', 'codemap.json'),
+    '{ "specVersion": "codemap/1", "flows": [{ "name": "jd" }] }\n');
+  writeFileSync(join(root, 'step-a.ts'), '// cm:flow jd/start — pick a runner\nexport const a = 1;\n');
+  writeFileSync(join(root, 'step-b.ts'), '// cm:flow jd/claim after:start — claim the row\nexport const b = 1;\n');
+  cm(pluginRoot, root, 'baseline');
+
+  const whole = cm(pluginRoot, root, 'verify');
+  check('cli: a legal two-step flow verifies clean whole-tree', whole.status === 0 && /1 flows/.test(whole.out),
+    `baseline expectation:\n${whole.out}`);
+
+  const scoped = cm(pluginRoot, root, 'verify', 'step-b.ts');
+  check('cli: a scoped run judges the flow against the WHOLE graph, not one file',
+    scoped.status === 0 && !/CM103|CM201/.test(scoped.out),
+    `a one-file graph made a correct flow look broken:\n${scoped.out}`);
+
+  const changed = cm(pluginRoot, root, 'verify', '--fix', '--json', '--changed-lines', 'step-b.ts');
+  let diags = null;
+  try { diags = JSON.parse(changed.out).diags; } catch { diags = null; }
+  check('cli: the exact invocation the post-edit hook makes is clean',
+    Array.isArray(diags) && diags.length === 0,
+    `the hook must not block a correct flow step: ${JSON.stringify(diags)}`);
+
+  writeFileSync(join(root, 'step-c.ts'), '// cm:flow jd/ghost after:nope — points nowhere\nexport const c = 1;\n');
+  const real = cm(pluginRoot, root, 'verify', 'step-c.ts');
+  check('cli: a genuinely dangling after: is still reported on a scoped run',
+    real.status === 1 && /CM103/.test(real.out),
+    `scoping the graph must not hide a real break:\n${real.out}`);
+}
+
+// cm:why a repo's CI runs the checker it COMMITTED, so a newer plugin reporting green says nothing about
+//   the gate — two production repos sat 6 and 8 minors behind with no signal anywhere
+function skewCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  mkdirSync(join(root, '.forge', 'codemap'), { recursive: true });
+  writeFileSync(join(root, '.forge', 'codemap', 'VERSION'), '0.2.1\n');
+  cm(pluginRoot, root, 'baseline');
+
+  const warned = cm(pluginRoot, root, 'verify');
+  check('cli: verify warns when the committed checker is behind the one being run',
+    /committed checker is 0\.2\.1/.test(warned.out) && /cm install --upgrade/.test(warned.out),
+    `a green run from the wrong binary is not a gate:\n${warned.out}`);
+
+  const doc = cm(pluginRoot, root, 'doctor');
+  check('cli: doctor names the skew in one place',
+    /committed checker/.test(doc.out) && /behind/.test(doc.out) && /0\.2\.1/.test(doc.out),
+    `doctor said:\n${doc.out}`);
+
+  const down = cm(pluginRoot, root, 'install');
+  check('cli: install refuses a downgrade without --force',
+    down.status === 2 || !/0\.2\.1/.test(readFileSync(join(root, '.forge', 'codemap', 'VERSION'), 'utf8')),
+    `installing must not silently move a repo backwards:\n${down.out}`);
+}
+
 export function cliCases(pluginRoot, check) {
   const roots = [];
   try {
@@ -616,6 +675,8 @@ export function cliCases(pluginRoot, check) {
     wrapCases(pluginRoot, check, roots);
     adoptionCases(pluginRoot, check, roots);
     escapeHatchCases(pluginRoot, check, roots);
+    scopedGraphCases(pluginRoot, check, roots);
+    skewCases(pluginRoot, check, roots);
     targetCases(pluginRoot, check, roots);
     outputCases(pluginRoot, check, roots);
     diffScopeCases(pluginRoot, check, roots);

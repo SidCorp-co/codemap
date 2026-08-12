@@ -12,6 +12,7 @@ import { join, relative, resolve, dirname, normalize } from 'node:path';
 import {
   findRoot, loadRegistry, saveRegistry, loadBaseline, saveBaseline,
   selects, walk, changedSince, changedStaged, changedRanges, headBlob, dirtyFiles,
+  vendoredVersion, compareVersions,
   toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
 } from './lib/registry.mjs';
 import { analyzeFile } from './lib/analyze.mjs';
@@ -322,13 +323,21 @@ switch (cmd) {
     if (ranges) diags = diags.filter((d) => inScope(ranges, d));
     const outsideDiff = beforeScope - diags.length;
 
-    const g = buildGraph(perFile);
+    // cm:guard the GRAPH is always whole-tree, even on a scoped run — a one-file graph made a legal
+    //   two-step flow report CM103/CM201 against itself, and the hook is always scoped (ISS-A)
+    const scopedRun = Boolean(positional.length || flags.has('--staged') || flagValue('--since'));
+    const graphFiles = scopedRun ? annotatedFiles(reg) : files;
+    const gPerFile = scopedRun ? analyzeAll(reg, graphFiles, baseline) : perFile;
+    const g = buildGraph(gPerFile);
+    const inRun = new Set(files);
+    const scopeGraph = (list) => (scopedRun ? list.filter((d) => inRun.has(d.file)) : list);
+
     if (tier !== 'all' && tier !== 'grammar') diags = [];
-    if (tier === 'all' || tier === 'referential') diags.push(...referentialDiags(g, { root, reg }));
-    if (tier === 'all' || tier === 'structural') diags.push(...structuralDiags(g));
+    if (tier === 'all' || tier === 'referential') diags.push(...scopeGraph(referentialDiags(g, { root, reg })));
+    if (tier === 'all' || tier === 'structural') diags.push(...scopeGraph(structuralDiags(g)));
     // cm:guard advisory is opt-in until its false-positive rate is MEASURED on a real repo — a warning
     //   nobody trusts is how a tier gets switched off, and this one guesses where CM102/CM106 know (§7.1)
-    if (tier === 'advisory' || (tier === 'all' && reg.enforce?.advisory)) diags.push(...advisoryDiags(g, { root, baseline }));
+    if (tier === 'advisory' || (tier === 'all' && reg.enforce?.advisory)) diags.push(...scopeGraph(advisoryDiags(g, { root, baseline })));
 
     // cm:guard the graph tiers raise their diagnostics here, long after analyzeFile applied its own
     //   ignore map — so cm:ignore CM102 / CM301 silently did nothing, though both fix lines offer it
@@ -383,7 +392,8 @@ switch (cmd) {
     const skipped = perFile.filter((f) => f.skipped).length;
     console.log('');
     console.log(`${bold('codemap')} ${SPEC_VERSION} · ${files.length} files (${skipped} skipped) · ` +
-      `${g.flows.size} flows · ${g.edges.length} edges · ${g.guards.length} guards · ${g.hacks.length} hacks`);
+      `${g.flows.size} flows · ${g.edges.length} edges (${g.edges.filter((e) => e.target.includes('#')).length} anchored) · `
+      + `${g.guards.length} guards · ${g.whys.length} whys · ${g.hacks.length} hacks`);
     console.log(`${errors ? red(plural(errors, 'error')) : 'no errors'}, ${plural(warns, 'warning')}`);
     if (normalized.length) console.log(dim(`${plural(normalized.length, 'annotation')} normalized by --fix`));
     if (outsideDiff) {
@@ -394,6 +404,13 @@ switch (cmd) {
       console.log(`legacy prose: ${bold(String(debt))} distinct still frozen · ${cleaned} cleaned (${share}%)` +
         `${scoped ? dim(' — scoped run, whole-tree figures need a bare `cm verify`') : ''}`);
       if (debt) console.log(dim('frozen comments are debt, not absolution — list them with: cm sweep <path>'));
+    }
+    // cm:guard a repo's CI runs its VENDORED checker, so a newer plugin reporting green here says nothing
+    //   about the gate — two production repos sat 6 and 8 minors behind with no signal at all (ISS-B)
+    const vend = vendoredVersion(root);
+    if (vend && compareVersions(vend, toolVersion()) < 0) {
+      console.log(yellow(`this repo's committed checker is ${vend}, but you just ran ${toolVersion()} — `
+        + 'CI gates on the committed one, so this verdict is not the gate. Upgrade it: cm install --upgrade'));
     }
     if (baseline.__legacyFormat) console.log(yellow('baseline is in the pre-0.2 count format and was ignored — run: cm baseline'));
     if (reg._missing) console.log(dim('no .forge/codemap.json — grammar tier ran with defaults; flow names unvalidated (§8). Run: cm init'));
@@ -461,6 +478,48 @@ switch (cmd) {
       console.log(`${pad}${s.step}${s.detached ? red(' (detached)') : ''}  ${dim(`${s.file}:${s.line}`)}`);
       if (annText(s)) console.log(`${pad}  ${dim(annText(s))}`);
     }
+    break;
+  }
+
+  // cm:why the declared edges were readable only one file at a time (impact) or as prose (ls), so nothing
+  //   could union them into a derived code graph — which is the only place they are not already redundant
+  case 'graph': {
+    const reg = loadOrDie();
+    const g = buildGraph(analyzeAll(reg, annotatedFiles(reg)));
+    const node = (p) => ({ id: p, kind: 'file' });
+    const nodes = new Map();
+    const edges = [];
+    for (const e of g.edges) {
+      nodes.set(e.file, node(e.file));
+      const [path, anchor] = e.target.split('#');
+      if (!e.external) nodes.set(path, node(path));
+      edges.push({
+        from: e.file, to: e.target, kind: e.kind, anchor: anchor ?? null,
+        external: e.external ?? null, line: e.line, why: annText(e), evidence: 'declared',
+      });
+    }
+    for (const [name, f] of g.flows) {
+      for (const s2 of f.steps) {
+        nodes.set(s2.file, node(s2.file));
+        if (s2.after) edges.push({ from: s2.file, to: null, kind: 'flow', flow: name, step: s2.step, after: s2.after, line: s2.line, why: annText(s2), evidence: 'declared' });
+      }
+    }
+    const out = {
+      specVersion: SPEC_VERSION,
+      toolVersion: toolVersion(),
+      nodes: [...nodes.values()],
+      edges,
+      guards: g.guards.map((a) => ({ file: a.file, line: a.line, text: annText(a), evidence: 'declared' })),
+      whys: g.whys.map((a) => ({ file: a.file, line: a.line, text: annText(a), evidence: 'declared' })),
+      hacks: g.hacks.map((a) => ({ file: a.file, line: a.line, issue: a.issue, until: a.until, text: annText(a) })),
+    };
+    if (!flags.has('--json')) {
+      console.log(`${bold('codemap graph')} · ${out.nodes.length} nodes · ${out.edges.length} edges · `
+        + `${out.guards.length} guards · ${out.whys.length} whys · ${out.hacks.length} hacks`);
+      console.log(dim('  machine-readable form (union this into a derived code graph): cm graph --json'));
+      break;
+    }
+    console.log(JSON.stringify(out, null, 2));
     break;
   }
 
@@ -616,7 +675,10 @@ switch (cmd) {
   }
 
   case 'init': {
-    const reg = existsSync(join(root, '.forge', 'codemap.json')) ? loadOrDie() : { ...DEFAULT_REGISTRY };
+    // cm:why onboarding led with freezing thousands of legacy comments, which is the bill before the value —
+    //   the graph is what this tool is for, so init gives that first and prose policy is opted into (--prose)
+    const fresh = { ...DEFAULT_REGISTRY, enforce: { ...DEFAULT_REGISTRY.enforce, grammar: flags.has('--prose') } };
+    const reg = existsSync(join(root, '.forge', 'codemap.json')) ? loadOrDie() : fresh;
     saveRegistry(root, reg);
     // cm:why init freezes from scratch, so it must not consult a baseline that may already be there — a
     //   re-init against its own output would treat a frozen line as prose it had never seen
@@ -631,6 +693,14 @@ switch (cmd) {
     console.log(`codemap ${SPEC_VERSION} initialised at ${root}`);
     console.log(`  .forge/codemap.json`);
     console.log(`  .forge/codemap-baseline.json  ${dim(`${total} legacy comments frozen by content`)}`);
+    if (!reg.enforce?.grammar) {
+      console.log('');
+      console.log(`${bold('graph only')} — cm:edge/guard/flow + impact + agent injection. No comment policing.`);
+      console.log(dim('  turn the prose rules on later with "enforce": { "grammar": true }, or: cm init --prose'));
+    }
+    console.log('');
+    console.log('Declare what no analyzer can derive, starting with what your comments already say:');
+    console.log(dim('  cm sweep | grep -i "see \\|sync with\\|must match\\|mirrors"   # latent edges already written as prose'));
     break;
   }
 
@@ -638,6 +708,10 @@ switch (cmd) {
   // see; this puts the checker in the repo so the registry's rules hold with no plugin installed
   case 'install': {
     const version = toolVersion();
+    const had = vendoredVersion(root);
+    if (had && compareVersions(version, had) < 0 && !flags.has('--force')) {
+      die(`refusing to downgrade the committed checker: ${had} -> ${version}`, 'use --force if that is what you mean');
+    }
     const r = install({
       root, version, gitHook: flags.has('--git-hook'), force: flags.has('--force'),
     });
@@ -645,7 +719,12 @@ switch (cmd) {
       saveRegistry(root, { ...DEFAULT_REGISTRY });
       console.log(`wrote .forge/codemap.json ${dim('(no baseline yet — run: .forge/codemap/cm baseline)')}`);
     }
-    console.log(`codemap ${version} installed into ${bold('.forge/codemap/')} ${dim(`${r.files.length} files`)}`);
+    console.log(had && had !== version
+      ? `codemap ${bold(`${had} -> ${version}`)} in ${bold('.forge/codemap/')} ${dim(`${r.files.length} files`)}`
+      : `codemap ${version} installed into ${bold('.forge/codemap/')} ${dim(`${r.files.length} files`)}`);
+    if (had && had !== version) {
+      console.log(yellow('  re-run the gate before merging: the committed checker changed, so its verdict may too'));
+    }
     if (r.hook) console.log(`  ${r.hook} ${dim('runs: cm verify --staged --tier grammar')}`);
     for (const n of r.notes) console.log(dim(`  note: ${n}`));
     console.log('');
@@ -686,6 +765,25 @@ switch (cmd) {
     console.log(`declared flow "${name}". Annotate the first step:\n`);
     console.log(`  // cm:flow ${name}/<step> — <what this step does>`);
     console.log(`  // cm:flow ${name}/<next> after:<step> — <...>`);
+    break;
+  }
+
+  // cm:why every version-skew question was answerable only by reading four files in three places, which is
+  //   why two production repos ran a checker 6 and 8 minors behind for weeks without anyone noticing
+  case 'doctor': {
+    const reg = loadRegistry(root);
+    const vend = vendoredVersion(root);
+    const bl = loadBaseline(root);
+    const frozen = Object.entries(bl).filter(([k]) => !k.startsWith('__'));
+    const keys = frozen.reduce((a, [, v]) => a + [...v].filter((k) => !k.startsWith('b:')).length, 0);
+    const row = (k, v) => console.log(`  ${k.padEnd(22)} ${v}`);
+    console.log(bold(`codemap doctor · ${root}`));
+    row('tool running now', toolVersion());
+    row('committed checker', vend ? (compareVersions(vend, toolVersion()) < 0 ? yellow(`${vend}  (behind — CI gates on this)`) : vend) : dim('none (cm install never run)'));
+    row('registry', reg._missing ? yellow('missing — run: cm init') : `${(reg.flows ?? []).length} flows, ${(reg.externals ?? []).length} externals`);
+    row('grammar tier', reg.enforce?.grammar === false ? 'off (graph only)' : 'on');
+    row('baseline', bl.__legacyFormat ? yellow('pre-0.2 format, ignored') : `${keys} comments frozen across ${frozen.length} files`);
+    if (vend && compareVersions(vend, toolVersion()) < 0) console.log(dim('\n  cm install --upgrade   # then commit .forge/codemap/'));
     break;
   }
 
