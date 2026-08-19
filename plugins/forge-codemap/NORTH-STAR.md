@@ -121,6 +121,15 @@ bằng cách viết thêm tài liệu.**
 - Xác nhận bot nâng cấp hàng tuần chạy thật một lần, có log.
 
 **Phase 1 — phân phối** *(codemap đi trước trong bốn sản phẩm)*
+- **Tách repo riêng.** Hôm nay codemap là `plugins/forge-codemap/` trong
+  `SidCorp-co/forge-pipeline-skills` — public, nhưng chỉ chiếm 34/190 file tracked; phần còn lại là
+  86 file bundle, 32 skill, 26 profile không liên quan. Hai hệ quả chặn Phase 1:
+  1. GitHub **chỉ đọc `.github/ISSUE_TEMPLATE/` ở gốc repo**. Bốn form đã viết sẵn ở
+     `plugins/forge-codemap/.github/ISSUE_TEMPLATE/` — đúng đường dẫn sau khi tách, **nằm im
+     trước khi tách**.
+  2. Điều kiện mở khoá dưới đây là *“1 issue từ người lạ”*. Trong hộp thư dùng chung với 32 skill
+     khác thì tín hiệu đó **không quy về codemap được** — nó không đo được, nên không dùng làm
+     cổng được.
 - Rollout 5 → 15 repo nội bộ qua `forge_config` → `plugin_sync.rs:89`.
 - Public. Mở khoá cho archmap khi có **1 issue/PR từ người lạ**.
 

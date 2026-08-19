@@ -1,0 +1,35 @@
+name: Hook im lặng (missed)
+description: Comment rác lọt qua, hoặc một cm: hỏng mà check vẫn xanh.
+labels: ["fn"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Nguy hiểm hơn chặn sai: gate xanh trong khi thứ nó gác đã hỏng. Người ta
+        tin nó, nên không đọc lại bằng mắt.
+  - type: textarea
+    id: slipped
+    attributes:
+      label: Cái đã lọt qua
+      description: Dán comment hoặc annotation. Nói rõ mã check nào đáng lẽ bắt.
+      render: text
+    validations: { required: true }
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Bậc
+      options:
+        - "CM0xx — ngữ pháp (annotation viết sai dạng)"
+        - "CM1xx — quy chiếu (annotation trỏ tới thứ không tồn tại)"
+        - "CM2xx — cấu trúc (comment thừa, prose suy ra được)"
+        - "không rõ"
+    validations: { required: true }
+  - type: input
+    id: baseline
+    attributes:
+      label: Có nằm trong baseline không
+      description: >-
+        `.forge/codemap-baseline.json` đóng băng prose cũ để ratchet không bắt sửa
+        quá khứ. Nếu dòng này đã bị đóng băng thì im lặng là đúng thiết kế.
+      placeholder: "có / không / chưa kiểm"
+    validations: { required: true }

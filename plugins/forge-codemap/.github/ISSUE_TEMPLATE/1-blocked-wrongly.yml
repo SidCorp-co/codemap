@@ -1,0 +1,42 @@
+name: Hook chặn sai (false positive)
+description: cm chặn một sửa đổi hợp lệ, hoặc bắt xoá một comment đáng giữ.
+labels: ["fp"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Loại phản hồi giá trị nhất. Một hook chặn sai sẽ bị gỡ khỏi settings, và
+        sau đó nó không gác gì nữa — hỏng im lặng, không ai báo.
+  - type: input
+    id: code
+    attributes:
+      label: Mã check
+      placeholder: "CM104"
+    validations: { required: true }
+  - type: textarea
+    id: receipt
+    attributes:
+      label: Biên nhận
+      description: Dán nguyên văn output của `cm check --json`. Đừng tóm tắt.
+      render: json
+    validations: { required: true }
+  - type: textarea
+    id: code-block
+    attributes:
+      label: Đoạn code bị chặn
+      description: Kèm vài dòng trước/sau để thấy ngữ cảnh.
+      render: text
+    validations: { required: true }
+  - type: textarea
+    id: why
+    attributes:
+      label: Vì sao nó hợp lệ
+      description: >-
+        Với comment: vì sao nội dung này *không* suy ra được từ type, tên, hay
+        đường dẫn? Đó là tiêu chí duy nhất — nếu công cụ suy ra được thì comment
+        là bản sao sẽ mốc.
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes: { label: Phiên bản, description: "nội dung `.forge/codemap/VERSION`" }
+    validations: { required: true }

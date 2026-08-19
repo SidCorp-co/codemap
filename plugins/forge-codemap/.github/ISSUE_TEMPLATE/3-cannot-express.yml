@@ -1,0 +1,39 @@
+name: Năm loại annotation không diễn đạt nổi
+description: Có một ràng buộc thật, nhưng guard/edge/flow/hack/why đều không vừa.
+labels: ["grammar-gap"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Đây là câu hỏi sản phẩm quan trọng nhất của codemap. Ngữ pháp năm loại là
+        một cược: rằng năm loại phủ được mọi thứ đáng khai. Mỗi báo cáo ở đây là
+        một phép thử cược đó.
+        <br><br>
+        Cẩn thận: `cm:why` là loại chứa-tất. Nếu bạn nhét được vào `cm:why` nhưng
+        thấy *mất thông tin* khi làm vậy, đó chính là ca đáng báo — nói rõ mất gì.
+  - type: textarea
+    id: constraint
+    attributes:
+      label: Ràng buộc, phát biểu bằng một câu
+      description: "Ai sửa chỗ này phải biết gì, mà không công cụ nào nói cho họ?"
+    validations: { required: true }
+  - type: textarea
+    id: tried
+    attributes:
+      label: Đã thử loại nào, hỏng ở đâu
+      description: Đi qua cả năm loại và nói vì sao từng loại không vừa.
+      value: |
+        - guard:
+        - edge:
+        - flow:
+        - hack:
+        - why:
+    validations: { required: true }
+  - type: textarea
+    id: consequence
+    attributes:
+      label: Hỏng gì khi ai đó không biết
+      description: >-
+        Bắt buộc. Ràng buộc mà vi phạm nó không gây hậu quả gì là một sở thích,
+        không phải một ràng buộc — và nó không đáng có annotation.
+    validations: { required: true }
