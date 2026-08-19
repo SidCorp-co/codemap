@@ -1,5 +1,7 @@
 # Forge CodeMap
 
+> **Mục tiêu & cái không được làm:** [`NORTH-STAR.md`](./NORTH-STAR.md) — đọc trước khi thêm tính năng.
+
 A **declared-edge layer** for source code, plus the comment discipline that keeps it clean.
 
 LSP derives references. The type system derives shapes. Paths derive modules. CodeMap carries only
