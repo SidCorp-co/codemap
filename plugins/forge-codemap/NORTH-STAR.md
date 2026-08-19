@@ -69,7 +69,7 @@ Trên repo forge (`cm verify --tier referential`, exit 0):
 
 Độ chín: **290 test xanh** · 18 verb · 8 language profile (ts/go/php/py/rust/sql/sh/yaml) ·
 `tests/cli.mjs` 687 dòng test end-to-end · 1 stub tự khai (`cm migrate`, exit 2) ·
-đang cài ở **5 repo** (anhome, forge, epodsystem-core, sidboss, server-vault) ·
+đang cài ở **5 repo nội bộ** ·
 có **cả `PreToolUse` và `PostToolUse`** — là công cụ duy nhất trong bốn cái đạt bậc 1.
 
 CM301/CM302 (advisory) đang **mặc định tắt**, tự khai FP rate chưa đo.
