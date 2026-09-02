@@ -72,11 +72,14 @@ Trên repo forge (`cm verify --tier referential`, exit 0):
 đang cài ở **5 repo nội bộ** ·
 có **cả `PreToolUse` và `PostToolUse`** — là công cụ duy nhất trong bốn cái đạt bậc 1.
 
-CM301/CM302 (advisory) mặc định tắt trừ khi repo đã vendor archmap ở `.forge/archmap` — khi đó
-`cm verify` đọc `archmap graph --json` làm bằng chứng thật thay vì so tên file, và tự bật (`warn`,
-vẫn không gate). Đo lại trên archmap thật (repo `forge`, 1905 file): 6 hit CM301 cũ, **0** bị
-đồ thị thật loại thêm — khớp với phân tích tay đã có ở SPEC §7.1 (cả 6 đều là coupling không có
-tham chiếu thật). Chưa lên `error` — đúng theo lộ trình §8.
+CM301/CM302 (advisory) vẫn **mặc định tắt** — `enforce.advisory` trong registry, hoặc
+`--tier advisory` tường minh, vẫn là cổng duy nhất; archmap có mặt không tự bật tier (`archmap
+graph` tốn ~15s trên repo 1600+ file, và hook chạy `cm verify` tier=all trên MỖI lần sửa file —
+tự bật theo archmap từng gây stall nhiều giây mỗi lần sửa, đã đo và sửa lại). Khi tier được bật
+(bằng tay), nó đọc `archmap graph --json` làm bằng chứng thật thay vì so tên file. Đo lại trên
+archmap thật (repo `forge`, 1905 file): 6 hit CM301 cũ, **0** bị đồ thị thật loại thêm — khớp với
+phân tích tay đã có ở SPEC §7.1 (cả 6 đều là coupling không có tham chiếu thật). Chưa lên `error`
+— đúng theo lộ trình §8.
 
 ## 5. North star
 
@@ -96,7 +99,9 @@ duy nhất cho câu hỏi thật — *primitive này đúng, hay chỉ đúng v�
 2. Bot nâng cấp hàng tuần chạy thật, có log, **4 tuần liên tiếp** (nó đã chết âm thầm một thời gian
    không rõ — xem nhật ký).
 3. Tỉ lệ legacy prose giảm; `cm:` annotation tăng.
-4. CM301 lên `warn` sau khi đọc được đồ thị archmap — **xong** (§8 Phase 2).
+4. CM301 đọc được đồ thị archmap thật khi tier được bật — **xong** (§8 Phase 2); bật `warn` theo
+   mặc định vẫn chờ một lớp cache cho `archmap graph` (~15s/lần), vì hook gọi `cm verify` mỗi lần
+   sửa file.
 
 ## 6. Kill criteria
 
@@ -137,14 +142,18 @@ bằng cách viết thêm tài liệu.**
 - Rollout 5 → 15 repo nội bộ qua `forge_config` → `plugin_sync.rs:89`.
 - Public. Mở khoá cho archmap khi có **1 issue/PR từ người lạ**.
 
-**Phase 2 — mối nối đáng làm** *(xong: archmap export → CM301 đọc → đo FP → `warn`)*
-- `graph.mjs` từng tự thú: *”Evidence is a basename match, not an import graph”* — CM301 đoán
+**Phase 2 — mối nối đáng làm** *(xong phần đọc đồ thị + đo FP; `warn` mặc định vẫn chờ cache)*
+- `graph.mjs` từng tự thú: *"Evidence is a basename match, not an import graph"* — CM301 đoán
   coupling có thật hay không **bằng cách so tên file**. Đã sửa: `scripts/lib/archmap.mjs` đọc
-  `archmap graph --json` khi repo có vendor; đồ thị thật được hỏi TRƯỚC basename, và không cần
-  archmap để check vẫn chạy như cũ.
+  `archmap graph --json` khi tier advisory được bật; đồ thị thật được hỏi TRƯỚC basename, và
+  không cần archmap để check vẫn chạy như cũ.
 - Đo trên archmap thật thay vì đoán: 0/6 hit đo lại trên repo `forge` được đồ thị thật loại thêm —
-  cả 6 đã đúng là coupling không tham chiếu (SPEC §7.1). Vì có bằng chứng thật, tier tự bật
-  (`warn`) khi archmap có mặt, không cần `enforce.advisory` — nhưng chưa lên `error`.
+  cả 6 đã đúng là coupling không tham chiếu (SPEC §7.1).
+- **Chưa tự bật theo mặc định.** Thử tự bật khi archmap có mặt (bỏ qua `enforce.advisory`) đã bị
+  đo thấy gây stall ~15s trên MỖI lần sửa file, vì hook gọi `cm verify` tier=all không có
+  `--tier` — và `archmap graph` là một lần quét cả repo. Đã revert về đúng cổng cũ
+  (`enforce.advisory` hoặc `--tier advisory` tường minh); còn lại việc tự bật cần một lớp cache
+  cho archmap trước, để sau. Chưa lên `error`.
 - Còn lại, ưu tiên thấp hơn: dọn lớp chung (`globToRe` ×2, `findRoot` ×2, install/vendor ~270
   dòng ×2) giữa codemap và archmap — thuần dọn dẹp, không chặn việc trên.
 

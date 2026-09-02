@@ -491,8 +491,8 @@ function writeStubArchmap(root, edges) {
   chmodSync(bin, 0o755);
 }
 
-// cm:why graph.mjs:108 confessed the gap this closes: a basename match is not an import graph. These
-//   cases prove the real edge is consulted FIRST, and that its absence — vendored or not — never gates
+// cm:why proves the real edge is consulted, and that a vendored archmap never runs outside the
+//   pre-existing opt-in — the hook's bare tier=all `cm verify` runs on every single-file edit (ISS-2)
 function archmapCases(pluginRoot, check, roots) {
   const root = makeRepo();
   roots.push(root);
@@ -511,34 +511,33 @@ function archmapCases(pluginRoot, check, roots) {
       fromKind: 'source', toKind: 'source', dynamic: false, spec: './engine', language: 'ts', why: null },
   ]);
 
-  const withArchmap = cm(pluginRoot, root, 'verify');
-  check('cli: a vendored archmap turns the advisory tier on without --tier or enforce.advisory',
-    !/caller\.ts/.test(withArchmap.out) && /lonely\.ts:1/.test(withArchmap.out) && /CM301/.test(withArchmap.out),
-    `expected the real edge to silence caller.ts and the graph-absent pair to still fire:\n${withArchmap.out}`);
+  const bareVerify = cm(pluginRoot, root, 'verify');
+  check('cli: a vendored archmap does NOT turn the advisory tier on by itself',
+    !/CM301/.test(bareVerify.out),
+    `enforce.advisory must still be the only default-tier gate:\n${bareVerify.out}`);
+
+  const explicitTier = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
+  check('cli: --tier advisory backed by a real archmap edge silences the wired pair',
+    !/caller\.ts/.test(explicitTier.out) && /lonely\.ts:1/.test(explicitTier.out) && /CM301/.test(explicitTier.out),
+    `expected the real edge to silence caller.ts and the graph-absent pair to still fire:\n${explicitTier.out}`);
   check('cli: CM301 backed by a real import edge still never gates',
-    withArchmap.status === 0,
-    `advisory is warning-only regardless of evidence source:\n${withArchmap.out}`);
+    explicitTier.status === 0,
+    `advisory is warning-only regardless of evidence source:\n${explicitTier.out}`);
 
-  writeFileSync(join(root, '.forge', 'codemap.json'), '{"enforce":{"advisory":false}}\n');
-  const explicitOff = cm(pluginRoot, root, 'verify');
-  check('cli: an explicit enforce.advisory: false wins over a vendored archmap',
-    !/CM301/.test(explicitOff.out),
-    `a repo that opted OUT must stay silent even with real evidence available:\n${explicitOff.out}`);
-  writeFileSync(join(root, '.forge', 'codemap.json'), '{}\n');
-
-  rmSync(join(root, '.forge', 'archmap'), { recursive: true, force: true });
-  const withoutArchmap = cm(pluginRoot, root, 'verify');
-  check('cli: removing the vendored archmap returns to the old opt-in default',
-    !/CM301/.test(withoutArchmap.out),
-    `no archmap and no enforce.advisory must stay silent by default:\n${withoutArchmap.out}`);
+  writeFileSync(join(root, '.forge', 'codemap.json'), '{"enforce":{"advisory":true}}\n');
+  const optedIn = cm(pluginRoot, root, 'verify');
+  check('cli: enforce.advisory: true plus a vendored archmap uses real evidence on a bare verify',
+    !/caller\.ts/.test(optedIn.out) && /lonely\.ts:1/.test(optedIn.out),
+    `an opted-in repo must get the real edge, not just the basename guess:\n${optedIn.out}`);
 
   writeStubArchmap(root, []);
   writeFileSync(join(root, '.forge', 'archmap', 'archmap'), '#!/bin/sh\nexit 1\n');
   chmodSync(join(root, '.forge', 'archmap', 'archmap'), 0o755);
   const brokenArchmap = cm(pluginRoot, root, 'verify');
-  check('cli: an archmap that fails to run is treated as no evidence, never a crash',
-    brokenArchmap.status !== 2 && !/CM301/.test(brokenArchmap.out),
-    `a broken vendored copy must fall back to fully opt-in, not fail the run:\n${brokenArchmap.out}`);
+  check('cli: an archmap that fails to run falls back to the basename guess, never a crash',
+    brokenArchmap.status !== 2 && /CM301/.test(brokenArchmap.out) && /caller\.ts:1/.test(brokenArchmap.out),
+    `a broken vendored copy must fall back, not fail the run:\n${brokenArchmap.out}`);
+  writeFileSync(join(root, '.forge', 'codemap.json'), '{}\n');
 }
 
 // cm:why prose is judged on form and position; an annotation's text was judged on nothing but being

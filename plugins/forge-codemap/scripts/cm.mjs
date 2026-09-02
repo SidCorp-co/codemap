@@ -395,12 +395,10 @@ switch (cmd) {
     if (tier !== 'all' && tier !== 'grammar') diags = [];
     if (tier === 'all' || tier === 'referential') diags.push(...scopeGraph(referentialDiags(g, { root, reg })));
     if (tier === 'all' || tier === 'structural') diags.push(...scopeGraph(structuralDiags(g)));
-    // cm:guard `??`, not `||` — an explicit `enforce.advisory: false` must stay OFF even when
-    //   archmap is vendored, or a repo that measured and rejected the tier could not opt back out
-    const importGraph = loadImportGraph(root);
-    const advisoryOn = reg.enforce?.advisory ?? Boolean(importGraph);
-    if (tier === 'advisory' || (tier === 'all' && advisoryOn)) {
-      diags.push(...scopeGraph(advisoryDiags(g, { root, baseline, importGraph })));
+    // cm:guard advisory stays opt-in, and archmap is loaded ONLY inside this branch — `archmap
+    //   graph` is a full-repo scan (~15s on 1600+ files) and the hook runs a bare tier=all on every edit
+    if (tier === 'advisory' || (tier === 'all' && reg.enforce?.advisory)) {
+      diags.push(...scopeGraph(advisoryDiags(g, { root, baseline, importGraph: loadImportGraph(root) })));
     }
 
     // cm:guard the graph tiers raise their diagnostics here, long after analyzeFile applied its own

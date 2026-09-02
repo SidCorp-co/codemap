@@ -247,9 +247,13 @@ graph --json`) and asks whether the two files are actually wired together at all
 guess. Everywhere else the fallback is a basename match, biased toward silence — a generic stem
 matches easily and the check says nothing.
 
-It is opt-in — `enforce.advisory` in the registry — **unless the repo has archmap vendored**, in which
-case CM301/CM302 run on a bare `cm verify` without that flag: real import evidence is what the earlier
-measurement here was waiting on before trusting the tier at all (§8 Phase 2).
+It stays **off by default** regardless of archmap: `enforce.advisory` in the registry, or an explicit
+`--tier advisory`, is still the only thing that turns it on. Archmap's presence never flips that
+default — `archmap graph` is a full-repo static analysis (measured ~15s on a 1600+ file repo), and
+`cm verify` with no `--tier` is exactly what the `PostToolUse` hook runs on every single-file edit
+(§4.1); making that call on every edit in an archmap-vendored repo turns each one into a multi-second
+stall. A repo opts in once its own FP rate is measured — the same registry flag as before, now backed
+by real evidence instead of a guess when archmap happens to be vendored too.
 
 The basename-only measurement, kept for scale: two production repos (2 234 and 3 277 files, 204 edges,
 69 of them anchored) reported **40** `CM301` before two structural corrections and **5** after; of
