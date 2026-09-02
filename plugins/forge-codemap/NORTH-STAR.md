@@ -135,7 +135,10 @@ bằng cách viết thêm tài liệu.**
 ## 8. Lộ trình của repo này
 
 **Phase 0 — chặn máu**
-- Xác nhận bot nâng cấp hàng tuần chạy thật một lần, có log.
+- Xác nhận bot nâng cấp hàng tuần chạy thật một lần, có log — **xong 2026-09-03 (ISS-5)**, nhưng
+  không phải theo cách đề bài đoán: bot không chết, **nguồn tag nó đọc đã ngừng chảy**. Chi tiết ở
+  §9. Còn lại của đề bài — "4 tuần liên tiếp" (§5 chỉ số dẫn #2) — chưa đo được từ phiên này, vì
+  điều đó đòi quan sát 4 lần chạy thật trong các repo consumer, ngoài quyền ghi của issue này.
 
 **Phase 1 — phân phối** *(codemap đi trước trong bốn sản phẩm)*
 - **Tách repo riêng.** Hôm nay codemap là `plugins/forge-codemap/` trong
@@ -177,6 +180,21 @@ bằng cách viết thêm tài liệu.**
 - **2026-08-19** — gatemap v2 bị khai tử; khoảng trống giữa codemap và archmap là **cố ý**.
 - **~2026-08** — Phát hiện bot nâng cấp hàng tuần đã chết âm thầm (`node20` bị ép off). Đã sửa,
   **chưa xác nhận chạy lại**.
+- **2026-09-03 (ISS-5)** — Xác nhận, và nguyên nhân khác giả thuyết ban đầu. Repo `forge` (vendored,
+  đo trực tiếp trên checkout của project đó) đứng ở `0.13.0` dù `plugin.json` ở đây đã ghi `0.14.0`
+  rồi `0.15.0` — hai bump đó (253d315, ba42a5f) **không có tag `codemap-v*` đi kèm**, khác với mọi
+  bump trước (mỗi bump luôn có tag trỏ đúng commit đó). Bot đọc "mới nhất" bằng
+  `git tag -l codemap-v* | sort -V | tail -1` — không có tag thì bot không có gì để lấy, và im lặng
+  đó giống hệt "đã mới nhất". Đã sửa ba việc: (1) cắt `codemap-v0.14.0`/`codemap-v0.15.0` trên đúng
+  hai commit bump, đẩy lên origin; (2) chạy lại đúng chuỗi lệnh của
+  `agent-setup/codemap-upgrade.yml` (clone công khai → fetch tags → resolve mới nhất → checkout →
+  `cm install --upgrade`) trên một repo giả lập vendored ở `0.13.0` — kết quả thật:
+  `codemap 0.13.0 -> 0.15.0 in .forge/codemap/ 19 files`, đây là "một lần chạy quan sát được" đề bài
+  đòi; (3) thêm `tests/release-tag.mjs` — `node tests/run.mjs` giờ đỏ nếu `plugin.json` bump version
+  mà tag tương ứng chưa tồn tại, để lỗ hổng này không tái diễn âm thầm lần nữa. **Còn treo, ngoài
+  quyền của issue này:** repo `forge` tự nó cần chạy lại workflow thật (hoặc đợi cron thứ Hai tới)
+  để vendored copy của nó thực sự lên `0.15.0` — issue này chỉ sửa được nguồn tag, không có quyền
+  ghi vào repo `forge`.
 - **2026-09-02** (ISS-4) — Đo lại trước khi cài: con số "5" ở §4 đã cũ, thực tế là 6 vendored +
   1 plugins-advisory (`sidboss`, đã cài ngoài issue này) = 7 repo có codemap ở dạng nào đó, không
   phải 7 vendored như bản nháp đầu của log này từng viết nhầm. Rollout 8 repo mới trong ISS-4 chỉ
