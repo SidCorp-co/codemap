@@ -191,10 +191,22 @@ bằng cách viết thêm tài liệu.**
   `cm install --upgrade`) trên một repo giả lập vendored ở `0.13.0` — kết quả thật:
   `codemap 0.13.0 -> 0.15.0 in .forge/codemap/ 19 files`, đây là "một lần chạy quan sát được" đề bài
   đòi; (3) thêm `tests/release-tag.mjs` — `node tests/run.mjs` giờ đỏ nếu `plugin.json` bump version
-  mà tag tương ứng chưa tồn tại, để lỗ hổng này không tái diễn âm thầm lần nữa. **Còn treo, ngoài
-  quyền của issue này:** repo `forge` tự nó cần chạy lại workflow thật (hoặc đợi cron thứ Hai tới)
-  để vendored copy của nó thực sự lên `0.15.0` — issue này chỉ sửa được nguồn tag, không có quyền
-  ghi vào repo `forge`.
+  mà tag tương ứng chưa tồn tại, để lỗ hổng này không tái diễn âm thầm lần nữa.
+  **Vòng review độc lập bắt thêm một lỗi thật thứ hai, nặng hơn cái đầu:** bước install của chính
+  `agent-setup/codemap-upgrade.yml` viết `cd /tmp/codemap && git checkout ...` rồi lệnh `cm.mjs
+  install --upgrade` ngay dòng sau, **cùng một `run:` block** — `cd` đó rò sang dòng sau, nên
+  `cm install` (không có cờ `--root`, luôn vendor vào `$(pwd)`) tự vendor vào bản clone tạm, không
+  phải vào repo consumer đã checkout. PR ra rỗng, im lặng, MỌI lần chạy — bất kể tag có mới hay
+  không. Repo `forge` đã tự phát hiện và tự vá đúng lỗi này trong bản họ copy ra (đổi sang `git -C`,
+  còn ghi lại trong comment của file đó) nhưng bản vá **chưa bao giờ được đưa ngược lại template ở
+  đây** — nghĩa là mọi repo mới copy template từ đây (9 repo tier `plugins` ở §10) sẽ dính lại đúng
+  lỗi mà `forge` đã từng vá. Đã sửa: đổi cả hai bước sang `git -C /tmp/codemap` (khớp bản vá của
+  `forge`), và thêm `tests/upgrade-workflow.mjs` — chạy **đúng script `run:` block đó**, cắt trực
+  tiếp từ file yml, chống lại một repo giả lập, để xác nhận nó vendor vào đúng chỗ; test này đã tự
+  đỏ khi tôi tạm phục hồi bản `cd` để kiểm chứng nó bắt được lỗi thật, rồi xanh lại sau khi vá.
+  **Còn treo, ngoài quyền của issue này:** repo `forge` tự nó cần chạy lại workflow thật của nó (hoặc
+  đợi cron thứ Hai tới) để vendored copy thực sự lên `0.15.0` — issue này chỉ sửa được nguồn tag và
+  template, không có quyền ghi vào repo `forge`.
 - **2026-09-02** (ISS-4) — Đo lại trước khi cài: con số "5" ở §4 đã cũ, thực tế là 6 vendored +
   1 plugins-advisory (`sidboss`, đã cài ngoài issue này) = 7 repo có codemap ở dạng nào đó, không
   phải 7 vendored như bản nháp đầu của log này từng viết nhầm. Rollout 8 repo mới trong ISS-4 chỉ

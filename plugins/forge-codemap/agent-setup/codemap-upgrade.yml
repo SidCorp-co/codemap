@@ -14,10 +14,13 @@ jobs:
       - id: latest
         run: |
           git clone --depth 1 https://github.com/SidCorp-co/forge-pipeline-skills /tmp/codemap
-          cd /tmp/codemap && git fetch --tags --depth 1 origin
-          echo "tag=$(git tag -l 'codemap-v*' | sort -V | tail -1)" >> "$GITHUB_OUTPUT"
+          git -C /tmp/codemap fetch --tags --depth 1 origin
+          echo "tag=$(git -C /tmp/codemap tag -l 'codemap-v*' | sort -V | tail -1)" >> "$GITHUB_OUTPUT"
+      # cm:why cm.mjs has no --root; it always vendors into $(pwd). `cd /tmp/codemap` here used to
+      #   leak into the next line, so `cm install` resolved its root to the throwaway CLONE instead
+      #   of this checkout — the PR came out empty, silently, every run (ISS-5)
       - run: |
-          cd /tmp/codemap && git checkout -q "${{ steps.latest.outputs.tag }}"
+          git -C /tmp/codemap checkout -q "${{ steps.latest.outputs.tag }}"
           node /tmp/codemap/plugins/forge-codemap/scripts/cm.mjs install --upgrade
       - uses: peter-evans/create-pull-request@v6
         with:
