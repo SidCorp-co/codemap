@@ -72,7 +72,11 @@ Trên repo forge (`cm verify --tier referential`, exit 0):
 đang cài ở **5 repo nội bộ** ·
 có **cả `PreToolUse` và `PostToolUse`** — là công cụ duy nhất trong bốn cái đạt bậc 1.
 
-CM301/CM302 (advisory) đang **mặc định tắt**, tự khai FP rate chưa đo.
+CM301/CM302 (advisory) mặc định tắt trừ khi repo đã vendor archmap ở `.forge/archmap` — khi đó
+`cm verify` đọc `archmap graph --json` làm bằng chứng thật thay vì so tên file, và tự bật (`warn`,
+vẫn không gate). Đo lại trên archmap thật (repo `forge`, 1905 file): 6 hit CM301 cũ, **0** bị
+đồ thị thật loại thêm — khớp với phân tích tay đã có ở SPEC §7.1 (cả 6 đều là coupling không có
+tham chiếu thật). Chưa lên `error` — đúng theo lộ trình §8.
 
 ## 5. North star
 
@@ -92,7 +96,7 @@ duy nhất cho câu hỏi thật — *primitive này đúng, hay chỉ đúng v�
 2. Bot nâng cấp hàng tuần chạy thật, có log, **4 tuần liên tiếp** (nó đã chết âm thầm một thời gian
    không rõ — xem nhật ký).
 3. Tỉ lệ legacy prose giảm; `cm:` annotation tăng.
-4. CM301 lên `warn` sau khi đọc được đồ thị archmap.
+4. CM301 lên `warn` sau khi đọc được đồ thị archmap — **xong** (§8 Phase 2).
 
 ## 6. Kill criteria
 
@@ -133,12 +137,16 @@ bằng cách viết thêm tài liệu.**
 - Rollout 5 → 15 repo nội bộ qua `forge_config` → `plugin_sync.rs:89`.
 - Public. Mở khoá cho archmap khi có **1 issue/PR từ người lạ**.
 
-**Phase 2 — mối nối đáng làm**
-- `graph.mjs:108` tự thú: *“Evidence is a basename match, not an import graph”* — CM301 đang đoán
-  coupling có thật hay không **bằng cách so tên file**. archmap đã có đúng đồ thị đó.
-- Việc: archmap export edges → CM301 đọc nó → đo FP → lên `warn` → lên `error`.
-- **Đây là tính năng, không phải refactor.** Dọn lớp chung (`globToRe` ×2, `findRoot` ×2,
-  install/vendor ~270 dòng ×2) làm sau, và chỉ là dọn dẹp.
+**Phase 2 — mối nối đáng làm** *(xong: archmap export → CM301 đọc → đo FP → `warn`)*
+- `graph.mjs` từng tự thú: *”Evidence is a basename match, not an import graph”* — CM301 đoán
+  coupling có thật hay không **bằng cách so tên file**. Đã sửa: `scripts/lib/archmap.mjs` đọc
+  `archmap graph --json` khi repo có vendor; đồ thị thật được hỏi TRƯỚC basename, và không cần
+  archmap để check vẫn chạy như cũ.
+- Đo trên archmap thật thay vì đoán: 0/6 hit đo lại trên repo `forge` được đồ thị thật loại thêm —
+  cả 6 đã đúng là coupling không tham chiếu (SPEC §7.1). Vì có bằng chứng thật, tier tự bật
+  (`warn`) khi archmap có mặt, không cần `enforce.advisory` — nhưng chưa lên `error`.
+- Còn lại, ưu tiên thấp hơn: dọn lớp chung (`globToRe` ×2, `findRoot` ×2, install/vendor ~270
+  dòng ×2) giữa codemap và archmap — thuần dọn dẹp, không chặn việc trên.
 
 ## 9. Nhật ký quyết định
 

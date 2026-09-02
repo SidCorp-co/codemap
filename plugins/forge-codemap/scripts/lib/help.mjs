@@ -313,7 +313,8 @@ SCOPING A RUN
   cm verify <paths...>               explicit paths; resolved against the CWD first, then the repo root
   cm verify --tier grammar           one tier: all | grammar | referential | structural | advisory
   cm verify --tier advisory          warning-only evidence check (CM301), off in --tier all unless
-                                     the registry sets enforce.advisory — see §7.1 for why
+                                     the registry sets enforce.advisory, or the repo has archmap
+                                     vendored at .forge/archmap — see §7.1 for why
 
 READING A BIG RUN
 

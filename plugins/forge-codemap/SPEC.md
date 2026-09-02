@@ -239,25 +239,36 @@ and the annotation then documents an intention rather than the code.
 That question must stay **weak**, because several kinds are deliberately reference-free: `naming` IS a
 string, `sideeffect` happens in SQL or a cron, and a `contract` across a process boundary is
 HTTP-mediated. So the tier is warning-only, never gating (it cannot change the exit code), and narrow:
-only `contract` and `lockstep`, only with a `#symbol`, only when neither file names the other. Evidence
-is a basename match, biased toward silence — a generic stem matches easily and the check says nothing.
+only `contract` and `lockstep`, only with a `#symbol`, only when neither file names the other.
 
-It is **off by default**, and the measurement says it should stay that way. Two production repos
-(2 234 and 3 277 files, 204 edges, 69 of them anchored) reported **40** `CM301` before two structural
-corrections and **5** after; of those 5, **one** was actionable — an edge whose anchor is a slug string,
-so its kind should be `naming` (§5) rather than `contract`. The other four are the shape the check cannot
-see: two sides that must implement the SAME RULE with nothing linking them (a frontend predicate and a
-backend selector; the same SQL ordering in two loaders). For those, the absence of a reference is not
-drift — it is the normal state of the most valuable edge in the repo, which inverts the check's premise.
+Evidence comes in two tiers, strongest first. When the repo has archmap (a sibling tool, see
+NORTH-STAR §8) vendored at `.forge/archmap`, `graph.mjs` reads its exported import graph (`archmap
+graph --json`) and asks whether the two files are actually wired together at all — a real edge, not a
+guess. Everywhere else the fallback is a basename match, biased toward silence — a generic stem
+matches easily and the check says nothing.
 
-The two corrections were bugs rather than thresholds, and both are cases where evidence *cannot* exist:
+It is opt-in — `enforce.advisory` in the registry — **unless the repo has archmap vendored**, in which
+case CM301/CM302 run on a bare `cm verify` without that flag: real import evidence is what the earlier
+measurement here was waiting on before trusting the tier at all (§8 Phase 2).
+
+The basename-only measurement, kept for scale: two production repos (2 234 and 3 277 files, 204 edges,
+69 of them anchored) reported **40** `CM301` before two structural corrections and **5** after; of
+those 5, **one** was actionable — an edge whose anchor is a slug string, so its kind should be `naming`
+(§5) rather than `contract`. The other four are the shape the check cannot see: two sides that must
+implement the SAME RULE with nothing linking them (a frontend predicate and a backend selector; the
+same SQL ordering in two loaders). For those, the absence of a reference is not drift — it is the
+normal state of the most valuable edge in the repo, which inverts the check's premise. Re-measured
+against those same 5 with archmap's real graph: **0** were suppressed — archmap independently confirms
+none of the five has an import edge either, which is what the manual analysis above already found by
+hand. The two structural corrections were bugs rather than thresholds, and both are cases where
+evidence *cannot* exist:
 
 - a pair of files in **different languages** (26 of 36 hits in one repo) — Go cannot import a `.ts` file
 - **Go**, which names the imported package DIRECTORY and never the file (10 of 10 same-language hits
   there), so a filename-only test warned on every correctly wired Go edge
 
-Measure before flipping it on for a repo, and expect the answer to depend on how that repo's edges are
-shaped:
+Measure before flipping `enforce.advisory` on for a repo with no archmap, and expect the answer to
+depend on how that repo's edges are shaped:
 
 ```bash
 cm verify --tier advisory --json | jq '[.diags[] | select(.code=="CM301")] | length'

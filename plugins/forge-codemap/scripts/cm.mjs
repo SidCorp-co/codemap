@@ -18,6 +18,7 @@ import {
 import { analyzeFile } from './lib/analyze.mjs';
 import { profileFor } from './lib/languages.mjs';
 import { buildGraph, referentialDiags, structuralDiags, advisoryDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
+import { loadImportGraph } from './lib/archmap.mjs';
 import { canonical, CODE_TABLE, PROSE_CODES, baselineKey } from './lib/parse.mjs';
 import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
@@ -26,7 +27,7 @@ import { renderHelp, VERBS } from './lib/help.mjs';
 
 // cm:guard the bootstrap prompt pins a TAG, never a branch — a floating gate turns a PR red with no
 //   code change, which is the property §8.1's pin exists to protect (ISS-B)
-const TAG_HINT = 'codemap-v0.13.0';
+const TAG_HINT = 'codemap-v0.14.0';
 
 const COLOR = process.stdout.isTTY && !process.env.NO_COLOR;
 const c = (n, s) => (COLOR ? `[${n}m${s}[0m` : s);
@@ -394,9 +395,13 @@ switch (cmd) {
     if (tier !== 'all' && tier !== 'grammar') diags = [];
     if (tier === 'all' || tier === 'referential') diags.push(...scopeGraph(referentialDiags(g, { root, reg })));
     if (tier === 'all' || tier === 'structural') diags.push(...scopeGraph(structuralDiags(g)));
-    // cm:guard advisory is opt-in until its false-positive rate is MEASURED on a real repo — a warning
-    //   nobody trusts is how a tier gets switched off, and this one guesses where CM102/CM106 know (§7.1)
-    if (tier === 'advisory' || (tier === 'all' && reg.enforce?.advisory)) diags.push(...scopeGraph(advisoryDiags(g, { root, baseline })));
+    // cm:guard `??`, not `||` — an explicit `enforce.advisory: false` must stay OFF even when
+    //   archmap is vendored, or a repo that measured and rejected the tier could not opt back out
+    const importGraph = loadImportGraph(root);
+    const advisoryOn = reg.enforce?.advisory ?? Boolean(importGraph);
+    if (tier === 'advisory' || (tier === 'all' && advisoryOn)) {
+      diags.push(...scopeGraph(advisoryDiags(g, { root, baseline, importGraph })));
+    }
 
     // cm:guard the graph tiers raise their diagnostics here, long after analyzeFile applied its own
     //   ignore map — so cm:ignore CM102 / CM301 silently did nothing, though both fix lines offer it

@@ -3,7 +3,7 @@
 // tree — the exact shape the README tells CI to run. Nothing in the corpus could see it: these cases
 // drive the real argv through a real temp repo instead.
 
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync } from 'node:fs';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -480,6 +480,67 @@ function advisoryCases(pluginRoot, check, roots) {
     `Go's import model must not read as missing evidence:\n${goDir.out}`);
 }
 
+// cm:why a stub is a fixed-format double for archmap, not a real vendored copy — CM301's contract with
+//   archmap is the exported graph document's shape (its own SPEC §10.4), never archmap's internals
+function writeStubArchmap(root, edges) {
+  const dir = join(root, '.forge', 'archmap');
+  mkdirSync(dir, { recursive: true });
+  const bin = join(dir, 'archmap');
+  const doc = JSON.stringify({ formatVersion: 1, edges });
+  writeFileSync(bin, `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(doc)});\n`);
+  chmodSync(bin, 0o755);
+}
+
+// cm:why graph.mjs:108 confessed the gap this closes: a basename match is not an import graph. These
+//   cases prove the real edge is consulted FIRST, and that its absence — vendored or not — never gates
+function archmapCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  writeFileSync(join(root, 'engine.ts'), 'export function unrelated() { return 1; }\n');
+  writeFileSync(join(root, 'caller.ts'),
+    '// cm:edge contract -> engine.ts#unrelated — the engine must consume this\n'
+    + 'export function listThings() { return []; }\n');
+  writeFileSync(join(root, 'orphan.ts'), 'export function other() { return 1; }\n');
+  writeFileSync(join(root, 'lonely.ts'),
+    '// cm:edge contract -> orphan.ts#other — nothing wires these two\n'
+    + 'export function alone() { return 1; }\n');
+  cm(pluginRoot, root, 'baseline');
+
+  writeStubArchmap(root, [
+    { resolved: true, fromFile: 'caller.ts', toFile: 'engine.ts', fromModule: null, toModule: null,
+      fromKind: 'source', toKind: 'source', dynamic: false, spec: './engine', language: 'ts', why: null },
+  ]);
+
+  const withArchmap = cm(pluginRoot, root, 'verify');
+  check('cli: a vendored archmap turns the advisory tier on without --tier or enforce.advisory',
+    !/caller\.ts/.test(withArchmap.out) && /lonely\.ts:1/.test(withArchmap.out) && /CM301/.test(withArchmap.out),
+    `expected the real edge to silence caller.ts and the graph-absent pair to still fire:\n${withArchmap.out}`);
+  check('cli: CM301 backed by a real import edge still never gates',
+    withArchmap.status === 0,
+    `advisory is warning-only regardless of evidence source:\n${withArchmap.out}`);
+
+  writeFileSync(join(root, '.forge', 'codemap.json'), '{"enforce":{"advisory":false}}\n');
+  const explicitOff = cm(pluginRoot, root, 'verify');
+  check('cli: an explicit enforce.advisory: false wins over a vendored archmap',
+    !/CM301/.test(explicitOff.out),
+    `a repo that opted OUT must stay silent even with real evidence available:\n${explicitOff.out}`);
+  writeFileSync(join(root, '.forge', 'codemap.json'), '{}\n');
+
+  rmSync(join(root, '.forge', 'archmap'), { recursive: true, force: true });
+  const withoutArchmap = cm(pluginRoot, root, 'verify');
+  check('cli: removing the vendored archmap returns to the old opt-in default',
+    !/CM301/.test(withoutArchmap.out),
+    `no archmap and no enforce.advisory must stay silent by default:\n${withoutArchmap.out}`);
+
+  writeStubArchmap(root, []);
+  writeFileSync(join(root, '.forge', 'archmap', 'archmap'), '#!/bin/sh\nexit 1\n');
+  chmodSync(join(root, '.forge', 'archmap', 'archmap'), 0o755);
+  const brokenArchmap = cm(pluginRoot, root, 'verify');
+  check('cli: an archmap that fails to run is treated as no evidence, never a crash',
+    brokenArchmap.status !== 2 && !/CM301/.test(brokenArchmap.out),
+    `a broken vendored copy must fall back to fully opt-in, not fail the run:\n${brokenArchmap.out}`);
+}
+
 // cm:why prose is judged on form and position; an annotation's text was judged on nothing but being
 //   non-empty. Under a blocking hook that made a six-character prefix the cheapest way out (ISS-27, ISS-26)
 function escapeHatchCases(pluginRoot, check, roots) {
@@ -681,6 +742,7 @@ export function cliCases(pluginRoot, check) {
     outputCases(pluginRoot, check, roots);
     diffScopeCases(pluginRoot, check, roots);
     advisoryCases(pluginRoot, check, roots);
+    archmapCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
   }
