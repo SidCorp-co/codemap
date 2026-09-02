@@ -12,6 +12,7 @@ import { wiringCases } from './wiring.mjs';
 import { cliCases } from './cli.mjs';
 import { installCases } from './install.mjs';
 import { helpCases } from './help.mjs';
+import { metricsCases } from './metrics.mjs';
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -114,6 +115,7 @@ wiringCases(PLUGIN_ROOT, check);
 cliCases(PLUGIN_ROOT, check);
 installCases(PLUGIN_ROOT, check);
 helpCases(PLUGIN_ROOT, check);
+metricsCases(PLUGIN_ROOT, check);
 
 console.log(`codemap golden corpus: ${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.error(`  FAIL ${f}`);

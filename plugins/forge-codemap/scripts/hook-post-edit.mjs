@@ -22,6 +22,8 @@ import { join, relative, isAbsolute } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { findRoot } from './lib/registry.mjs';
 import { resolveCm } from './lib/locate.mjs';
+import { blockingDiags } from './lib/blocking.mjs';
+import { reconcile } from './lib/metrics.mjs';
 
 const MAX_LISTED = 12;
 
@@ -61,15 +63,13 @@ if (res.status === 2 || res.status === null || !res.stdout) {
 let report;
 try { report = JSON.parse(res.stdout); } catch { process.exit(0); }
 
-const PROSE = new Set(['CM001', 'CM010', 'CM011']);
 const diags = report.diags ?? [];
 
-const enforceProse = report.onboarded && !report.baselineUnreadable;
-// cm:guard ONLY the grammar tier blocks — structural is a warning by §7 and advisory cannot gate at all,
-//   and letting them through here blocked an author for a flow step whose sibling was simply out of scope
-const blocking = diags.filter((d) => d.tier === 'grammar'
-  && d.code !== 'CM009' && (enforceProse || !PROSE.has(d.code)));
+// cm:edge lockstep -> plugins/forge-codemap/scripts/lib/blocking.mjs — metrics.mjs reconciles against
+//   this same predicate, so a block it records is one the hook itself actually enforced
+const blocking = blockingDiags(report);
 const nonBlocking = diags.filter((d) => d.tier !== 'grammar');
+reconcile(root, rel, blocking.map((d) => ({ code: d.code, line: d.line })));
 
 const notes = [];
 if (report.baselineUnreadable) {

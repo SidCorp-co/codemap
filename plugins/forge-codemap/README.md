@@ -110,6 +110,8 @@ cm ls                       every annotation in the repo
 cm sweep [paths...]         list the prose the baseline hides  [--limit N] [--prune-baseline]
 cm baseline                 re-freeze legacy comments (by content hash)
 cm new flow <name>          declare a flow
+cm metrics show [--json]    local counters: blocks held vs circumvented, annotation trend
+cm metrics send [--endpoint <url>] [--yes]   opt-in send of the show payload; no --yes previews only
 cm codes                    diagnostic reference
 cm help [topic]             the guidebook — see below
 cm version                  tool version + spec version

@@ -384,3 +384,56 @@ report a rewrite it did not perform (it once could not rewrite a CRLF line at al
 - Deprecation: a removed form warns for one minor with a codemod available before it errors.
 - Escape hatch: `cm:ignore <CODE> — <reason>` on the line above. The code and the reason are both
   mandatory; a bare ignore is itself an error.
+
+## §10 Metrics (ISS-3)
+
+ISS-3's own framing of the number that matters: how many times a `cm:` annotation blocked a real
+mistake before it shipped, not how many files/annotations/tests exist (that count is distinct from
+NORTH-STAR.md §5's external-adoption north star; §5 item 5 points here). Scale metrics rising while
+that number sits at zero looks exactly like success — the trap that killed the repos before this
+one. `cm metrics` is the counter, local by default.
+
+**Where it lives.** `.forge/.codemap-metrics/` — an events log (`events.jsonl`, append-only) and a
+pending-block state file (`pending.json`). Never inside `.forge/codemap/` (that tree is vendored and
+committed by `cm install`); never touched by any `cm install`/`cm init` file list. Nothing here is
+ever written to the repo's `.gitignore` automatically — that would be editing a file this tool did
+not create, which no other command in this codebase does either.
+
+**Shape, not content.** An installed repo may hold real customer data, so every event carries only:
+a timestamp, an event kind, a diagnostic `tier`, a list of `codes`, and (for `block`/`held`/
+`circumvented`) the repo-relative `file` path. Never a diagnostic's `message`/`fix` text, never the
+comment that triggered it. `annotation-snapshot` and `registry-snapshot` events carry counts and
+booleans only — never an annotation's own text, never an author's name in the shape that could ever
+be sent (only the count of distinct authors).
+
+**Held vs circumvented — counted separately, never merged into one "resolved" bucket.** The
+PostToolUse hook already decides what blocks (`scripts/lib/blocking.mjs`, the same predicate on both
+sides of this line so the two can never disagree); every block appends a `block` event and opens a
+pending entry keyed by `(file, code, line)` — line-level, not code-level, because a repo can carry
+more than one instance of the same code in one file (frozen legacy prose is the common case), and a
+coarser key let a genuine fix of one instance hide forever behind an unrelated, never-blocked other
+one (ISS-3 review round 1). The NEXT time that exact `(code, line)` is recomputed — the next hook
+invocation on the file, or a `cm metrics reconcile` sweep of the whole pending set:
+
+- it is no longer present → **held**, decided from presence ALONE, regardless of whether a commit
+  landed on the file since. The author fixed it; committing that fix is the ordinary, desired flow
+  and must never be misread as evasion just because a commit happened to follow the block.
+- it is STILL present AND a commit landed on the file since the block fired (checked via
+  `git log --since`, with a 1s buffer past the block's timestamp for git's own second-granularity) →
+  **circumvented**. The flagged content shipped once already, still unfixed — a client-side hook with
+  no server-side gate is exactly the failure mode this exists to catch.
+- still present, no commit since → still pending, no event fires. A file the checker itself cannot
+  verify is left pending too, never guessed at either way.
+
+Held is checked before circumvented, never the other way round: checking "did a commit land" first
+would read the ordinary fix-then-commit sequence as evasion on every single genuine fix.
+
+`cm metrics reconcile` exists because a file committed and never touched through the hook again (the
+common shape of "routed around it entirely") would otherwise never reconcile — the weekly upgrade bot
+NORTH-STAR §5 already wants can run it.
+
+**Local sink, sending is opt-in.** `cm metrics show [--json]` reads the local log only; nothing it
+does can reach the network. `cm metrics send --endpoint <url> [--yes]` builds the exact same payload
+`show --json` prints — one function, `buildPayload`, so there is no separate "preview" that could
+drift from what actually goes out — and only performs the POST when BOTH `--endpoint` and `--yes` are
+given. Either one missing prints the payload and stops. There is no default endpoint.

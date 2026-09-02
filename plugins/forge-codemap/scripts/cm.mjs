@@ -24,10 +24,15 @@ import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
 import { install } from './lib/install.mjs';
 import { renderHelp, VERBS } from './lib/help.mjs';
+import { resolveCm } from './lib/locate.mjs';
+import {
+  reconcileAll, buildPayload, annotationCounts, registrySnapshot,
+  recordAnnotationSnapshot, recordRegistrySnapshot, annotationTrend, registryTrend, registryFlips, metricsPaths,
+} from './lib/metrics.mjs';
 
 // cm:guard the bootstrap prompt pins a TAG, never a branch — a floating gate turns a PR red with no
 //   code change, which is the property §8.1's pin exists to protect (ISS-B)
-const TAG_HINT = 'codemap-v0.14.0';
+const TAG_HINT = 'codemap-v0.15.0';
 
 const COLOR = process.stdout.isTTY && !process.env.NO_COLOR;
 const c = (n, s) => (COLOR ? `[${n}m${s}[0m` : s);
@@ -41,7 +46,7 @@ const cmd = argv[0] ?? 'help';
 
 // cm:guard every flag that takes a value MUST be listed here — an unlisted one has its value parsed as a
 // path, which silently narrowed `cm verify --since <ref>` to zero files and made the CI gate a no-op
-const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description']);
+const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description', '--endpoint']);
 const TIERS = new Set(['all', 'grammar', 'referential', 'structural', 'advisory']);
 
 // cm:guard exit 2 is "the gate could not run", exit 1 is "the gate ran and failed" — CI must be able to
@@ -316,7 +321,7 @@ function printGrouped(diags, legacy) {
   //   header, and printing whichever came first would hand most of the group the wrong advice
   const byFix = new Map();
   for (const d of diags) {
-    const key = `${d.code} ${d.fix}`;
+    const key = `${d.code} ${d.fix}`;
     const g = byFix.get(key) ?? { code: d.code, tier: d.tier, fix: d.fix, files: new Map(), n: 0 };
     g.files.set(d.file, (g.files.get(d.file) ?? 0) + 1);
     g.n++;
@@ -663,7 +668,7 @@ switch (cmd) {
     console.log('');
     // cm:why the baseline is keyed per FILE by text, so the comparable unit is file+key, not key: deduping
     // globally here made this disagree with the debt `cm verify` prints from the same baseline
-    const distinct = new Set(rows.map((r) => `${r.file} ${baselineKey(r.text)}`)).size;
+    const distinct = new Set(rows.map((r) => `${r.file} ${baselineKey(r.text)}`)).size;
     console.log(`${bold('codemap sweep')} · ${rows.length} frozen prose comment(s), ${distinct} distinct, ` +
       `across ${new Set(rows.map((r) => r.file)).size} file(s)${scoped ? dim(' — scoped run') : ''}`);
     if (stale) console.log(dim(`${stale} baseline key(s) no longer match any comment — drop them with: cm sweep --prune-baseline`));
@@ -932,6 +937,92 @@ switch (cmd) {
     row('grammar tier', reg.enforce?.grammar === false ? 'off (graph only)' : 'on');
     row('baseline', bl.__legacyFormat ? yellow('pre-0.2 format, ignored') : `${keys} comments frozen across ${frozen.length} files`);
     if (vend && compareVersions(vend, toolVersion()) < 0) console.log(dim('\n  cm install --upgrade   # then commit .forge/codemap/'));
+    break;
+  }
+
+  // cm:edge contract -> plugins/forge-codemap/NORTH-STAR.md#5 — the north star is a count of real
+  //   blocks, not scale; this verb is the only place that count is produced (ISS-3)
+  case 'metrics': {
+    const sub = positional[0];
+    if (!['show', 'reconcile', 'send'].includes(sub)) {
+      console.error('usage: cm metrics show [--json] | cm metrics reconcile | cm metrics send --endpoint <url> [--yes]');
+      process.exit(2);
+    }
+    const reg = loadOrDie();
+
+    if (sub === 'reconcile') {
+      const cm = resolveCm(root);
+      const r = reconcileAll(root, cm.path);
+      console.log(`codemap metrics reconcile: ${r.checked}/${r.pendingBefore} pending file(s) checked`);
+      break;
+    }
+
+    // cm:why show and send build the SAME payload — send with no --yes prints it and stops, so the
+    // preview a human reads can never drift from what actually goes out (ISS-3's own constraint)
+    const perFile = analyzeAll(reg, annotatedFiles(reg));
+    const g = buildGraph(perFile);
+    const ann = annotationCounts(root, g);
+    const snap = registrySnapshot(reg);
+    recordAnnotationSnapshot(root, ann);
+    recordRegistrySnapshot(root, snap);
+    const payload = buildPayload(root, { reg, g });
+
+    if (sub === 'show') {
+      if (flags.has('--json')) { console.log(JSON.stringify(payload, null, 2)); break; }
+      const paths = metricsPaths(root);
+      console.log(bold('codemap metrics') + dim(`  (local sink: ${relative(root, paths.dir)}/)`));
+      console.log('');
+      console.log(bold('blocks'));
+      const codes = Object.keys(payload.blocks).sort();
+      if (!codes.length) console.log(dim('  none recorded yet — the PostToolUse hook writes these as it blocks/resolves edits'));
+      for (const code of codes) {
+        const b = payload.blocks[code];
+        console.log(`  ${code.padEnd(8)} blocked ${b.block}  ·  held ${b.held}  ·  ${b.circumvented ? red(`circumvented ${b.circumvented}`) : 'circumvented 0'}`);
+      }
+      console.log(dim(`  ${payload.pendingUnresolved} block(s) still pending (neither held nor circumvented yet)`));
+      console.log('');
+      console.log(bold('annotations'));
+      console.log(`  ${payload.annotations.total} total across ${Object.entries(payload.annotations.byTag).map(([k, v]) => `${v} ${k}`).join(', ')}`);
+      console.log(`  ${payload.annotations.distinctAuthors} distinct author(s) (git blame)`);
+      const trend = annotationTrend(root);
+      if (trend.length > 1) {
+        const first = trend[0];
+        const delta = payload.annotations.total - first.total;
+        console.log(dim(`  ${delta >= 0 ? '+' : ''}${delta} since ${new Date(first.ts).toISOString().slice(0, 10)} (${trend.length} snapshots)`));
+      }
+      console.log('');
+      console.log(bold('registry'));
+      console.log(`  grammar ${payload.registry.grammarEnabled ? 'on' : yellow('off')}  ·  advisory ${payload.registry.advisoryEnabled ? 'on' : dim('off')}`);
+      if (payload.registry.languagesDisabled.length) console.log(dim(`  disabled for: ${payload.registry.languagesDisabled.join(', ')}`));
+      const regTrend = registryTrend(root);
+      if (regTrend.length > 1) {
+        const flips = registryFlips(regTrend);
+        console.log(dim(`  ${flips} on/off flip(s) since ${new Date(regTrend[0].ts).toISOString().slice(0, 10)} (${regTrend.length} snapshots)`
+          + (flips ? ' — the most direct "this check cries wolf" signal there is' : '')));
+      }
+      console.log('');
+      console.log(dim('this is local only — nothing leaves this machine. See exactly what would be sent: cm metrics show --json'));
+      console.log(dim('sending is opt-in and requires an explicit destination: cm metrics send --endpoint <url>'));
+      break;
+    }
+
+    const endpoint = flagValue('--endpoint');
+    if (!flags.has('--yes') || !endpoint) {
+      console.log(JSON.stringify(payload, null, 2));
+      console.log('');
+      if (!endpoint) console.log(yellow('codemap: no --endpoint given — nothing sent. The JSON above is exactly what would be.'));
+      else console.log(yellow(`codemap: --yes not given — nothing sent to ${endpoint}. The JSON above is exactly what would be.`));
+      break;
+    }
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      console.log(`codemap metrics send: ${res.status} ${res.statusText} -> ${endpoint}`);
+      process.exitCode = res.ok ? 0 : 1;
+    } catch (e) {
+      die(`could not send to ${endpoint}: ${e.message}`);
+    }
     break;
   }
 

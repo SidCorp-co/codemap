@@ -98,10 +98,13 @@ duy nhất cho câu hỏi thật — *primitive này đúng, hay chỉ đúng v�
 1. Repo nội bộ có codemap: **5 → 15**.
 2. Bot nâng cấp hàng tuần chạy thật, có log, **4 tuần liên tiếp** (nó đã chết âm thầm một thời gian
    không rõ — xem nhật ký).
-3. Tỉ lệ legacy prose giảm; `cm:` annotation tăng.
+3. Tỉ lệ legacy prose giảm; `cm:` annotation tăng — đo được: `cm metrics show` (SPEC.md §10, ISS-3).
 4. CM301 đọc được đồ thị archmap thật khi tier được bật — **xong** (§8 Phase 2); bật `warn` theo
    mặc định vẫn chờ một lớp cache cho `archmap graph` (~15s/lần), vì hook gọi `cm verify` mỗi lần
    sửa file.
+5. Hook chặn bao nhiêu lần, vì check nào, và lần chặn đó có giữ được hay bị lách qua — đo cục bộ,
+   gửi là opt-in: `cm metrics show` / `cm metrics send` (SPEC.md §10). Trước ISS-3 không có cách
+   nào đếm con số này; mọi bằng chứng ở §4 là quy mô, không phải tác dụng.
 
 ## 6. Kill criteria
 
