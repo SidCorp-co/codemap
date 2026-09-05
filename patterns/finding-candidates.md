@@ -3,6 +3,12 @@
 A legacy repo does not need a migration. It needs ten annotations that would have prevented ten
 things that already happened. Everything else can wait for the edit that touches the file.
 
+`cm propose` automates source 1 and source 4 below, plus one this page does not otherwise cover —
+a string literal shared by exactly two files in two languages, `contract`'s own signature. It reads
+the evidence and prints candidates, one per line, each with the evidence that produced it. It never
+picks a `kind` for source 1, never writes a `— why`, and never touches a file: a candidate is a
+proposal, not a fact. Sources 2 and 3 still need a human who was there.
+
 ## 1. The prose that already names another file
 
 In one 503k-line production repo, **134 flagged comments named another file in the same repo** —
@@ -15,6 +21,7 @@ That is the cheapest possible source: the repo has already paid for these and ca
 
 ```bash
 cm sweep --limit 50      # what the baseline is hiding, most recently touched first
+cm propose               # the same evidence, plus co-change and cross-language literal candidates
 ```
 
 ## 2. The incident that produced a runbook line
@@ -33,7 +40,8 @@ channel is wrong, and the second time is your evidence.
 Files that change together far more often than chance, with no import between them, are `lockstep`
 candidates. Read the tension honestly: history can *propose* the pair, but the reason they are bound
 is what an annotation carries, and history cannot state it. Deriving the candidate is fine; deriving
-the annotation is not.
+the annotation is not. `cm propose` computes this over the whole history (`--source lockstep`); a
+shared string literal in two languages, in code rather than in a comment, is its `contract` source.
 
 ## What not to do
 

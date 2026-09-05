@@ -34,6 +34,7 @@ export const VERBS = [
   ['new flow', '<name>', 'declare a flow before annotating its steps  [--description "..."]'],
   ['new external', '<name>', 'declare an out-of-tree system a cm:edge may target  [--description "..."]'],
   ['onboard', '', 'read this repo and print the setup steps for it  [--json] [--prompt]'],
+  ['propose', '[paths...]', 'annotation candidates from evidence already in the repo, for a person to accept, edit or reject  [--source prose|lockstep|contract] [--limit N] [--json]'],
   ['doctor', '', 'versions, registry, baseline — and whether CI gates on an older checker'],
   ['metrics show', '', 'local north-star counters: blocks held vs circumvented, annotation trend  [--json]'],
   ['metrics reconcile', '', 'sweep pending blocks the hook never saw resolved (for the weekly bot)'],

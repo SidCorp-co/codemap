@@ -107,6 +107,7 @@ content, so reformatting, moving code and deleting old comments are all free:
 cm init      # registry + freeze existing comments
 cm install   # vendor the checker into .forge/codemap/ — commit it
 cm verify    # green immediately, even in a legacy codebase
+cm propose   # candidates from evidence already in the repo — a proposal, never a fact
 ```
 
 ```mermaid

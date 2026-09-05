@@ -19,9 +19,10 @@ import { analyzeFile } from './lib/analyze.mjs';
 import { profileFor } from './lib/languages.mjs';
 import { buildGraph, referentialDiags, structuralDiags, advisoryDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
 import { loadImportGraph, loadCachedImportGraph } from './lib/archmap.mjs';
-import { canonical, CODE_TABLE, PROSE_CODES, baselineKey } from './lib/parse.mjs';
+import { canonical, CODE_TABLE, PROSE_CODES, EDGE_KINDS, baselineKey } from './lib/parse.mjs';
 import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
+import { proseCandidates, lockstepCandidates, contractCandidates } from './lib/propose.mjs';
 import { install } from './lib/install.mjs';
 import { debtOf, drainBase, drainDiags } from './lib/drain.mjs';
 import { lockstepFindings, guardFindings, renderComment, MARKER } from './lib/prcomment.mjs';
@@ -49,7 +50,7 @@ const cmd = argv[0] ?? 'help';
 
 // cm:guard every flag that takes a value MUST be listed here — an unlisted one has its value parsed as a
 // path, which silently narrowed `cm verify --since <ref>` to zero files and made the CI gate a no-op
-const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description', '--endpoint', '--base']);
+const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description', '--endpoint', '--base', '--source']);
 const TIERS = new Set(['all', 'grammar', 'referential', 'structural', 'advisory']);
 
 // cm:guard exit 2 is "the gate could not run", exit 1 is "the gate ran and failed" — CI must be able to
@@ -951,18 +952,9 @@ switch (cmd) {
 
     // cm:why a prose comment that names a file which RESOLVES is a cm:edge the repo already paid the
     //   thinking for — 134 of them sat in one measured repo, and they are the cheapest edges to write
-    const seen = new Set();
-    const latent = [];
-    for (const p2 of prose) {
-      const m = String(p2.text).match(/[\w./-]+\.(?:ts|tsx|js|mjs|go|php|py|rs|sql|prisma|graphql)\b/g) ?? [];
-      for (const cand of m) {
-        const hit = files.find((f) => f === cand || f.endsWith(`/${cand.replace(/^\.\//, '')}`));
-        const key = `${p2.file}:${p2.line}`;
-        if (!hit || hit === p2.file || seen.has(key)) continue;
-        seen.add(key);
-        latent.push({ ...p2, target: hit });
-      }
-    }
+    // cm:edge contract -> cli/lib/propose.mjs — `cm propose` shares this exact source; a divergence
+    //   here would mean onboarding and proposing disagree about what counts as latent evidence
+    const latent = proseCandidates(perFile, files).map((c) => ({ file: c.file, line: c.line, text: c.evidence, target: c.target }));
 
     const ci = ['.github/workflows', '.gitlab-ci.yml', '.circleci/config.yml']
       .find((c) => existsSync(join(root, c))) ?? null;
@@ -997,6 +989,72 @@ switch (cmd) {
     console.log(dim(`   "enforce": { "grammar": true } in .forge/codemap.json, then: cm baseline`));
     console.log(dim(`   ${prose.length} comments would be frozen as legacy on day one`));
     if (flags.has('--json')) console.log(JSON.stringify({ files: files.length, langs: [...langs], prose: prose.length, latent }, null, 2));
+    break;
+  }
+
+  // cm:edge contract -> patterns/finding-candidates.md — this verb automates that guide's source 1
+  //   and source 4, plus a third (contract) it does not otherwise cover; keep them describing the same thing
+  // cm:guard a candidate is never written anywhere and never asserts a `— why` — printing one that
+  //   looked like a fact would be exactly the slop the issue this verb answers warns against (ISS-12)
+  case 'propose': {
+    const reg = loadOrDie();
+    const SOURCES = new Set(['prose', 'lockstep', 'contract']);
+    const source = flagValue('--source');
+    if (source && !SOURCES.has(source)) die(`unknown --source "${source}"`, `one of: ${[...SOURCES].join(', ')}`);
+
+    const scoped = Boolean(positional.length || flags.has('--staged') || flagValue('--since'));
+    const files = scoped ? fileList(reg) : allFiles(reg);
+    const perFile = analyzeAll(reg, files, {});
+    const importGraph = loadImportGraph(root);
+
+    const groups = [];
+    if (!source || source === 'prose') groups.push(['prose', proseCandidates(perFile, files)]);
+    if (!source || source === 'lockstep') groups.push(['lockstep', lockstepCandidates(root, files, { importGraph })]);
+    if (!source || source === 'contract') groups.push(['contract', contractCandidates(root, files)]);
+    const total = groups.reduce((n, [, cands]) => n + cands.length, 0);
+
+    if (flags.has('--json')) {
+      console.log(JSON.stringify({ files: files.length, candidates: Object.fromEntries(groups) }, null, 2));
+      break;
+    }
+
+    const limit = numericFlag('--limit', 20);
+    const trunc = (s, n) => (s.length > n ? `${s.slice(0, n - 3)}...` : s);
+    const LABEL = {
+      prose: '1. prose that already names a file (highest confidence — already written, already judged)',
+      lockstep: '2. lockstep — co-change far more often than chance, no import evidence between them',
+      contract: '3. contract — a literal shared by exactly two files, in two languages',
+    };
+
+    console.log(bold(`codemap propose · ${root}`));
+    console.log(dim(`  ${files.length} files scanned · ${total} candidate(s) — proposals, not facts; nothing is written`));
+    console.log('');
+
+    for (const [kind, cands] of groups) {
+      if (!cands.length) continue;
+      console.log(bold(LABEL[kind]));
+      for (const cand of cands.slice(0, limit)) {
+        if (kind === 'prose') {
+          console.log(`   ${cand.file}:${cand.line} ${dim('->')} ${cand.target}`);
+          console.log(dim(`     "${trunc(cand.evidence, 88)}"`));
+          console.log(dim(`     // cm:edge <kind> -> ${cand.target}   (pick a kind: ${EDGE_KINDS.join(', ')}; add — why by hand)`));
+        } else if (kind === 'lockstep') {
+          const [a, b] = cand.files;
+          console.log(`   ${a} ${dim('<->')} ${b}`);
+          console.log(dim(`     ${cand.coChanges}/${cand.totalCommits} commits together · alone: ${cand.commitsA} & ${cand.commitsB} · lift ${cand.lift.toFixed(1)}x`));
+          console.log(dim(`     // cm:edge lockstep -> ${b}   (in ${a}; add — why they must move together)`));
+        } else {
+          const [a, b] = cand.files;
+          console.log(`   "${cand.literal}" ${dim('in')} ${a.file}:${a.line} ${dim('&')} ${b.file}:${b.line}`);
+          console.log(dim(`     // cm:edge contract -> ${b.file}   (in ${a.file}; add — why both sides must agree)`));
+        }
+      }
+      if (cands.length > limit) console.log(dim(`   … and ${cands.length - limit} more (--limit ${cands.length} or --json)`));
+      console.log('');
+    }
+
+    if (!total) console.log(dim('  nothing found in this scope — the cheapest source is prose that already names a file: cm sweep'));
+    console.log(dim('a candidate is not a fact — accept, edit or reject it by hand; no flag here bulk-applies one'));
     break;
   }
 
