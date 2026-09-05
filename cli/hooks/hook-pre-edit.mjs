@@ -58,7 +58,9 @@ const near = (line) => (anchor && line ? Math.abs(line - anchor) : Number.MAX_SA
 const parts = [];
 for (const a of r.guards ?? []) parts.push({ d: near(a.line), t: `GUARD (${rel}:${a.line}) — ${a.text}` });
 for (const a of r.hacks ?? []) parts.push({ d: near(a.line), t: `HACK ${a.issue} (:${a.line}) — workaround stays until ${a.until}` });
-for (const e of r.outgoing ?? []) parts.push({ d: near(e.line), t: `EDGE ${e.kind} -> ${e.target}${e.text ? ` — ${e.text}` : ''}` });
+// cm:why external is verified against the registry's name, never against a file — an agent reading
+//   this line plainly must not have to notice the target's own external: prefix to know that
+for (const e of r.outgoing ?? []) parts.push({ d: near(e.line), t: `EDGE ${e.kind} -> ${e.target}${e.text ? ` — ${e.text}` : ''}${e.external ? ' [external: name verified, path not]' : ''}` });
 for (const e of r.incoming ?? []) parts.push({ d: Number.MAX_SAFE_INTEGER - 1, t: `EDGE ${e.kind} <- declared by ${e.file}:${e.line}${e.text ? ` — ${e.text}` : ''}` });
 // cm:guard whys are injected too — impact() has carried them since 0.10.0 and this hook did not read them,
 //   so the most numerous annotation kind in both measured repos reached nobody (ISS-C)

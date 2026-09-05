@@ -109,6 +109,21 @@ export function wiringCases(pluginRoot, check) {
       check('wiring: PreToolUse stays silent with nothing declared',
         quiet.stdout.trim() === '' && quiet.status === 0,
         `expected no output, got status=${quiet.status} stdout: ${quiet.stdout}`);
+
+      // cm:why an external edge is verified against its registry NAME, never a file (§4, ISS-16) — an
+      //   agent reading the injected line must see that without parsing the target for a prefix itself
+      const externalRoot = makeRepo({ onboarded: true });
+      roots.push(externalRoot);
+      writeFileSync(join(externalRoot, '.forge', 'codemap.json'),
+        '{ "specVersion": "codemap/1", "externals": [{ "name": "laravel-app" }] }\n');
+      const quoteFile = writeFixture(externalRoot, 'quote.ts',
+        '// cm:edge contract -> external:laravel-app/App/Models/Quote.php — mirrors the original model\n'
+        + 'export const q = 1;\n');
+      const extRes = runHook(pre, { root: externalRoot, file: quoteFile });
+      const extCtx = extRes.json?.hookSpecificOutput?.additionalContext ?? '';
+      check('wiring: PreToolUse marks an external edge as unverified-path',
+        extCtx.includes('external:laravel-app/App/Models/Quote.php') && extCtx.includes('name verified, path not'),
+        `stdout was: ${extRes.stdout || '(empty)'}${extRes.stderr ? ` stderr: ${extRes.stderr}` : ''}`);
     }
 
     if (post) {

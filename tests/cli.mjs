@@ -855,6 +855,42 @@ function scopedGraphCases(pluginRoot, check, roots) {
     `scoping the graph must not hide a real break:\n${real.out}`);
 }
 
+// cm:why an external: edge is verified against its registry NAME, never against a file (§4, ISS-16) —
+//   the reader must see that difference without parsing the target string for the external: prefix
+function externalCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  writeFileSync(join(root, '.forge', 'codemap.json'),
+    '{ "specVersion": "codemap/1", "externals": [{ "name": "laravel-app" }] }\n');
+  writeFileSync(join(root, 'quote.ts'),
+    '// cm:edge contract -> external:laravel-app/App/Models/Quote.php — mirrors the original model\n'
+    + 'export const a = 1;\n');
+  cm(pluginRoot, root, 'baseline');
+
+  const clean = cm(pluginRoot, root, 'verify');
+  check('cli: a declared external edge verifies clean', clean.status === 0 && !/CM107|CM102/.test(clean.out),
+    `expected a clean verify, got:\n${clean.out}`);
+
+  const text = cm(pluginRoot, root, 'impact', 'quote.ts');
+  check('cli: cm impact marks an external edge as unverified-path, not silently',
+    /external:laravel-app\/App\/Models\/Quote\.php/.test(text.out) && /name verified, path not/.test(text.out),
+    `an external edge must read as visibly weaker than an in-tree one:\n${text.out}`);
+
+  const json = cm(pluginRoot, root, 'impact', 'quote.ts', '--json');
+  let edge = null;
+  try { edge = JSON.parse(json.out).outgoing?.[0]; } catch { edge = null; }
+  check('cli: impact --json still carries the external field',
+    edge?.external === 'laravel-app',
+    `the hook reads this field; got: ${JSON.stringify(edge)}`);
+
+  writeFileSync(join(root, 'ghost.ts'),
+    '// cm:edge contract -> external:ghost-app/x.php — an undeclared name\nexport const g = 1;\n');
+  const undeclared = cm(pluginRoot, root, 'verify', 'ghost.ts');
+  check('cli: an undeclared external name is CM107, not CM102',
+    undeclared.status === 1 && /CM107/.test(undeclared.out) && !/CM102/.test(undeclared.out),
+    `expected CM107 only, got:\n${undeclared.out}`);
+}
+
 // cm:why a repo's CI runs the checker it COMMITTED, so a newer plugin reporting green says nothing about
 //   the gate — two production repos sat 6 and 8 minors behind with no signal anywhere
 function skewCases(pluginRoot, check, roots) {
@@ -964,6 +1000,7 @@ export function cliCases(pluginRoot, check) {
     scopedGraphCases(pluginRoot, check, roots);
     skewCases(pluginRoot, check, roots);
     targetCases(pluginRoot, check, roots);
+    externalCases(pluginRoot, check, roots);
     outputCases(pluginRoot, check, roots);
     diffScopeCases(pluginRoot, check, roots);
     drainCases(pluginRoot, check, roots);

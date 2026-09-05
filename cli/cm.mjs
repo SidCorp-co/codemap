@@ -587,7 +587,10 @@ switch (cmd) {
     console.log(bold(`impact of ${rel}`));
     for (const a of r.guards) console.log(`  ${red('guard')}   ${a.text}  ${dim(`(:${a.line})`)}`);
     for (const a of r.hacks) console.log(`  ${yellow('hack')}    ${a.issue} until:${a.until} — ${a.text}  ${dim(`(:${a.line})`)}`);
-    for (const e of r.outgoing) console.log(`  edge →   ${e.kind} ${e.target}${e.text ? ` — ${e.text}` : ''}  ${dim(`(:${e.line})`)}`);
+    // cm:why external is verified against the registry's name, never a file — its own marker beats
+    //   leaving a reader to notice the target's external: prefix (only outgoing: never resolves in-tree)
+    const unverified = (e) => (e.external ? ` ${yellow('(name verified, path not — external)')}` : '');
+    for (const e of r.outgoing) console.log(`  edge →   ${e.kind} ${e.target}${e.text ? ` — ${e.text}` : ''}${unverified(e)}  ${dim(`(:${e.line})`)}`);
     for (const e of r.incoming) console.log(`  edge ←   ${e.kind} from ${e.file}:${e.line}${e.text ? ` — ${e.text}` : ''}`);
     for (const a of r.whys) console.log(`  ${dim('why')}     ${annText(a)}  ${dim(`(:${a.line})`)}`);
     for (const f of r.flows) {

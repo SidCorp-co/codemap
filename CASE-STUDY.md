@@ -232,7 +232,7 @@ Measured while producing this document. Each inflates the flagged count above wi
 | Go struct fields and interface methods are not exempt under `required-on-exported`, though godoc renders their docs | 3 036 blocks · 5 925 lines (Repo A) | open — ISS-778 |
 | A module header after a `"use client"` / `"use strict"` directive prologue is not recognised as a header (§4.1 allowed only a shebang before it) | 23 blocks (Repo A), 13 (Repo B) | **fixed in 0.4.1** |
 | A module header not followed by a blank line is flagged in full — correct per §4.1, but the fix is one blank line and the diagnostic did not say so | 38 blocks · 97 lines (Repo A) | **fixed in 0.4.1** |
-| `cm:edge` targets must be repo-relative paths that exist (§4, `CM005`/`CM102`), so a coupling to a system outside the tree cannot be declared at all | 58 flagged lines (Repo A) | open by design — ISS-779 |
+| `cm:edge` targets must be repo-relative paths that exist (§4, `CM005`/`CM102`), so a coupling to a system outside the tree cannot be declared at all | 58 flagged lines (Repo A) | **fixed in 0.8.0** |
 
 Every measurement above was taken on 0.4.0, before any fix. Re-running the two header gaps on 0.4.1:
 
@@ -249,14 +249,16 @@ only which comments are *reported*, and no repo that verified clean now fails.
 The Go gap is the largest single bucket in the largest repo measured and remains open — it is a
 verdict change across 5 925 lines, which is a spec revision (§6) rather than a patch.
 
-The fourth is the most interesting, because the constraint is deliberate. Repo A is a Go rewrite
+The fourth was the most interesting, because the constraint is deliberate. Repo A is a Go rewrite
 of a PHP application, and 354 comments across its Go source pin behaviour to the original —
 `Mirrors <PHP model>`, `matches <PHP validator>`. That codebase is not a submodule and not in the
-tree. So the repo's single most common cross-system contract is the
-one class of coupling `codemap/1` cannot carry, and the framework is silent about it rather than
-wrong about it. Widening `<target>` to admit an out-of-tree coordinate would trade `CM102`'s
-guarantee — a declared edge always points at something real — for coverage of exactly this case. That
-is a spec decision, not a bug fix, and it is unresolved.
+tree. So the repo's single most common cross-system contract was the
+one class of coupling `codemap/1` could not carry, and the framework was silent about it rather than
+wrong about it. Widening `<target>` to admit an out-of-tree coordinate traded `CM102`'s
+guarantee — a declared edge always points at something real — for coverage of exactly this case.
+That was a spec decision, not a bug fix, and it shipped in 0.8.0: `external:<name>/<path>` targets
+a system outside the tree, verified against a registry-declared `<name>` (`CM107`) rather than
+against a file — `CM102`'s guarantee is unchanged for every in-tree target (§4).
 
 ---
 
