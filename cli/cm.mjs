@@ -940,7 +940,7 @@ switch (cmd) {
   // cm:why installing was never the hard part — the decisions are: graph-only or prose, vendor or pin,
   //   which CI line, and WHICH couplings to declare first. This answers those for the repo it is run in
   case 'onboard': {
-    const reg = existsSync(join(root, '.forge', 'codemap.json')) ? loadOrDie() : { ...DEFAULT_REGISTRY };
+    const reg = loadOrDie();
     if (flags.has('--prompt')) { console.log(bootstrapPrompt()); break; }
 
     const files = allFiles(reg);

@@ -1,0 +1,33 @@
+{
+  "specVersion": "codemap/1",
+  "flows": [],
+  "externals": [],
+  "enforce": {
+    "grammar": false,
+    "drain": true,
+    "include": [
+      "**"
+    ],
+    "exclude": [
+      "**/node_modules/**",
+      "**/vendor/**",
+      "**/target/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.next/**",
+      "**/.turbo/**",
+      "**/.git/**",
+      "**/coverage/**",
+      "**/__pycache__/**",
+      "**/*.min.js",
+      "**/*.generated.*",
+      "**/_ide_helper*",
+      "**/.venv/**",
+      "**/venv/**",
+      "**/.claude/worktrees/**",
+      "**/*-backup-*/**",
+      "**/storybook-static/**"
+    ]
+  },
+  "languages": {}
+}

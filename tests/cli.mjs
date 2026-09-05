@@ -893,6 +893,28 @@ function externalCases(pluginRoot, check, roots) {
 
 // cm:why a repo's CI runs the checker it COMMITTED, so a newer plugin reporting green says nothing about
 //   the gate — two production repos sat 6 and 8 minors behind with no signal anywhere
+// cm:why onboard's registry line is read separately from verify's — a regression here (ISS-19)
+//   let an un-onboarded repo read as "registry: present" and hide the exact gap onboard exists to show
+function onboardCases(pluginRoot, check, roots) {
+  const root = mkdtempSync(join(tmpdir(), 'cm-cli-'));
+  roots.push(root);
+  writeFileSync(join(root, 'other.ts'), 'export const b = 2;\n');
+  git(root, 'init', '-q');
+  git(root, 'add', '-A');
+  git(root, 'commit', '-qm', 'seed');
+
+  const before = cm(pluginRoot, root, 'onboard');
+  check('cli: onboard reports no registry before cm init',
+    /registry: none/.test(before.out),
+    `expected "registry: none" with no .forge/codemap.json:\n${before.out}`);
+
+  cm(pluginRoot, root, 'init');
+  const after = cm(pluginRoot, root, 'onboard');
+  check('cli: onboard reports the registry once cm init has run',
+    /registry: present/.test(after.out),
+    `expected "registry: present" after cm init:\n${after.out}`);
+}
+
 function skewCases(pluginRoot, check, roots) {
   const root = makeRepo();
   roots.push(root);
@@ -1006,6 +1028,7 @@ export function cliCases(pluginRoot, check) {
     drainCases(pluginRoot, check, roots);
     advisoryCases(pluginRoot, check, roots);
     archmapCases(pluginRoot, check, roots);
+    onboardCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
   }
