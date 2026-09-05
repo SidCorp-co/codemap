@@ -4,14 +4,13 @@
 // does the whole-repo scan on its own clock, and writes the cache for the NEXT edit to find warm.
 
 import { execFileSync } from 'node:child_process';
-import { unlinkSync } from 'node:fs';
-import { join } from 'node:path';
-import { parseGraphDoc, writeGraphCache } from './archmap.mjs';
+import { writeFileSync } from 'node:fs';
+import { parseGraphDoc, writeGraphCache, fingerprint, lockPath } from './archmap.mjs';
 
-const [, , root, bin, print] = process.argv;
+const [, , root, bin, printHash] = process.argv;
 
-function clearLock() {
-  try { unlinkSync(join(root, '.forge', '.codemap-archmap-cache', 'refresh.lock')); } catch {
+function finishLock() {
+  try { writeFileSync(lockPath(root), JSON.stringify({ pid: process.pid, finishedAt: Date.now() })); } catch {
     // cm:guard the lock is a hint, not state anyone reads back from this process — nothing to fix
   }
 }
@@ -20,9 +19,11 @@ try {
   const out = execFileSync(bin, ['graph', '--json', '--compact'],
     { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 256 * 1024 * 1024 });
   const graph = parseGraphDoc(out);
-  if (graph) writeGraphCache(root, print, graph);
+  // cm:guard the tree may change WHILE this ~15s scan runs — cache only a fingerprint that still
+  //   matches now, or a later checkout back to it reads a stale result as fresh (ISS-14 review, F1)
+  if (graph && fingerprint(root) === printHash) writeGraphCache(root, printHash, graph);
 } catch {
   // cm:guard a failed scan just leaves the cache as it was; the next edit's fingerprint retries it
 } finally {
-  clearLock();
+  finishLock();
 }

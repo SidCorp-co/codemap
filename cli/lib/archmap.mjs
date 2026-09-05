@@ -9,6 +9,7 @@ import {
   existsSync, readFileSync, writeFileSync, renameSync, mkdirSync, statSync,
 } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirtyFiles } from './registry.mjs';
@@ -23,6 +24,12 @@ const LOCK_FILE = 'refresh.lock';
 // cm:why generous, not tuned — a real scan is ~15s; this only bounds how long a lock outlives
 //   a killed worker before the next edit is allowed to try again
 const LOCK_MAX_AGE_MS = 5 * 60 * 1000;
+// cm:why a fresh finish is not an invitation to rescan — an actively-edited repo would otherwise
+//   sit in back-to-back ~15s scans, each superseded before it can even land (ISS-14 review, F2)
+const COOLDOWN_MS = 15 * 1000;
+// cm:why only these can carry an import; a README/lockfile/JSON edit cannot change the graph, so
+//   counting it would invalidate a warm cache for no reason (ISS-14 review, F3)
+const SOURCE_EXT = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|go|php|py|pyi|rs)$/i;
 
 // cm:guard undirected on purpose — CM301 asks "is there evidence at either end", never which way
 //   an edge points, so a->b and b->a are the same fact and must look up the same way
@@ -53,7 +60,9 @@ export function parseGraphDoc(json) {
 }
 
 function cacheDir(root) { return join(root, ...CACHE_DIR); }
-function lockPath(root) { return join(cacheDir(root), LOCK_FILE); }
+// cm:edge contract -> cli/lib/archmap-refresh-worker.mjs — the worker clears/finishes THIS lock;
+//   both must resolve the same path, so it imports this rather than re-spelling it (ISS-14 review, F6)
+export function lockPath(root) { return join(cacheDir(root), LOCK_FILE); }
 
 function freezeGraph(graph) {
   const adjacency = {};
@@ -68,16 +77,16 @@ function reviveGraph(cached) {
 }
 
 /**
- * Write a graph to the cache, keyed by the fingerprint it was built from — an atomic rename, so a
- * reader never observes a half-written file. Never throws: a write failure leaves the check
+ * Write a graph to the cache, keyed by the fingerprint HASH it was built from — an atomic rename,
+ * so a reader never observes a half-written file. Never throws: a write failure leaves the check
  * exactly where it was, evidence-poorer but not broken, per this file's own header.
  */
-export function writeGraphCache(root, print, graph) {
+export function writeGraphCache(root, printHash, graph) {
   try {
     const dir = cacheDir(root);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     const tmp = join(dir, `${CACHE_FILE}.${process.pid}.tmp`);
-    writeFileSync(tmp, JSON.stringify({ fingerprint: print, ...freezeGraph(graph) }));
+    writeFileSync(tmp, JSON.stringify({ fingerprint: printHash, ...freezeGraph(graph) }));
     renameSync(tmp, join(dir, CACHE_FILE));
   } catch {
     // cm:guard a disk error here must never be the reason an edit itself fails or looks unchecked
@@ -101,68 +110,92 @@ function headSha(root) {
  * `dirtyFiles` (already used by `cm baseline`) names the small set that can differ from it, and
  * only THOSE get stat'd — never the whole tree, so this stays cheap on a 1600+ file repo.
  *
+ * Returned as a short hash, never the raw string: a rebase or a huge checkout can dirty
+ * thousands of paths, and the raw form once rode argv into the refresh worker (ISS-14 review,
+ * F8) — long enough to risk `ARG_MAX` and to bloat the cache file for no reason.
+ *
  * `null` means "cannot be determined" (no git, a detached HEAD with no commits, …), and a caller
  * must never treat that as a match: an unfingerprintable repo can only ever miss the cache.
  */
-function fingerprint(root) {
+export function fingerprint(root) {
   const head = headSha(root);
   const dirty = dirtyFiles(root);
   if (head === null || dirty === null) return null;
   // cm:guard `.forge/` is this tool's OWN state — metrics.mjs rewrites pending.json on every hook
   //   run, so counting it here would invalidate the cache on every edit, never just a real import
-  const parts = [...dirty].filter((f) => !f.startsWith('.forge/')).sort().map((f) => {
+  const parts = [...dirty].filter((f) => !f.startsWith('.forge/') && SOURCE_EXT.test(f)).sort().map((f) => {
     // cm:why a stat that throws is a file gone since HEAD — still a change the graph must see
     try {
       const st = statSync(join(root, f));
       return `${f}:${st.size}:${st.mtimeMs}`;
     } catch { return `${f}:gone`; }
   });
-  return [head, ...parts].join('\n');
+  const raw = [head, ...parts].join('\n');
+  return createHash('sha256').update(raw).digest('hex');
 }
 
-function refreshInFlight(root) {
-  try {
-    const lock = JSON.parse(readFileSync(lockPath(root), 'utf8'));
-    // cm:why an old lock is presumed abandoned (a killed worker, a crashed machine), never waited on
-    if (Date.now() - lock.startedAt > LOCK_MAX_AGE_MS) return false;
-    process.kill(lock.pid, 0);
-    return true;
-  } catch { return false; }
+function readLock(root) {
+  try { return JSON.parse(readFileSync(lockPath(root), 'utf8')); } catch { return null; }
+}
+
+function refreshInFlight(lock) {
+  if (!lock || lock.finishedAt !== undefined) return false;
+  // cm:why an old lock is presumed abandoned (a killed worker, a crashed machine), never waited on
+  if (Date.now() - lock.startedAt > LOCK_MAX_AGE_MS) return false;
+  try { process.kill(lock.pid, 0); return true; } catch { return false; }
+}
+
+function recentlyFinished(lock) {
+  return lock?.finishedAt !== undefined && Date.now() - lock.finishedAt < COOLDOWN_MS;
 }
 
 /**
  * Kick off the ~15s scan OUTSIDE this process — detached and unref'd, so it outlives the hook
- * that triggered it and never holds the edit open. At most one runs per repo at a time (a lock
- * file, not a queue): a burst of edits schedules one refresh, not one per keystroke.
+ * that triggered it and never holds the edit open. At most one runs per repo at a time: the lock
+ * is claimed with an exclusive create (`wx`), so two processes racing here cannot both win it, and
+ * a repo mid-edit gets at most one attempt per `COOLDOWN_MS` rather than one per keystroke.
  */
-function scheduleRefresh(root, bin, print) {
-  if (refreshInFlight(root)) return;
+function scheduleRefresh(root, bin, printHash) {
+  const dir = cacheDir(root);
+  try { if (!existsSync(dir)) mkdirSync(dir, { recursive: true }); } catch { return; }
+
+  const claim = JSON.stringify({ pid: process.pid, startedAt: Date.now() });
+  const path = lockPath(root);
   try {
-    const dir = cacheDir(root);
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  } catch { return; }
+    writeFileSync(path, claim, { flag: 'wx' });
+  } catch {
+    // cm:guard a lock already exists — only take it over if it is neither live nor on cooldown
+    const lock = readLock(root);
+    if (refreshInFlight(lock) || recentlyFinished(lock)) return;
+    try { writeFileSync(path, claim); } catch { return; }
+  }
+
   const worker = join(dirname(fileURLToPath(import.meta.url)), 'archmap-refresh-worker.mjs');
   let child;
   try {
-    child = spawn(process.execPath, [worker, root, bin, print],
+    child = spawn(process.execPath, [worker, root, bin, printHash],
       { cwd: root, detached: true, stdio: 'ignore' });
   } catch { return; }
   child.unref();
-  try { writeFileSync(lockPath(root), JSON.stringify({ pid: child.pid, startedAt: Date.now() })); } catch {
-    // cm:guard a lock we could not write is a refresh we cannot track — leave none, not a wrong one
+  // cm:why the claim above proved ownership; this replaces the placeholder pid with the real
+  //   worker's, which is what staleness (a killed worker) is checked against later
+  try { writeFileSync(path, JSON.stringify({ pid: child.pid, startedAt: Date.now() })); } catch {
+    // cm:guard a lock we could not update still exists and still blocks a second spawn; fine either way
   }
 }
 
 /**
  * The synchronous path: `--tier advisory` (a human asked, and will wait) and `enforce.advisory:
  * true` (a repo opted in, paying the cost it measured). Runs the real scan in this process, exactly
- * as before ISS-14, and now also warms the cache so a concurrent cache-only caller can use it.
+ * as before ISS-14. Also warms the cache — but only if nothing changed the fingerprint WHILE the
+ * ~15s scan ran; otherwise the result describes a tree that no longer exists and is discarded
+ * rather than cached under the (now wrong) key it started with (ISS-14 review, F1).
  */
 export function loadImportGraph(root) {
   const bin = join(root, VENDOR_BIN);
   if (!existsSync(bin)) return null;
 
-  const print = fingerprint(root);
+  const before = fingerprint(root);
   let out;
   try {
     // cm:guard maxBuffer is explicit and generous — the default 1 MiB truncates a compact export well
@@ -174,7 +207,7 @@ export function loadImportGraph(root) {
   }
 
   const graph = parseGraphDoc(out);
-  if (graph && print) writeGraphCache(root, print, graph);
+  if (graph && before && fingerprint(root) === before) writeGraphCache(root, before, graph);
   return graph;
 }
 

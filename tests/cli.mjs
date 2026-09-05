@@ -7,6 +7,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync 
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fingerprint, lockPath } from '../cli/lib/archmap.mjs';
 
 const FROZEN = 'this legacy line is frozen by the baseline';
 const GONE = 'this legacy line will be deleted';
@@ -718,18 +719,36 @@ function archmapCases(pluginRoot, check, roots) {
     !/CM301/.test(staleBare.out),
     `a fingerprint mismatch must mean no evidence this edit, not the graph from before the edit:\n${staleBare.out}`);
 
-  // cm:why the stub archmap answers instantly, so the detached refresh this edit scheduled should
-  //   finish well inside a 5s poll — a real archmap is the ~15s case this design exists to hide
+  // cm:why the cold-cache bare verify near the top already scheduled and finished a refresh
+  //   (the stub answers instantly); this attempt lands inside its cooldown, so it must be a no-op
+  const lock = lockPath(root);
+  const beforeLock = readFileSync(lock, 'utf8');
+  cm(pluginRoot, root, 'verify');
+  check('cli: ISS-14 — a refresh just finished throttles the next one; no second spawn on cooldown',
+    readFileSync(lock, 'utf8') === beforeLock,
+    'expected the lock (pid + finishedAt) to be untouched by a schedule attempt inside the cooldown');
+
+  // cm:why fabricates the cooldown having cleared, rather than a real ~15s wait, so this proves the
+  //   refresh mechanism itself without making the whole gate pay COOLDOWN_MS (ISS-14 review)
+  writeFileSync(lock, JSON.stringify({ pid: 999999999, finishedAt: Date.now() - 20000 }));
   const deadline = Date.now() + 5000;
   let refreshed = false;
   while (!refreshed && Date.now() < deadline) {
-    spawnSync('sleep', ['0.2']);
-    const recheck = cm(pluginRoot, root, 'verify');
-    if (!/caller\.ts/.test(recheck.out) && /CM301/.test(recheck.out)) refreshed = true;
+    cm(pluginRoot, root, 'verify');
+    try {
+      const cache = JSON.parse(readFileSync(join(root, '.forge', '.codemap-archmap-cache', 'graph.json'), 'utf8'));
+      if (cache.fingerprint === fingerprint(root)) refreshed = true;
+    } catch {}
+    if (!refreshed) spawnSync('sleep', ['0.2']);
   }
-  check('cli: ISS-14 — the background refresh finishes and a later edit reads the updated graph',
+  check('cli: ISS-14 — once the cooldown clears, a later edit schedules a refresh that catches up',
     refreshed,
-    'expected a detached refresh, scheduled on the stale-cache run above, to warm the cache in time');
+    'expected a detached refresh to warm the cache once no longer throttled by the cooldown');
+
+  const recheck = cm(pluginRoot, root, 'verify');
+  check('cli: ISS-14 — once refreshed, a later edit reads the updated graph with no flag needed',
+    !/caller\.ts/.test(recheck.out) && /CM301/.test(recheck.out),
+    `expected the now-warm cache to back a bare tier=all run:\n${recheck.out}`);
 
   writeFileSync(join(root, '.forge', 'codemap.json'), '{"enforce":{"advisory":true}}\n');
   const optedIn = cm(pluginRoot, root, 'verify');

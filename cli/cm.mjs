@@ -467,7 +467,7 @@ switch (cmd) {
     if (tier === 'all' || tier === 'structural') diags.push(...scopeGraph(structuralDiags(g)));
     // cm:edge contract -> cli/lib/archmap.mjs#loadCachedImportGraph — a bare tier=all run (the hook's,
     //   on every edit) may only ever read the cache; the live ~15s scan is for an explicit ask (ISS-14)
-    const askedForAdvisory = tier === 'advisory' || (tier === 'all' && reg.enforce?.advisory === true);
+    const askedForAdvisory = tier === 'advisory' || (tier === 'all' && Boolean(reg.enforce?.advisory));
     const importGraph = askedForAdvisory
       ? loadImportGraph(root)
       : (tier === 'all' && reg.enforce?.advisory !== false ? loadCachedImportGraph(root) : null);
