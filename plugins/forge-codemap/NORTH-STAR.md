@@ -1,272 +1,287 @@
 # codemap — north star
 
-> Hệ thống comment **có nguyên tắc** cho những sự thật không công cụ nào suy ra được — cộng một
-> checker đọc chúng, và một hook đưa chúng tới agent **trước khi** agent sửa file.
+> A **principled** comment system for the facts no tool can derive — plus a checker that reads them,
+> and a hook that hands them to the agent **before** it edits the file.
 
-**Bản này để chống trôi mục tiêu.** Đọc §2 và §7 trước khi thêm bất cứ tính năng nào. Một đề xuất
-không trỏ được về một cơn đau ở §2 là một đề xuất bị từ chối.
+**This document exists to stop goal drift.** Read §2 and §7 before adding any feature. A proposal
+that cannot be traced back to a pain in §2 is a proposal that gets refused.
 
-Cập nhật 2026-08-19. Anh em: `SPEC.md` (cơ chế) · `README.md` (cách dùng) ·
-`~/tools/repo-gates/NORTH-STAR.md` (chỉ mục 4 sản phẩm).
+Updated 2026-09-06. Siblings: `SPEC.md` (mechanism) · `README.md` (usage) ·
+`~/tools/repo-gates/NORTH-STAR.md` (index of the four products).
 
 ---
 
-## 1. Câu hỏi nó trả lời
+## 1. The question it answers
 
-Cùng câu hỏi với archmap, apiflow, KineTrak — khác chất liệu:
+The same question archmap, apiflow and KineTrak answer — on different material:
 
-> **“Đổi cái này thì còn cái gì bị ảnh hưởng?”** — trả lời **trước khi sửa**, không phải sau khi hỏng.
+> **"If I change this, what else is affected?"** — answered **before the edit**, not after the break.
 
-Chất liệu của codemap: **ràng buộc chỉ nằm trong đầu người.**
+codemap's material: **the constraints that live only in someone's head.**
 
-## 2. Ai đau, đau vì cái gì
+## 2. Whose pain, and what the pain is
 
-**Ai:** người phải review code do agent viết, và cứ gặp lại cùng một loại lỗi.
+**Who:** the person who has to review agent-written code, and keeps meeting the same class of bug.
 
-**Cơn đau KHÔNG phải** “thiếu tài liệu”, cũng không phải “code khó đọc”.
+**The pain is NOT** "missing documentation", and it is not "the code is hard to read".
 
-**Cơn đau là:** agent sửa một file và làm vỡ một điều kiện **chưa ai từng viết ra** — kiểu
-*“hai file này phải sửa cùng nhau”*, *“phá điều kiện này thì hỏng state”*, *“lệnh này thay thế chứ
-không merge”*, *“thứ tự gọi bắt buộc”*. Những thứ đó không nằm trong type, không nằm trong test,
-không nằm trong tên hàm. Trước codemap chúng nằm trong đầu một người — và agent không có ký ức
-giữa các phiên.
+**The pain is:** an agent edits a file and breaks a condition **nobody ever wrote down** — of the
+kind *"these two files must change together"*, *"break this condition and state corrupts"*, *"this
+call replaces rather than merges"*, *"this call order is mandatory"*. None of that is in the types,
+in the tests, or in the function names. Before codemap it lived in one person's head — and an agent
+has no memory between sessions.
 
-**Cơn đau thứ hai, ít ai gọi tên:** agent viết comment thừa. Dùng lint để **cấm** thì chỉ tạo ra
-khoảng trống — năng lượng biến mất mà thông tin thật vẫn không xuất hiện.
+**The second pain, rarely named:** agents write redundant comments. Using a linter to **ban** them
+only produces a vacuum — the energy disappears and the real information still never shows up.
 
-## 3. Cái làm nó khác thứ đã có
+## 3. What makes it different from what already exists
 
-| Thứ đã có | Vì sao không thay được |
+| What exists | Why it cannot replace this |
 |---|---|
-| type system / compiler | nói được *hình dạng dữ liệu*, không nói được *hai file phải sửa cùng nhau* |
-| linter (eslint, biome…) | làm việc trong AST **một file**, không có cạnh liên file |
-| LSP / go-to-definition | thấy tham chiếu có thật, mù với coupling **không phải tham chiếu** (chuỗi, tên, SQL, cron) |
-| doc / ADR / wiki | không ai đọc đúng lúc sắp sửa file đó |
-| lint cấm comment | tạo khoảng trống, không tạo thông tin |
+| type system / compiler | states the *shape of data*, never *these two files must change together* |
+| linter (eslint, biome…) | works inside **one file's** AST; has no cross-file edge |
+| LSP / go-to-definition | sees real references, blind to coupling that **is not a reference** (strings, names, SQL, cron) |
+| doc / ADR / wiki | nobody reads it at the moment they are about to edit that file |
+| a lint rule banning comments | creates a vacuum, not information |
 
-**Vị trí đúng của codemap trong một câu:** nó không phải một linter khắt khe hơn — nó **chuyển
-hướng** xu hướng viết comment của agent thành một **lớp dữ liệu** đọc được, kiểm được, truy vấn
-được, và inject lại cho agent tiếp theo. Biến chi phí comment thành tài sản.
+**Its correct position in one sentence:** it is not a stricter linter — it **redirects** the agent's
+urge to write comments into a **data layer** that can be read, checked, queried, and injected back
+into the next agent. It turns the cost of comments into an asset.
 
-Năm chỗ được phép viết: `cm:guard` · `cm:edge` · `cm:flow` · `cm:hack` · `cm:why`. Ngoài năm chỗ đó
-là comment thường, và comment thường thì không được diễn đạt lại thứ tool đã suy ra được.
+Five places are allowed: `cm:guard` · `cm:edge` · `cm:flow` · `cm:hack` · `cm:why`. Everything else
+is an ordinary comment, and an ordinary comment may not restate what a tool already derives.
 
-## 4. Bằng chứng hôm nay (đo 19/08/2026)
+## 4. The evidence today (measured 2026-08-19)
 
-Trên repo forge (`cm verify --tier referential`, exit 0):
+On the forge repo (`cm verify --tier referential`, exit 0):
 ```
-2350 file quét
+2350 files scanned
  494 cm:guard
  408 cm:why
- 181 cm:edge   (21 đã neo)
+ 181 cm:edge   (21 anchored)
    2 cm:flow
    1 cm:hack
-13410 legacy prose đang bị đóng băng · 3 đã dọn (0%)
+13410 legacy prose frozen · 3 cleared (0%)
 ```
 
-**Tỉ lệ 13.410 / 1.086 là thước đo tiến độ của việc chuyển hướng** — nó đo *chất* của comment, không
-đo lượng, và đo được ngay hôm nay không cần người ngoài.
+**The 13,410 / 1,086 ratio is the progress measure for the redirection** — it measures comment
+*quality*, not volume, and it is measurable today without anyone outside.
 
-Độ chín: **290 test xanh** · 18 verb · 8 language profile (ts/go/php/py/rust/sql/sh/yaml) ·
-`tests/cli.mjs` 687 dòng test end-to-end · 1 stub tự khai (`cm migrate`, exit 2) ·
-đang cài ở **15 repo nội bộ** (đo lại 02/09/2026 — xem §10) ·
-có **cả `PreToolUse` và `PostToolUse`** — là công cụ duy nhất trong bốn cái đạt bậc 1.
+Maturity: **290 tests green** · 18 verbs · 8 language profiles (ts/go/php/py/rust/sql/sh/yaml) ·
+`tests/cli.mjs` is 687 lines of end-to-end tests · 1 self-declared stub (`cm migrate`, exit 2) ·
+installed in **15 internal repos** (re-measured 2026-09-02 — see §10) ·
+carries **both `PreToolUse` and `PostToolUse`** — the only one of the four products at tier 1.
 
-CM301/CM302 (advisory) vẫn **mặc định tắt** — `enforce.advisory` trong registry, hoặc
-`--tier advisory` tường minh, vẫn là cổng duy nhất; archmap có mặt không tự bật tier (`archmap
-graph` tốn ~15s trên repo 1600+ file, và hook chạy `cm verify` tier=all trên MỖI lần sửa file —
-tự bật theo archmap từng gây stall nhiều giây mỗi lần sửa, đã đo và sửa lại). Khi tier được bật
-(bằng tay), nó đọc `archmap graph --json` làm bằng chứng thật thay vì so tên file. Đo lại trên
-archmap thật (repo `forge`, 1905 file): 6 hit CM301 cũ, **0** bị đồ thị thật loại thêm — khớp với
-phân tích tay đã có ở SPEC §7.1 (cả 6 đều là coupling không có tham chiếu thật). Chưa lên `error`
-— đúng theo lộ trình §8.
+CM301/CM302 (advisory) are still **off by default** — `enforce.advisory` in the registry, or an
+explicit `--tier advisory`, remains the only gate; the presence of archmap does not switch the tier
+on by itself (`archmap graph` costs ~15s on a 1600+ file repo, and the hook runs `cm verify`
+tier=all on EVERY file edit — auto-enabling on archmap was measured to stall the edit by seconds
+each time, and was reverted). When the tier is enabled by hand, it reads `archmap graph --json` as
+real evidence instead of comparing filenames. Re-measured against a real archmap (repo `forge`,
+1905 files): 6 pre-existing CM301 hits, **0** additionally eliminated by the real graph — matching
+the hand analysis already in SPEC §7.1 (all 6 are couplings with no real reference). Not promoted to
+`error` yet — per the roadmap in §8.
 
 ## 5. North star
 
-> **Số repo KHÔNG phải của chủ sở hữu, trong đó có người tự tay viết một `cm:` annotation.**
+> **The number of repos NOT owned by the author in which somebody wrote a `cm:` annotation by hand.**
 
-Không gian lận được: viết thêm code không làm người lạ chấp nhận một từ vựng mới. Đây là phép thử
-duy nhất cho câu hỏi thật — *primitive này đúng, hay chỉ đúng với người nghĩ ra nó.*
+It cannot be gamed: writing more code does not make a stranger adopt a new vocabulary. It is the only
+test of the real question — *is this primitive right, or is it only right for the person who thought
+of it.*
 
-| Mốc | Chỉ tiêu |
+| Horizon | Target |
 |---|---|
-| 30 ngày | chưa tính — giai đoạn này chỉ đo chỉ số dẫn |
-| 90 ngày | **1 repo** ngoài, ≥1 annotation người khác viết |
-| 12 tháng | **10 repo** ngoài, mỗi repo ≥5 annotation người khác viết |
+| 30 days | not counted — this phase measures leading indicators only |
+| 90 days | **1 outside repo**, ≥1 annotation written by somebody else |
+| 12 months | **10 outside repos**, each with ≥5 annotations written by somebody else |
 
-**Chỉ số dẫn (tự làm được):**
-1. Repo nội bộ có codemap: **5 → 15 — xong 02/09/2026** (ISS-4), nhưng đúng con số là **6 vendored
-   (baseline riêng) / 9 plugins-advisory (chưa baseline)** — `sidboss` đã ở tier plugins TRƯỚC
-   ISS-4, không phải vendored, nên "7 pre-existing" ở §10 là cách đếm cũ, đã sửa. Đếm là quy mô,
-   không phải tác dụng — §5 vẫn đo tác dụng riêng bằng annotation người ngoài viết. "Mỗi repo có
-   baseline riêng" (kết quả cần đạt của ISS-4) mới đúng cho 6/15 — xem §10 và các issue theo dõi ở
-   đó cho 9 repo còn lại.
-2. Bot nâng cấp hàng tuần chạy thật, có log, **4 tuần liên tiếp** (nó đã chết âm thầm một thời gian
-   không rõ — xem nhật ký).
-3. Tỉ lệ legacy prose giảm; `cm:` annotation tăng — đo được: `cm metrics show` (SPEC.md §10, ISS-3).
-4. CM301 đọc được đồ thị archmap thật khi tier được bật — **xong** (§8 Phase 2); bật `warn` theo
-   mặc định vẫn chờ một lớp cache cho `archmap graph` (~15s/lần), vì hook gọi `cm verify` mỗi lần
-   sửa file.
-5. Hook chặn bao nhiêu lần, vì check nào, và lần chặn đó có giữ được hay bị lách qua — đo cục bộ,
-   gửi là opt-in: `cm metrics show` / `cm metrics send` (SPEC.md §10). Trước ISS-3 không có cách
-   nào đếm con số này; mọi bằng chứng ở §4 là quy mô, không phải tác dụng.
+**Leading indicators (achievable alone):**
+1. Internal repos carrying codemap: **5 → 15 — done 2026-09-02** (ISS-4), though the honest split is
+   **6 vendored (own baseline) / 9 plugins-advisory (no baseline yet)** — `sidboss` was already at
+   the plugins tier BEFORE ISS-4, not vendored, so "7 pre-existing" in §10 was the old count and has
+   been corrected. The count measures reach, not effect — §5 still measures effect separately, by
+   annotations outsiders write. "Every repo has its own baseline" (ISS-4's intended outcome) holds
+   for only 6/15 — see §10 and the tracking issues there for the remaining 9.
+2. The weekly upgrade bot demonstrably running, with logs, **4 weeks in a row** (it died silently for
+   an unknown stretch — see the decision log).
+3. Legacy prose falling while `cm:` annotations rise — measurable: `cm metrics show` (SPEC.md §10,
+   ISS-3).
+4. CM301 reading a real archmap graph when the tier is enabled — **done** (§8 Phase 2); defaulting it
+   to `warn` still waits on a cache layer for `archmap graph` (~15s a call), because the hook invokes
+   `cm verify` on every file edit.
+5. How often the hook blocks, on which check, and whether that block held or was circumvented —
+   measured locally, sending is opt-in: `cm metrics show` / `cm metrics send` (SPEC.md §10). Before
+   ISS-3 there was no way to count this at all; every piece of evidence in §4 is reach, not effect.
 
 ## 6. Kill criteria
 
-12 tháng mà **0 annotation do người ngoài viết** → đây là quy ước nội bộ của một người, không phải
-sản phẩm. Giữ dùng nội bộ, rút khỏi danh sách public, ngừng đầu tư phân phối. **Không bảo vệ nó
-bằng cách viết thêm tài liệu.**
+12 months with **0 annotations written by outsiders** → this is one person's internal convention, not
+a product. Keep using it internally, withdraw it from the public list, stop investing in
+distribution. **Do not defend it by writing more documentation.**
 
-## 7. Không làm
+## 7. What this will not do
 
-- **Không thành một linter tổng quát.** Luật diễn đạt được bằng rule linter thì thuộc về linter
-  (bậc 2–3), không thuộc `cm:`. Xem thang bậc trong `~/tools/repo-gates/PLAYBOOK.md` §B2.
-- **Không phá ràng buộc zero-dependency.** `scripts/lib/registry.mjs:3-4` viết rõ lý do: *“a plugin
-  that needs `npm install` before its hooks work is a plugin that gets disabled.”* Đây là điều kiện
-  tồn tại, không phải sở thích.
-- **Không gộp với eslint-plugin-code-quality.** Nó cần peerDep `eslint` — gộp là phá điều trên.
-  Hai thứ đứng cạnh nhau, không nhập.
-- **Không dựng một tầng hợp nhất trên codemap + archmap.** Đó là gatemap: chết hai lần
-  (v1 13/08/2026 bị bốn review độc lập bác; v2 19/08/2026 bị PLAYBOOK §D khai tử sau 2 tiếng).
-- **Không bật advisory tier khi chưa đo FP rate.** Tiêu chí mượn của Google/Tricorder: vào ở `warn`,
-  lên `error` khi FP dưới ngưỡng **và** đã về 0 finding.
-- **Không viết thêm README.** 311 dòng là đã quá đủ cho lượng người dùng hiện tại.
+- **Not become a general-purpose linter.** A rule expressible as a linter rule belongs to the linter
+  (tiers 2–3), not to `cm:`. See the tier ladder in `~/tools/repo-gates/PLAYBOOK.md` §B2.
+- **Not break the zero-dependency constraint.** `scripts/lib/registry.mjs:3-4` states the reason:
+  *"a plugin that needs `npm install` before its hooks work is a plugin that gets disabled."* This is
+  a condition of existence, not a preference.
+- **Not merge with eslint-plugin-code-quality.** That one needs a peer dependency on `eslint` —
+  merging breaks the rule above. The two stand side by side; they do not fuse.
+- **Not build a unified layer over codemap + archmap.** That is gatemap: dead twice (v1 on 2026-08-13,
+  rejected by four independent reviews; v2 on 2026-08-19, killed by PLAYBOOK §D after two hours).
+- **Not enable the advisory tier before the FP rate is measured.** Criterion borrowed from
+  Google/Tricorder: enter at `warn`, promote to `error` when FP is under threshold **and** the
+  findings are back to zero.
+- **Not write more README.** 311 lines is already more than enough for the current user count.
 
-## 8. Lộ trình của repo này
+## 8. Roadmap for this repo
 
-**Phase 0 — chặn máu**
-- Xác nhận bot nâng cấp hàng tuần chạy thật một lần, có log — **xong 2026-09-03 (ISS-5)**, nhưng
-  không phải theo cách đề bài đoán: bot không chết, **nguồn tag nó đọc đã ngừng chảy**. Chi tiết ở
-  §9. Còn lại của đề bài — "4 tuần liên tiếp" (§5 chỉ số dẫn #2) — chưa đo được từ phiên này, vì
-  điều đó đòi quan sát 4 lần chạy thật trong các repo consumer, ngoài quyền ghi của issue này.
+**Phase 0 — stop the bleeding**
+- Confirm the weekly upgrade bot really runs once, with a log — **done 2026-09-03 (ISS-5)**, but not
+  the way the brief assumed: the bot was not dead, **the tag stream it reads had stopped flowing**.
+  Details in §9. The rest of the brief — "4 weeks in a row" (§5 leading indicator #2) — could not be
+  measured from that session, since it requires observing 4 real runs in consumer repos, outside that
+  issue's write scope.
 
-**Phase 1 — phân phối** *(codemap đi trước trong bốn sản phẩm)*
-- **Tách repo riêng — xong 06/09/2026.** Repo `SidCorp-co/codemap` giờ chỉ chở codemap: bộ
-  pipeline skills (86 file bundle, 32 skill, 26 profile) đã bị xoá vì `SidCorp-co/forge-plugin`
-  thay thế nó, và còn truy được ở tag `pipeline-final`. Hai hệ quả từng chặn Phase 1 đã mở:
-  1. Bốn form feedback đã chuyển lên `.github/ISSUE_TEMPLATE/` ở gốc — chỗ duy nhất GitHub đọc.
-  2. Hộp thư giờ chỉ có codemap, nên *“1 issue từ người lạ”* quy được về codemap và dùng làm cổng
-     được.
-- Rollout 5 → 15 repo nội bộ qua `forge_config` → `plugin_sync.rs:89` — **xong 02/09/2026** (ISS-4,
-  chi tiết §10). Tầng `plugins` mới chỉ mở visibility (advisory, không chặn); tầng vendored/gated —
-  `cm init` đóng băng baseline rồi commit `.forge/codemap/` — còn lại làm trong issue riêng của
-  từng repo, không làm từ ISS-4.
-- Public. Mở khoá cho archmap khi có **1 issue/PR từ người lạ**.
+**Phase 1 — distribution** *(codemap goes first among the four products)*
+- **Its own repo — done 2026-09-06.** `SidCorp-co/codemap` now carries codemap and nothing else: the
+  pipeline skill set (86 bundle files, 32 skills, 26 profiles) was deleted because
+  `SidCorp-co/forge-plugin` supersedes it, and it remains reachable at the tag `pipeline-final`. Both
+  consequences that used to block Phase 1 are now open:
+  1. The four feedback forms moved up to `.github/ISSUE_TEMPLATE/` at the repo root — the only place
+     GitHub reads them.
+  2. The inbox now holds codemap alone, so *"1 issue from a stranger"* is attributable to codemap and
+     can serve as a gate.
+- Rollout 5 → 15 internal repos via `forge_config` → `plugin_sync.rs:89` — **done 2026-09-02** (ISS-4,
+  details in §10). The `plugins` tier only opens visibility (advisory, no blocking); the
+  vendored/gated tier — `cm init` freezing a baseline, then committing `.forge/codemap/` — is left to
+  a dedicated issue in each repo, and was not done from ISS-4.
+- Public. Unlock archmap when **1 issue/PR from a stranger** arrives.
 
-**Phase 2 — mối nối đáng làm** *(xong phần đọc đồ thị + đo FP; `warn` mặc định vẫn chờ cache)*
-- `graph.mjs` từng tự thú: *"Evidence is a basename match, not an import graph"* — CM301 đoán
-  coupling có thật hay không **bằng cách so tên file**. Đã sửa: `scripts/lib/archmap.mjs` đọc
-  `archmap graph --json` khi tier advisory được bật; đồ thị thật được hỏi TRƯỚC basename, và
-  không cần archmap để check vẫn chạy như cũ.
-- Đo trên archmap thật thay vì đoán: 0/6 hit đo lại trên repo `forge` được đồ thị thật loại thêm —
-  cả 6 đã đúng là coupling không tham chiếu (SPEC §7.1).
-- **Chưa tự bật theo mặc định.** Thử tự bật khi archmap có mặt (bỏ qua `enforce.advisory`) đã bị
-  đo thấy gây stall ~15s trên MỖI lần sửa file, vì hook gọi `cm verify` tier=all không có
-  `--tier` — và `archmap graph` là một lần quét cả repo. Đã revert về đúng cổng cũ
-  (`enforce.advisory` hoặc `--tier advisory` tường minh); còn lại việc tự bật cần một lớp cache
-  cho archmap trước, để sau. Chưa lên `error`.
-- Còn lại, ưu tiên thấp hơn: dọn lớp chung (`globToRe` ×2, `findRoot` ×2, install/vendor ~270
-  dòng ×2) giữa codemap và archmap — thuần dọn dẹp, không chặn việc trên.
+**Phase 2 — the joint worth making** *(graph reading and FP measurement done; `warn` by default still
+waits on a cache)*
+- `graph.mjs` used to confess: *"Evidence is a basename match, not an import graph"* — CM301 guessed
+  whether a coupling was real **by comparing filenames**. Fixed: `scripts/lib/archmap.mjs` reads
+  `archmap graph --json` when the advisory tier is enabled; the real graph is asked BEFORE the
+  basename, and the check still runs unchanged where archmap is absent.
+- Measured against a real archmap instead of guessed: 0 of the 6 re-measured hits on the `forge` repo
+  were eliminated by the real graph — all 6 really are couplings without a reference (SPEC §7.1).
+- **Still not enabled by default.** Auto-enabling it when archmap is present (bypassing
+  `enforce.advisory`) was measured to stall EVERY file edit by ~15s, because the hook calls
+  `cm verify` tier=all with no `--tier`, and `archmap graph` is a whole-repo scan. Reverted to the
+  original gate (`enforce.advisory`, or an explicit `--tier advisory`); auto-enabling needs a cache
+  layer for archmap first, left for later. Not promoted to `error`.
+- Lower priority, still open: de-duplicate the shared layer (`globToRe` ×2, `findRoot` ×2,
+  install/vendor ~270 lines ×2) between codemap and archmap — pure cleanup, blocking nothing above.
 
-## 9. Nhật ký quyết định
+## 9. Decision log
 
-- **2026-08-19** — Chốt định vị: *chuyển hướng* comment thay vì *cấm* comment. Đây là điểm dễ bị
-  hiểu nhầm nhất; mọi mô tả sản phẩm phải nói vế này trước vế checker.
-- **2026-08-19** — Chốt public. Thứ tự: codemap đi đầu vì hoàn thiện nhất và kênh phân phối đã chạy
-  thật.
-- **2026-08-19** — gatemap v2 bị khai tử; khoảng trống giữa codemap và archmap là **cố ý**.
-- **~2026-08** — Phát hiện bot nâng cấp hàng tuần đã chết âm thầm (`node20` bị ép off). Đã sửa,
-  **chưa xác nhận chạy lại**.
-- **2026-09-03 (ISS-5)** — Xác nhận, và nguyên nhân khác giả thuyết ban đầu. Repo `forge` (vendored,
-  đo trực tiếp trên checkout của project đó) đứng ở `0.13.0` dù `plugin.json` ở đây đã ghi `0.14.0`
-  rồi `0.15.0` — hai bump đó (253d315, ba42a5f) **không có tag `codemap-v*` đi kèm**, khác với mọi
-  bump trước (mỗi bump luôn có tag trỏ đúng commit đó). Bot đọc "mới nhất" bằng
-  `git tag -l codemap-v* | sort -V | tail -1` — không có tag thì bot không có gì để lấy, và im lặng
-  đó giống hệt "đã mới nhất". Đã sửa ba việc: (1) cắt `codemap-v0.14.0`/`codemap-v0.15.0` trên đúng
-  hai commit bump, đẩy lên origin; (2) chạy lại đúng chuỗi lệnh của
-  `agent-setup/codemap-upgrade.yml` (clone công khai → fetch tags → resolve mới nhất → checkout →
-  `cm install --upgrade`) trên một repo giả lập vendored ở `0.13.0` — kết quả thật:
-  `codemap 0.13.0 -> 0.15.0 in .forge/codemap/ 19 files`, đây là "một lần chạy quan sát được" đề bài
-  đòi; (3) thêm `tests/release-tag.mjs` — `node tests/run.mjs` giờ đỏ nếu `plugin.json` bump version
-  mà tag tương ứng chưa tồn tại, để lỗ hổng này không tái diễn âm thầm lần nữa.
-  **Vòng review độc lập bắt thêm một lỗi thật thứ hai, nặng hơn cái đầu:** bước install của chính
-  `agent-setup/codemap-upgrade.yml` viết `cd /tmp/codemap && git checkout ...` rồi lệnh `cm.mjs
-  install --upgrade` ngay dòng sau, **cùng một `run:` block** — `cd` đó rò sang dòng sau, nên
-  `cm install` (không có cờ `--root`, luôn vendor vào `$(pwd)`) tự vendor vào bản clone tạm, không
-  phải vào repo consumer đã checkout. PR ra rỗng, im lặng, MỌI lần chạy — bất kể tag có mới hay
-  không. Repo `forge` đã tự phát hiện và tự vá đúng lỗi này trong bản họ copy ra (đổi sang `git -C`,
-  còn ghi lại trong comment của file đó) nhưng bản vá **chưa bao giờ được đưa ngược lại template ở
-  đây** — nghĩa là mọi repo mới copy template từ đây (9 repo tier `plugins` ở §10) sẽ dính lại đúng
-  lỗi mà `forge` đã từng vá. Đã sửa: đổi cả hai bước sang `git -C /tmp/codemap` (khớp bản vá của
-  `forge`), và thêm `tests/upgrade-workflow.mjs` — chạy **đúng script `run:` block đó**, cắt trực
-  tiếp từ file yml, chống lại một repo giả lập, để xác nhận nó vendor vào đúng chỗ; test này đã tự
-  đỏ khi tôi tạm phục hồi bản `cd` để kiểm chứng nó bắt được lỗi thật, rồi xanh lại sau khi vá.
-  **Còn treo, ngoài quyền của issue này:** repo `forge` tự nó cần chạy lại workflow thật của nó (hoặc
-  đợi cron thứ Hai tới) để vendored copy thực sự lên `0.15.0` — issue này chỉ sửa được nguồn tag và
-  template, không có quyền ghi vào repo `forge`.
-- **2026-09-02** (ISS-4) — Đo lại trước khi cài: con số "5" ở §4 đã cũ, thực tế là 6 vendored +
-  1 plugins-advisory (`sidboss`, đã cài ngoài issue này) = 7 repo có codemap ở dạng nào đó, không
-  phải 7 vendored như bản nháp đầu của log này từng viết nhầm. Rollout 8 repo mới trong ISS-4 chỉ
-  tới tầng `forge_config.plugins` (advisory) — tầng vendored/gated (đòi `cm init` đóng băng
-  baseline trong chính repo đó) không làm từ phiên này, vì phiên ISS-4 không có worktree ở các
-  repo đó và đẩy code vào nhánh chính của project khác từ một issue thuộc `codemap` là vượt biên
-  ownership. Thay vào đó: mở 1 issue theo dõi trong TỪNG project ở tier plugins (9 issue, cho cả
-  `sidboss` và 8 repo mới) để `cm init`/`cm install`/wire gate chạy đúng trong project sở hữu, có
-  review của project đó — xem §10 để lấy issue id.
+- **2026-08-19** — Positioning settled: *redirect* comments rather than *ban* them. This is the most
+  misread point; every product description must lead with this before mentioning the checker.
+- **2026-08-19** — Going public settled. Order: codemap first, because it is the most complete and its
+  distribution channel already runs for real.
+- **2026-08-19** — gatemap v2 killed; the gap between codemap and archmap is **deliberate**.
+- **~2026-08** — Discovered the weekly upgrade bot had died silently (`node20` forced off). Fixed,
+  **not yet confirmed running again**.
+- **2026-09-03 (ISS-5)** — Confirmed, and the cause differed from the initial hypothesis. The `forge`
+  repo (vendored, measured directly on that project's checkout) sat at `0.13.0` while `plugin.json`
+  here already said `0.14.0` and then `0.15.0` — those two bumps (253d315, ba42a5f) **shipped without
+  a matching `codemap-v*` tag**, unlike every bump before them (each of which always had a tag on the
+  exact commit). The bot resolves "latest" with `git tag -l codemap-v* | sort -V | tail -1` — with no
+  tag it has nothing to fetch, and that silence is indistinguishable from "already up to date". Three
+  fixes: (1) cut `codemap-v0.14.0` / `codemap-v0.15.0` on the two bump commits and pushed them to
+  origin; (2) re-ran the exact command sequence of `agent-setup/codemap-upgrade.yml` (public clone →
+  fetch tags → resolve latest → checkout → `cm install --upgrade`) against a simulated vendored repo
+  at `0.13.0` — real result: `codemap 0.13.0 -> 0.15.0 in .forge/codemap/ 19 files`, which is the
+  "one observable run" the brief demanded; (3) added `tests/release-tag.mjs` — `node tests/run.mjs`
+  now fails if `plugin.json` bumps its version while the matching tag does not exist, so this hole
+  cannot reopen silently.
+  **The independent review round caught a second, heavier real defect:** the install step of
+  `agent-setup/codemap-upgrade.yml` itself wrote `cd /tmp/codemap && git checkout ...` followed by
+  `cm.mjs install --upgrade` on the next line of the **same `run:` block** — that `cd` leaks into the
+  next line, so `cm install` (which has no `--root` flag and always vendors into `$(pwd)`) vendored
+  into the throwaway clone instead of the checked-out consumer repo. The PR came out empty, silently,
+  on EVERY run — regardless of whether a newer tag existed. The `forge` repo had found and patched
+  exactly this in its own copy (switching to `git -C`, and recording it in a comment in that file),
+  but the patch **was never carried back to the template here** — meaning every repo that copies the
+  template from here (the 9 `plugins`-tier repos in §10) would hit the very bug `forge` had already
+  fixed. Fixed: both steps switched to `git -C /tmp/codemap` (matching `forge`'s patch), plus
+  `tests/upgrade-workflow.mjs` — which runs **that exact `run:` block**, cut straight from the yml
+  file, against a simulated repo, to confirm it vendors into the right place; the test went red when
+  the `cd` version was temporarily restored to verify it catches the real bug, then green after the
+  patch.
+  **Still open, outside this issue's scope:** the `forge` repo itself needs to re-run its own workflow
+  (or wait for next Monday's cron) for its vendored copy to actually reach `0.15.0` — this issue could
+  only fix the tag source and the template, with no write access to the `forge` repo.
+- **2026-09-02** (ISS-4) — Re-measured before installing: the "5" in §4 was stale; the reality was
+  6 vendored + 1 plugins-advisory (`sidboss`, installed outside this issue) = 7 repos carrying
+  codemap in some form, not 7 vendored as the first draft of this log wrongly recorded. The rollout of
+  8 new repos in ISS-4 reached only the `forge_config.plugins` tier (advisory) — the vendored/gated
+  tier (which requires `cm init` to freeze a baseline inside each repo) was not done from that
+  session, because ISS-4 had no worktree in those repos, and pushing code to another project's main
+  branch from an issue owned by `codemap` crosses an ownership boundary. Instead: one tracking issue
+  was opened IN each owning project at the plugins tier (9 issues, covering `sidboss` and the 8 new
+  repos) so that `cm init` / `cm install` / wiring the gate happen inside the owning project, with
+  that project's review — see §10 for the issue ids.
 
-## 10. Rollout log (ISS-4, đo 2026-09-02)
+## 10. Rollout log (ISS-4, measured 2026-09-02)
 
-Tier `vendored` = `.forge/codemap/` cam kết trong repo + gate chặn trong CI (prose cũ đã đóng băng
-baseline). Tier `plugins` = chỉ gắn qua `forge_config.plugins` — hook `PreToolUse`/`PostToolUse`
-chạy cho ai có agent session, nhưng chưa `cm init` nên **không có baseline** → nhánh chặn-vì-prose ở
-`PostToolUse` tự tắt (xem README "How it works"); chỉ còn advisory (`cm impact`, chặn lỗi cú pháp
-annotation). Đây đúng nghĩa "đo trước, cài sau": không đo thì không mở khoá chặn.
+Tier `vendored` = `.forge/codemap/` committed into the repo + a blocking gate in CI (legacy prose
+frozen into a baseline). Tier `plugins` = designated through `forge_config.plugins` only — the
+`PreToolUse`/`PostToolUse` hooks run for anyone with an agent session, but with no `cm init` there is
+**no baseline**, so the block-on-prose branch of `PostToolUse` disables itself (see README "How it
+works"); what remains is advisory (`cm impact`, plus blocking on annotation syntax errors). This is
+"measure first, install second" in the literal sense: no measurement, no unlocked blocking.
 
-| Repo | Tier | Check tắt |
+| Repo | Tier | Checks disabled |
 |---|---|---|
-| `apiflow` | vendored + CI gate | không — `cm verify` phải về 0 lỗi |
-| `KineTrak` | vendored | không — `enforce.grammar: true` |
-| `getcontent` | vendored + CI gate | không — root scope duy nhất, xem ISS-462 (repo đó) |
-| `forge-dev` (repo `forge`) | vendored + CI gate | không |
-| `epodsystem-core` | vendored + CI gate | không |
-| `anhome` | vendored | `enforce.grammar: false` — `eslint-plugin-code-quality` đã giữ trục
-  mật độ comment ở `webapp:lint`, cố ý không chạy hai lần |
-| `sidboss` | plugins (advisory) | chặn-vì-prose tắt (chưa `cm init`) — theo dõi: sidboss ISS-159 |
-| `ceo-dashboard` | plugins (advisory) — mới ISS-4 | chặn-vì-prose tắt (chưa `cm init`) — theo dõi: ceo-dashboard ISS-82 (`draft`, chờ triage của project đó) |
-| `finance-automation` | plugins (advisory) — mới ISS-4 | chặn-vì-prose tắt (chưa `cm init`) — theo dõi: finance-automation ISS-78 (`draft`, chờ triage của project đó) |
-| `pixelight` | plugins (advisory) — mới ISS-4 | chặn-vì-prose tắt (chưa `cm init`) — theo dõi: pixelight ISS-358 |
-| `sidpeak` | plugins (advisory) — mới ISS-4 | chặn-vì-prose tắt (chưa `cm init`) — theo dõi: sidpeak ISS-351 |
-| `brand-gateway` | plugins (advisory) — mới ISS-4 | chặn-vì-prose tắt (chưa `cm init`) — theo dõi: brand-gateway ISS-56 |
-| `sidcorp-mail` | plugins (advisory) — mới ISS-4 | chặn-vì-prose tắt (chưa `cm init`) — theo dõi: sidcorp-mail ISS-10 |
-| `sid-desk` | plugins (advisory) — mới ISS-4 | chặn-vì-prose tắt (chưa `cm init`) — theo dõi: sid-desk ISS-158 |
-| `dodgeprint-api` | plugins (advisory) — mới ISS-4 | chặn-vì-prose tắt (chưa `cm init`) — theo dõi: dodgeprint-api ISS-73 |
+| `apiflow` | vendored + CI gate | none — `cm verify` must reach 0 errors |
+| `KineTrak` | vendored | none — `enforce.grammar: true` |
+| `getcontent` | vendored + CI gate | none — the only root-scope repo, see ISS-462 (in that repo) |
+| `forge-dev` (repo `forge`) | vendored + CI gate | none |
+| `epodsystem-core` | vendored + CI gate | none |
+| `anhome` | vendored | `enforce.grammar: false` — `eslint-plugin-code-quality` already holds the comment-density axis at `webapp:lint`; deliberately not run twice |
+| `sidboss` | plugins (advisory) | block-on-prose off (no `cm init` yet) — tracking: sidboss ISS-159 |
+| `ceo-dashboard` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: ceo-dashboard ISS-82 (`draft`, awaiting that project's triage) |
+| `finance-automation` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: finance-automation ISS-78 (`draft`, awaiting that project's triage) |
+| `pixelight` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: pixelight ISS-358 |
+| `sidpeak` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: sidpeak ISS-351 |
+| `brand-gateway` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: brand-gateway ISS-56 |
+| `sidcorp-mail` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: sidcorp-mail ISS-10 |
+| `sid-desk` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: sid-desk ISS-158 |
+| `dodgeprint-api` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: dodgeprint-api ISS-73 |
 
-**Ứng viên hợp lệ, chưa cài — để lô sau, không phải vì thiếu ranh giới.** Có `repoPath` thật, pipeline
-`autonomous`, cấu trúc/gate rõ (`projectFacts` chứng minh) — chỉ đơn giản là 8 ở trên đã đủ chạm mốc
-5→15 nên vòng này dừng ở đó. Liệt kê để lô sau không phải đo lại từ đầu:
-`adminhub-api`, `dodgeprint-fe`, `dodgeprint-ui-v2`, `portal-lighthuman`, `server-vault`, `archmap`,
-`devbox`, `forge-plugin` (repo plugin `forge` chính chủ — `pipelineConfig.mode` đã chuyển `staged`
-→ `autonomous` giữa lúc phiên này đang chạy, tức là quan sát lúc đo đã lỗi thời ngay trong phiên; có
-gate `npm run check` thật, là ứng viên tốt cho lô sau, không phải bị loại).
+**Valid candidates, not installed — deferred to a later batch, not for lack of a boundary.** They
+have a real `repoPath`, an `autonomous` pipeline, and clear structure/gates (their `projectFacts`
+prove it) — the 8 above simply already met the 5→15 mark, so this round stopped there. Listed so the
+next batch need not re-measure from scratch: `adminhub-api`, `dodgeprint-fe`, `dodgeprint-ui-v2`,
+`portal-lighthuman`, `server-vault`, `archmap`, `devbox`, `forge-plugin` (the `forge` plugin's own
+repo — its `pipelineConfig.mode` moved from `staged` to `autonomous` while this session was running,
+so the observation was stale within the session itself; it has a real `npm run check` gate and is a
+good candidate for the next batch, not a rejection).
 
-**Loại khỏi mọi lô, có lý do (không phải bỏ qua âm thầm):**
+**Excluded from every batch, with a reason (not silently skipped):**
 
-| Repo | Vì sao chưa |
+| Repo | Why not |
 |---|---|
-| `mowment` | Repo-less storefront — 2 file git, không build, không có ranh giới module để gắn annotation |
-| `erp`, `sid-growth`, `adminhub-ui` | `repoPath: null` trên project — chưa có repo thật để cài |
-| `forge-redesign` | `repoPath` là subdir của `forge-dev` (`jarvis-agents/`) — cùng cây đã cài ở root, cài lại là trùng |
-| `house-supabase` | `repoPath` trên máy cá nhân (`/Users/chuongle/...`), ngoài devbox fleet `/home/kieutrung/*` — không xác minh được ai review hook, giữ lại làm mục hỏi ở lô sau |
+| `mowment` | Repo-less storefront — 2 files in git, no build, no module boundary to annotate |
+| `erp`, `sid-growth`, `adminhub-ui` | `repoPath: null` on the project — no real repo to install into yet |
+| `forge-redesign` | `repoPath` is a subdirectory of `forge-dev` (`jarvis-agents/`) — the same tree is already installed at its root; installing again duplicates it |
+| `house-supabase` | `repoPath` is on a personal machine (`/Users/…`), outside the devbox fleet under `/home/…` — no way to verify who reviews the hook; kept as a question for the next batch |
 
-**Bước tiếp theo — đã mở issue, không phải chỉ ghi ý định:** 9 issue theo dõi (cột "theo dõi" ở
-bảng trên) đã tạo TRONG từng project sở hữu — mỗi issue xin đúng ba việc: `cm init` (đóng băng
-baseline), `cm install` (vendor + pin version), rồi wire `cm verify` vào gate CI của repo đó — mẫu
-tham khảo: `getcontent` ISS-462 (ở project đó). 7/9 vào thẳng `open` (pipeline project đó tự
-dispatch); 2 (`ceo-dashboard` ISS-82, `finance-automation` ISS-78) vào `draft` vì project đó có
-`intakeGate`/triage thủ công — cần một người hoặc driver của project đó approve trước khi dispatch,
-ISS-4 không có quyền tự chuyển trạng thái ở project khác.
+**Next step — issues opened, not merely intended:** the 9 tracking issues (the "tracking" column
+above) were created INSIDE each owning project — each asking for exactly three things: `cm init`
+(freeze the baseline), `cm install` (vendor + pin the version), then wiring `cm verify` into that
+repo's CI gate — reference model: `getcontent` ISS-462 (in that project). 7 of the 9 went straight to
+`open` (that project's pipeline dispatches them itself); 2 (`ceo-dashboard` ISS-82,
+`finance-automation` ISS-78) went to `draft` because those projects have a manual `intakeGate`/triage
+— a human or that project's driver has to approve before dispatch, and ISS-4 had no authority to move
+status in another project.
 
-"Mỗi repo có baseline riêng" trong đề bài ISS-4 mới đúng cho **6/15** (tier vendored) tại thời điểm
-đóng issue này — 9 tier `plugins` CHƯA có baseline, đúng như thiết kế "đo trước, cài sau": chưa đo
-thì chưa mở khoá chặn, không phải khoảng trống bị giấu, và giờ có issue theo dõi thật để đóng khoảng
-trống đó. Ai đọc §10 muốn coi ISS-4 "xong" theo đúng nghĩa đề bài cần đọc dòng này trước.
+"Every repo has its own baseline", as ISS-4's brief put it, holds for **6/15** (the vendored tier) at
+the time that issue closed — the 9 `plugins`-tier repos have NO baseline yet, exactly as the
+"measure first, install second" design intends: nothing is unlocked before it is measured. That is
+not a hidden gap, and there are now real tracking issues to close it. Anyone reading §10 who wants to
+call ISS-4 "done" in the brief's own terms should read this line first.

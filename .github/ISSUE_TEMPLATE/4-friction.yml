@@ -1,22 +1,22 @@
-name: Không cài / không chạy được
-description: Gãy ở bước cài, bước chạy đầu tiên, hoặc lúc dựng baseline.
+name: It will not install or will not run
+description: Broken at install, at the first run, or while building the baseline.
 labels: ["friction"]
 body:
   - type: textarea
     id: what
     attributes:
-      label: Lệnh đã chạy và output
+      label: The command you ran, and its output
       render: shell
     validations: { required: true }
   - type: textarea
     id: expected
     attributes:
-      label: Bạn đang cố làm gì
-      description: Mô tả ý định, không chỉ lỗi — nó cho biết tài liệu dẫn sai chỗ nào.
+      label: What you were trying to do
+      description: Describe the intent, not just the error — it shows where the docs sent you wrong.
     validations: { required: true }
   - type: input
     id: env
     attributes:
-      label: Môi trường
-      placeholder: "node -v · OS · repo bao nhiêu file"
+      label: Environment
+      placeholder: "node -v · OS · how many files in the repo"
     validations: { required: true }

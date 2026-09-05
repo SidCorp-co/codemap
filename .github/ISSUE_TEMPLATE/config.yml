@@ -1,8 +1,9 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Trước khi mở issue — đọc "không làm"
-    url: ./NORTH-STAR.md
+  - name: Before opening an issue — read "what this will not do"
+    url: https://github.com/SidCorp-co/codemap/blob/main/plugins/forge-codemap/NORTH-STAR.md
     about: >-
-      §7 liệt kê những thứ codemap cố tình không làm. Cái lớn nhất: không dựng
-      tầng hợp nhất với archmap (gatemap — đã bị bác hai lần). Đề xuất rơi vào
-      đó sẽ bị đóng kèm link, không phải vì nó tệ mà vì nó thuộc bậc khác.
+      §7 lists what codemap deliberately does not do. The largest item: no merged
+      layer with archmap (gatemap — rejected twice). A proposal that lands there is
+      closed with a link, not because it is bad but because it belongs to a
+      different tier.

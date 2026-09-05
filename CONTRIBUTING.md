@@ -35,3 +35,8 @@ Consumers pin by tag, and the weekly upgrade bot reads that tag stream — see
 `plugins/forge-codemap/agent-setup/codemap-upgrade.yml`. Bump the `version` in
 `plugins/forge-codemap/.claude-plugin/plugin.json` and push a matching `codemap-v<version>` tag in
 the same change, or the bot goes quiet with nothing to report.
+
+## Language
+
+This repository is public and **English-only**: documentation, code, comments, commit messages, and
+issue or PR bodies. The rule and its rationale live in [`AGENTS.md`](AGENTS.md).

@@ -1,6 +1,6 @@
 # Forge CodeMap
 
-> **Mục tiêu & cái không được làm:** [`NORTH-STAR.md`](./NORTH-STAR.md) — đọc trước khi thêm tính năng.
+> **Goal & what may not be built:** [`NORTH-STAR.md`](./NORTH-STAR.md) — read it before adding a feature.
 
 A **declared-edge layer** for source code, plus the comment discipline that keeps it clean.
 

@@ -1,35 +1,37 @@
-name: Hook im lặng (missed)
-description: Comment rác lọt qua, hoặc một cm: hỏng mà check vẫn xanh.
+name: The hook stayed silent (missed)
+description: "Slop passed the gate, or a broken cm: annotation still verified green."
 labels: ["fn"]
 body:
   - type: markdown
     attributes:
       value: >-
-        Nguy hiểm hơn chặn sai: gate xanh trong khi thứ nó gác đã hỏng. Người ta
-        tin nó, nên không đọc lại bằng mắt.
+        More dangerous than a wrong block: the gate is green while the thing it
+        guards is already broken. People trust it, so they stop reading with their
+        own eyes.
   - type: textarea
     id: slipped
     attributes:
-      label: Cái đã lọt qua
-      description: Dán comment hoặc annotation. Nói rõ mã check nào đáng lẽ bắt.
+      label: What got through
+      description: Paste the comment or annotation. Name the diagnostic code that should have caught it.
       render: text
     validations: { required: true }
   - type: dropdown
     id: tier
     attributes:
-      label: Bậc
+      label: Tier
       options:
-        - "CM0xx — ngữ pháp (annotation viết sai dạng)"
-        - "CM1xx — quy chiếu (annotation trỏ tới thứ không tồn tại)"
-        - "CM2xx — cấu trúc (comment thừa, prose suy ra được)"
-        - "không rõ"
+        - "CM0xx — grammar (the annotation is written in the wrong shape)"
+        - "CM1xx — referential (the annotation points at something that does not exist)"
+        - "CM2xx — structural (redundant comment, derivable prose)"
+        - "not sure"
     validations: { required: true }
   - type: input
     id: baseline
     attributes:
-      label: Có nằm trong baseline không
+      label: Is it inside the baseline?
       description: >-
-        `.forge/codemap-baseline.json` đóng băng prose cũ để ratchet không bắt sửa
-        quá khứ. Nếu dòng này đã bị đóng băng thì im lặng là đúng thiết kế.
-      placeholder: "có / không / chưa kiểm"
+        `.forge/codemap-baseline.json` freezes legacy prose so the ratchet never
+        demands a rewrite of the past. If this line is frozen, the silence is the
+        design working.
+      placeholder: "yes / no / not checked"
     validations: { required: true }

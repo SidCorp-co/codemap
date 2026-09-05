@@ -1,27 +1,28 @@
-name: Năm loại annotation không diễn đạt nổi
-description: Có một ràng buộc thật, nhưng guard/edge/flow/hack/why đều không vừa.
+name: The five annotations cannot express it
+description: There is a real constraint, but guard/edge/flow/hack/why all fail to carry it.
 labels: ["grammar-gap"]
 body:
   - type: markdown
     attributes:
       value: >-
-        Đây là câu hỏi sản phẩm quan trọng nhất của codemap. Ngữ pháp năm loại là
-        một cược: rằng năm loại phủ được mọi thứ đáng khai. Mỗi báo cáo ở đây là
-        một phép thử cược đó.
+        This is codemap's most important product question. The five-tag grammar is a
+        bet: that five tags cover everything worth declaring. Every report here tests
+        that bet.
         <br><br>
-        Cẩn thận: `cm:why` là loại chứa-tất. Nếu bạn nhét được vào `cm:why` nhưng
-        thấy *mất thông tin* khi làm vậy, đó chính là ca đáng báo — nói rõ mất gì.
+        One caution: `cm:why` is the catch-all. If you *can* force it into a `cm:why`
+        but doing so *loses information*, that is exactly the case worth reporting —
+        say what gets lost.
   - type: textarea
     id: constraint
     attributes:
-      label: Ràng buộc, phát biểu bằng một câu
-      description: "Ai sửa chỗ này phải biết gì, mà không công cụ nào nói cho họ?"
+      label: The constraint, in one sentence
+      description: "What must whoever edits this place know, that no tool will tell them?"
     validations: { required: true }
   - type: textarea
     id: tried
     attributes:
-      label: Đã thử loại nào, hỏng ở đâu
-      description: Đi qua cả năm loại và nói vì sao từng loại không vừa.
+      label: Which tags you tried, and where each failed
+      description: Walk all five and say why each one does not fit.
       value: |
         - guard:
         - edge:
@@ -32,8 +33,8 @@ body:
   - type: textarea
     id: consequence
     attributes:
-      label: Hỏng gì khi ai đó không biết
+      label: What breaks when somebody does not know it
       description: >-
-        Bắt buộc. Ràng buộc mà vi phạm nó không gây hậu quả gì là một sở thích,
-        không phải một ràng buộc — và nó không đáng có annotation.
+        Required. A constraint whose violation costs nothing is a preference, not a
+        constraint — and it does not deserve an annotation.
     validations: { required: true }
