@@ -44,6 +44,24 @@ Do **not** write `TODO`/`FIXME`. Outstanding work belongs in the issue tracker, 
 authority on its status; a TODO in code is a stale second copy. Use `cm:hack` only for a workaround
 that is in the code right now, and only with an issue and an exit condition.
 
+## Cite the incident, never retell it
+
+An annotation carries the rule and its consequence. When the rule came from an incident, name the
+incident — `(ISS-807)`, a date, a measured number — and stop there.
+
+Measured on a consumer repo five weeks after adoption: guards averaged **306 characters**, 65% of
+those characters sitting after the em-dash and a quarter of them past-tense narrative. Over the
+same window policed prose fell ~203 KB while annotations added ~527 KB. The comments did not go
+away; they changed channel — into the one loaded into your context before every edit of that file.
+
+So write `— a stale kind on a non-waiting issue renders as a live banner (ISS-807)`, not the
+paragraph telling how it was found. History already has a home: the changelog, the commit message,
+the tracker. Under ~30 characters an annotation is usually deletable; past ~200, look for the
+paragraph that should have been a citation.
+
+A cited issue must exist and be the one you mean. A number nobody filed — or somebody else's — is
+worse than no citation at all, because it looks checked.
+
 Adding an annotation makes you the owner of the comment block it lands in. Delete every ordinary
 comment glued to it — the baseline spares legacy prose everywhere else, but never in a block you have
 just annotated, so leaving the noise there turns the site red. An annotation added on top of four
