@@ -647,7 +647,11 @@ switch (cmd) {
       const alive = (f.blockKeys ?? []).some((b) => frozen.has(b));
       const keep = [...frozen].filter((k) => present.has(k) || (alive && !k.startsWith('b:')));
       stale += [...frozen].filter((k) => !k.startsWith('b:') && !present.has(k) && !alive).length;
-      if (keep.length) pruned[f.relPath] = keep;
+      // cm:why a prune must not silently erase a prior freeze's per-block counts (ISS-9) — only a
+      //   key this run actually drops loses its blockCounts entry too
+      const blocks = {};
+      for (const k of keep) if (k.startsWith('b:') && frozen.blockCounts?.[k] != null) blocks[k] = frozen.blockCounts[k];
+      if (keep.length) pruned[f.relPath] = { keys: keep, blocks };
     }
 
     if (flags.has('--prune-baseline')) {
@@ -658,7 +662,7 @@ switch (cmd) {
         process.exit(2);
       }
       saveBaseline(root, pruned);
-  console.log(`codemap sweep: dropped ${stale} stale key(s); ${Object.values(pruned).flat().filter((k) => !k.startsWith('b:')).length} remain frozen`);
+  console.log(`codemap sweep: dropped ${stale} stale key(s); ${Object.values(pruned).flatMap((v) => v.keys).filter((k) => !k.startsWith('b:')).length} remain frozen`);
       console.log(dim('bookkeeping only — no source file was touched, and no new comment was absolved'));
       break;
     }
@@ -702,7 +706,7 @@ switch (cmd) {
     const keys = {};
     if (scoped) {
       for (const [file, set] of Object.entries(loadBaseline(root))) {
-        if (!file.startsWith('__')) keys[file] = [...set];
+        if (!file.startsWith('__')) keys[file] = { keys: [...set], blocks: { ...(set.blockCounts ?? {}) } };
       }
     }
     // cm:guard "pre-existing" must mean pre-existing, not "in the tree right now" — this command is the
@@ -729,14 +733,18 @@ switch (cmd) {
       // cm:why a block's reflow key is frozen only when EVERY line in it is old — one new line in a legacy
       //   block would otherwise have the block vouch for it
       const mixed = new Set(prose.filter((d) => !old.has(baselineKey(d.text ?? d.message))).map((d) => d.blockKey));
-      const all = [...old, ...(f.blockKeys ?? []).filter((b) => !mixed.has(b))];
-      if (all.length) keys[f.relPath] = all;
-      else delete keys[f.relPath];
+      const survivingBlocks = (f.blockKeys ?? []).filter((b) => !mixed.has(b));
+      const all = [...old, ...survivingBlocks];
+      if (all.length) {
+        const blocks = {};
+        for (const b of survivingBlocks) if (f.blockCounts?.[b] != null) blocks[b] = f.blockCounts[b];
+        keys[f.relPath] = { keys: all, blocks };
+      } else delete keys[f.relPath];
       touched.push(f.relPath);
     }
     saveBaseline(root, keys);
     // cm:why a block key is a reflow shadow, not a comment, so the count a human reads must exclude it
-    const total = Object.values(keys).flat().filter((k) => !k.startsWith('b:')).length;
+    const total = Object.values(keys).flatMap((v) => v.keys).filter((k) => !k.startsWith('b:')).length;
     console.log(scoped
       ? `codemap baseline: re-froze ${plural(touched.length, 'file')}; ${total} comments frozen across ${Object.keys(keys).length} files`
       : `codemap baseline: froze ${total} pre-existing prose comments across ${Object.keys(keys).length} files`);
@@ -762,10 +770,10 @@ switch (cmd) {
     const keys = {};
     for (const f of perFile) {
       const all = [...(f.proseKeys ?? []), ...(f.blockKeys ?? [])];
-      if (all.length) keys[f.relPath] = all;
+      if (all.length) keys[f.relPath] = { keys: all, blocks: { ...(f.blockCounts ?? {}) } };
     }
     saveBaseline(root, keys);
-    const total = Object.values(keys).flat().filter((k) => !k.startsWith('b:')).length;
+    const total = Object.values(keys).flatMap((v) => v.keys).filter((k) => !k.startsWith('b:')).length;
     console.log(`codemap ${SPEC_VERSION} initialised at ${root}`);
     console.log(`  .forge/codemap.json`);
     console.log(`  .forge/codemap-baseline.json  ${dim(`${total} legacy comments frozen by content`)}`);

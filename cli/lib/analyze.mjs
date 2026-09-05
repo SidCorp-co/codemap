@@ -147,12 +147,16 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
   // cm:why a reflow moves no words but changes every line key, which unfroze whole comments and had sweep
   //   advise pruning them — a BLOCK key survives rewrapping, and the line keys beside it stay granular (ISS-21)
   const blockKeys = [];
+  // cm:why debtOf needs this at freeze time, to charge a rewrapped block what it actually held rather
+  //   than a flat 1 (ISS-9) — keyed the same as blockKeys so a baseline write can zip them together
+  const blockCounts = {};
   for (const b of blocks) {
     const mine = diags.filter((d) => PROSE_CODES.has(d.code) && d.line >= b.start && d.line <= b.end);
     if (!mine.length) continue;
     const key = `b:${baselineKey(b.text)}`;
     for (const d of mine) d.blockKey = key;
     blockKeys.push(key);
+    blockCounts[key] = mine.length;
   }
 
   return {
@@ -166,6 +170,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     // cm:guard frozen but never COUNTED — a block key is one comment's reflow-invariant shadow, not a
     //   comment, so counting it would inflate the debt line the case study quotes as ground truth
     blockKeys,
+    blockCounts,
     // cm:guard the "is that frozen comment GONE" test reads THIS, never proseKeys — words that moved into a
     //   cm: tag are still in the file, so a relabel cannot report the debt as paid (ISS-25)
     presentKeys: [...new Set([

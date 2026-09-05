@@ -397,7 +397,7 @@ function diffScopeCases(pluginRoot, check, roots) {
   const scopedBaseline = cm(pluginRoot, root, 'baseline', 'since.ts');
   const bl = JSON.parse(readFileSync(join(root, '.forge', 'codemap-baseline.json'), 'utf8'));
   check('cli: cm baseline <path> freezes that file and MERGES, leaving others alone',
-    /re-froze 1 file/.test(scopedBaseline.out) && bl['since.ts']?.filter((k) => !k.startsWith('b:')).length === 3
+    /re-froze 1 file/.test(scopedBaseline.out) && bl['since.ts']?.keys.filter((k) => !k.startsWith('b:')).length === 3
     && /1 comment\(s\) are NOT in HEAD/.test(scopedBaseline.out)
     && bl['legacy.ts'] === undefined && bl['brandnew.ts'] === undefined,
     `a scoped re-freeze must not touch, or absolve, any other file:\n${scopedBaseline.out}\n${JSON.stringify(bl)}`);
@@ -452,6 +452,14 @@ function drainCases(pluginRoot, check, roots) {
   check('cli: a multi-block file that pays nothing is still billed',
     twoUnpaid.status === 1 && /CM013/.test(twoUnpaid.out) && /4 still frozen/.test(twoUnpaid.out),
     `the rule must still fire when no comment went anywhere:\n${twoUnpaid.out}`);
+
+  // cm:why merging both frozen lines of blockA onto one comment line changes no words, so the
+  //   reflow-invariant block key (ISS-21) survives and must still be charged the 2 keys it froze (ISS-9)
+  writeFileSync(mf, `// ${FROZEN} ${GONE}\nexport const a = 11;\n\n${blockB}export const b = 2;\n`);
+  const rewrapped = cm(pluginRoot, many, 'verify', '--since', 'HEAD');
+  check('cli: rewrapping every line of a frozen block does not pay its debt (ISS-9)',
+    rewrapped.status === 1 && /CM013/.test(rewrapped.out) && /4 still frozen/.test(rewrapped.out),
+    `merging a frozen block's two lines into one changes no words and must not lower the count:\n${rewrapped.out}`);
 
   writeFileSync(file, `${prose}export const a = 11;\nexport const b = 2;\n`);
   const unpaid = cm(pluginRoot, root, 'verify', '--since', 'HEAD');
