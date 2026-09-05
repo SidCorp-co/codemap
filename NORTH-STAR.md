@@ -289,3 +289,11 @@ the time that issue closed — the 9 `plugins`-tier repos have NO baseline yet, 
 "measure first, install second" design intends: nothing is unlocked before it is measured. That is
 not a hidden gap, and there are now real tracking issues to close it. Anyone reading §10 who wants to
 call ISS-4 "done" in the brief's own terms should read this line first.
+
+**ISS-6 status (picked up 2026-09-06, not closed):** the 0.17.0 path move landed the same day this
+was picked up, so none of the six vendored-tier repos above could have migrated their upgrade
+workflow yet. One tracking issue was opened in each, asking it to point at `cli/cm.mjs`: `apiflow`
+ISS-16, `KineTrak` ISS-11, `getcontent` ISS-503, `forge-dev` ISS-918, `epodsystem-core` ISS-220
+(`draft` — that project's `intakeGate` requires triage), `anhome` ISS-472. The forwarding shim at
+`plugins/forge-codemap/scripts/cm.mjs` and its `cm:hack` stay until all six land; do not re-open
+this work by filing duplicates — check those six issues' status first.
