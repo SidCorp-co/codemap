@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/SidCorp-co/codemap/actions/workflows/ci.yml/badge.svg)](https://github.com/SidCorp-co/codemap/actions/workflows/ci.yml)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757)](https://docs.claude.com/en/docs/claude-code/plugins)
-[![Version](https://img.shields.io/badge/codemap-0.18.0-blue)](.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/codemap-0.19.0-blue)](.claude-plugin/plugin.json)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](cli/lib/registry.mjs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
@@ -122,6 +122,10 @@ checker — `cm help`, `cm help codes`, `cm help languages` — so there is noth
 host, and the cheapest integration needs no server at all: one line in your agent instructions saying
 *run `cm impact <file>` before editing it.*
 
+**Not visible to reviewers?** `cm pr-comment --base <ref>` ([`adapters/ci/pr-comment.yml`](adapters/ci/pr-comment.yml))
+leaves one comment on the pull request itself — a lockstep edge with only one side changed, or a
+guarded line the diff crossed. Advisory only; `cm verify` stays the gate.
+
 ## Field data
 
 Three private production repos, measured by the tool rather than counted by hand:
@@ -157,7 +161,7 @@ The repository root **is** the plugin: what Claude Code installs is this tree.
 spec/       codemap/1 + JSON schema      cli/       the engine, zero dependencies
 patterns/   the pattern book             bin/cm     stable entrypoint — symlink this
 skills/     the skill an agent loads     hooks/     what fires before and after an edit
-adapters/   ci/ · mcp/ — delivery        tests/     golden corpus, 358 cases
+adapters/   ci/ · mcp/ — delivery        tests/     golden corpus, 369 cases
             beyond Claude Code
 ```
 

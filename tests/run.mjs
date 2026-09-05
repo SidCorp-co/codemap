@@ -16,6 +16,7 @@ import { metricsCases } from './metrics.mjs';
 import { releaseTagCases } from './release-tag.mjs';
 import { mcpCases } from './mcp.mjs';
 import { upgradeWorkflowCases } from './upgrade-workflow.mjs';
+import { prCommentCases } from './prcomment.mjs';
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -129,6 +130,7 @@ metricsCases(PLUGIN_ROOT, check);
 releaseTagCases(PLUGIN_ROOT, check);
 upgradeWorkflowCases(PLUGIN_ROOT, check);
 mcpCases(PLUGIN_ROOT, check);
+prCommentCases(PLUGIN_ROOT, check);
 
 console.log(`codemap golden corpus: ${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.error(`  FAIL ${f}`);

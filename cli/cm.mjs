@@ -24,6 +24,7 @@ import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
 import { install } from './lib/install.mjs';
 import { debtOf, drainBase, drainDiags } from './lib/drain.mjs';
+import { lockstepFindings, guardFindings, renderComment, MARKER } from './lib/prcomment.mjs';
 import { renderHelp, VERBS } from './lib/help.mjs';
 import { resolveCm } from './lib/locate.mjs';
 import {
@@ -47,7 +48,7 @@ const cmd = argv[0] ?? 'help';
 
 // cm:guard every flag that takes a value MUST be listed here — an unlisted one has its value parsed as a
 // path, which silently narrowed `cm verify --since <ref>` to zero files and made the CI gate a no-op
-const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description', '--endpoint']);
+const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description', '--endpoint', '--base']);
 const TIERS = new Set(['all', 'grammar', 'referential', 'structural', 'advisory']);
 
 // cm:guard exit 2 is "the gate could not run", exit 1 is "the gate ran and failed" — CI must be able to
@@ -273,6 +274,60 @@ function bootstrapPrompt() {
     'Then read `cm help workflow`. That guidebook ships inside the checker, so it works offline and matches',
     'the version you are actually running.',
   ].join('\n') + '\n';
+}
+
+/** The PR number `cm pr-comment` posts to, read from the event GitHub Actions writes to disk. */
+function prNumberFromEvent(eventPath) {
+  if (!eventPath || !existsSync(eventPath)) return null;
+  try {
+    const ev = JSON.parse(readFileSync(eventPath, 'utf8'));
+    return ev.pull_request?.number ?? ev.number ?? null;
+  } catch { return null; }
+}
+
+async function ghFetch(url, token, init = {}) {
+  return fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'codemap-pr-comment',
+      ...(init.body ? { 'content-type': 'application/json' } : {}),
+    },
+  });
+}
+
+async function findExistingPrComment(apiUrl, repoFull, token, pr, marker) {
+  for (let page = 1; ; page++) {
+    const res = await ghFetch(`${apiUrl}/repos/${repoFull}/issues/${pr}/comments?per_page=100&page=${page}`, token);
+    if (!res.ok) throw new Error(`list comments: ${res.status} ${res.statusText}`);
+    const items = await res.json();
+    const hit = items.find((c) => c.body?.includes(marker));
+    if (hit) return hit;
+    if (items.length < 100) return null;
+  }
+}
+
+// cm:edge contract -> cli/lib/prcomment.mjs — MARKER is what makes this idempotent: the caller
+//   must delete/update the SAME comment findExistingPrComment locates, never post a second one
+/**
+ * One comment, updated in place, never a new one per push — and removed outright once a later
+ * push leaves nothing to say, so a resolved finding does not read as still open (§ business rules).
+ */
+async function postOrUpdatePrComment({ apiUrl, repoFull, token, pr, body, marker }) {
+  const existing = await findExistingPrComment(apiUrl, repoFull, token, pr, marker);
+  if (!body) {
+    if (!existing) return;
+    const res = await ghFetch(`${apiUrl}/repos/${repoFull}/issues/comments/${existing.id}`, token, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) throw new Error(`delete stale comment: ${res.status} ${res.statusText}`);
+    return;
+  }
+  const res = existing
+    ? await ghFetch(`${apiUrl}/repos/${repoFull}/issues/comments/${existing.id}`, token,
+      { method: 'PATCH', body: JSON.stringify({ body }) })
+    : await ghFetch(`${apiUrl}/repos/${repoFull}/issues/${pr}/comments`, token,
+      { method: 'POST', body: JSON.stringify({ body }) });
+  if (!res.ok) throw new Error(`${existing ? 'update' : 'post'} comment: ${res.status} ${res.statusText}`);
 }
 
 function printDiag(d) {
@@ -1039,6 +1094,49 @@ switch (cmd) {
       process.exitCode = res.ok ? 0 : 1;
     } catch (e) {
       die(`could not send to ${endpoint}: ${e.message}`);
+    }
+    break;
+  }
+
+  // cm:edge contract -> cli/lib/prcomment.mjs — the finding logic lives there, testable with
+  //   plain data; everything below is I/O glue, same split `metrics send`'s fetch above uses
+  case 'pr-comment': {
+    const base = flagValue('--base');
+    if (!base) die('pr-comment needs --base <ref>', '<ref> is diffed against the working tree — pass a merge-base, not the PR branch tip');
+    const reg = loadOrDie();
+    const g = buildGraph(analyzeAll(reg, annotatedFiles(reg)));
+
+    let ranges;
+    try {
+      ranges = changedRanges(root, ['diff', '--unified=0', '--diff-filter=ACMR', base], `--base ${base}`);
+    } catch (e) {
+      // cm:why a diff that cannot be computed is never "nothing changed" (§9.1's fail-open shape) —
+      //   it means this run has nothing USEFUL to report, not that every coupling was honoured
+      console.error(yellow(`codemap: ${e.message} — nothing to report`));
+      break;
+    }
+    const changedFiles = new Set(ranges.keys());
+    const findings = [...lockstepFindings(g, changedFiles), ...guardFindings(g, ranges)];
+    const body = renderComment(findings);
+
+    const token = process.env.GITHUB_TOKEN;
+    const repoFull = process.env.GITHUB_REPOSITORY;
+    const pr = prNumberFromEvent(process.env.GITHUB_EVENT_PATH);
+    const apiUrl = process.env.GITHUB_API_URL ?? 'https://api.github.com';
+    // cm:guard live posting needs ALL of token/repo/PR — any one missing means this is not
+    //   running against a real pull_request event, so printing beats a network call that 404s
+    const dryRun = flags.has('--dry-run') || !token || !repoFull || !pr;
+
+    if (dryRun) {
+      console.log(body ?? 'codemap pr-comment: no declared coupling looks crossed — nothing to report');
+      break;
+    }
+    try {
+      await postOrUpdatePrComment({ apiUrl, repoFull, token, pr, body, marker: MARKER });
+    } catch (e) {
+      // cm:guard this is a second SURFACE, never a second gate (business rules) — a GitHub outage
+      //   must not turn into a red PR check when `cm verify` already ran clean
+      console.error(yellow(`codemap: ${e.message}`));
     }
     break;
   }

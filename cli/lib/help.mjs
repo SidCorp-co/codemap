@@ -38,6 +38,7 @@ export const VERBS = [
   ['metrics show', '', 'local north-star counters: blocks held vs circumvented, annotation trend  [--json]'],
   ['metrics reconcile', '', 'sweep pending blocks the hook never saw resolved (for the weekly bot)'],
   ['metrics send', '[--endpoint <url>] [--yes]', 'opt-in send of the show --json payload; no --yes previews only'],
+  ['pr-comment', '--base <ref>', 'PR comment: a lockstep edge with one side changed, or a guard line the diff crossed  [--dry-run]'],
   ['codes', '', 'diagnostic reference (same as: cm help codes)'],
   ['help', '[topic]', 'this guidebook'],
   ['version', '', 'tool version + spec version'],
@@ -359,6 +360,8 @@ RECIPES
   staying current  cm doctor  ·  cm install --upgrade  ·  adapters/ci/codemap-upgrade.yml opens the PR
   pre-commit    .forge/codemap/cm verify --staged --tier grammar     (cm install --git-hook writes it)
   agent-side    cm verify --fix --json <file>                        what the PostToolUse hook runs
+  PR comment    cm pr-comment --base $(git merge-base origin/main HEAD)   adapters/ci/pr-comment.yml
+                Advisory only — never gates. One comment, updated in place; silent with nothing to say.
 
   In a shallow clone the base ref is often not fetched — that is an exit 2, not a clean tree.
   git fetch --deepen 50 (or fetch-depth: 0) before the gate.

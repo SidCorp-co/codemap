@@ -17,6 +17,7 @@ cm install --git-hook     # + .git/hooks/pre-commit → cm verify --staged   (pe
 |---|---|---|
 | CI | `.forge/codemap/cm verify --since $(git merge-base origin/main HEAD)` | no |
 | pre-commit | `.forge/codemap/cm verify --staged` | no |
+| pull request comment (advisory, never gates) | `.forge/codemap/cm pr-comment --base <merge-base>` | no |
 | the agent, mid-edit | the plugin's hooks, which drive the same `cm` | yes — and only here |
 
 ### Nothing is installed per device
