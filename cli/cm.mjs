@@ -18,7 +18,7 @@ import {
 import { analyzeFile } from './lib/analyze.mjs';
 import { profileFor } from './lib/languages.mjs';
 import { buildGraph, referentialDiags, structuralDiags, advisoryDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
-import { loadImportGraph } from './lib/archmap.mjs';
+import { loadImportGraph, loadCachedImportGraph } from './lib/archmap.mjs';
 import { canonical, CODE_TABLE, PROSE_CODES, baselineKey } from './lib/parse.mjs';
 import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
@@ -465,10 +465,14 @@ switch (cmd) {
     if (tier !== 'all' && tier !== 'grammar') diags = [];
     if (tier === 'all' || tier === 'referential') diags.push(...scopeGraph(referentialDiags(g, { root, reg })));
     if (tier === 'all' || tier === 'structural') diags.push(...scopeGraph(structuralDiags(g)));
-    // cm:guard advisory stays opt-in, and archmap is loaded ONLY inside this branch — `archmap
-    //   graph` is a full-repo scan (~15s on 1600+ files) and the hook runs a bare tier=all on every edit
-    if (tier === 'advisory' || (tier === 'all' && reg.enforce?.advisory)) {
-      diags.push(...scopeGraph(advisoryDiags(g, { root, baseline, importGraph: loadImportGraph(root) })));
+    // cm:edge contract -> cli/lib/archmap.mjs#loadCachedImportGraph — a bare tier=all run (the hook's,
+    //   on every edit) may only ever read the cache; the live ~15s scan is for an explicit ask (ISS-14)
+    const askedForAdvisory = tier === 'advisory' || (tier === 'all' && reg.enforce?.advisory === true);
+    const importGraph = askedForAdvisory
+      ? loadImportGraph(root)
+      : (tier === 'all' && reg.enforce?.advisory !== false ? loadCachedImportGraph(root) : null);
+    if (askedForAdvisory || importGraph) {
+      diags.push(...scopeGraph(advisoryDiags(g, { root, baseline, importGraph })));
     }
 
     // cm:guard the graph tiers raise their diagnostics here, long after analyzeFile applied its own

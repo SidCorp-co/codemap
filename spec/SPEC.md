@@ -248,13 +248,20 @@ graph --json`) and asks whether the two files are actually wired together at all
 guess. Everywhere else the fallback is a basename match, biased toward silence — a generic stem
 matches easily and the check says nothing.
 
-It stays **off by default** regardless of archmap: `enforce.advisory` in the registry, or an explicit
-`--tier advisory`, is still the only thing that turns it on. Archmap's presence never flips that
-default — `archmap graph` is a full-repo static analysis (measured ~15s on a 1600+ file repo), and
-`cm verify` with no `--tier` is exactly what the `PostToolUse` hook runs on every single-file edit
-(§4.1); making that call on every edit in an archmap-vendored repo turns each one into a multi-second
-stall. A repo opts in once its own FP rate is measured — the same registry flag as before, now backed
-by real evidence instead of a guess when archmap happens to be vendored too.
+Without archmap, it stays **off by default**: `enforce.advisory` in the registry, or an explicit
+`--tier advisory`, is still the only thing that turns it on — a repo opts in once its own FP rate is
+measured. With archmap vendored, a bare `cm verify` (`--tier all`, no `enforce.advisory`) auto-enables
+it too, reading real evidence instead of a guess, UNLESS the registry says `enforce.advisory: false`.
+
+This is only safe because of `cli/lib/archmap.mjs`'s cache (ISS-14): `archmap graph` is a full-repo
+static analysis (measured ~15s on a 1600+ file repo), and `cm verify` with no `--tier` is exactly what
+the `PostToolUse` hook runs on every single-file edit (§4.1) — running that call live on every edit in
+an archmap-vendored repo would be a multi-second stall. So the auto-enabled path never runs it: a
+fingerprint keyed off `HEAD` and the small dirty-file set (never a timer) gates a read of
+`.forge/.codemap-archmap-cache/`; a miss means no evidence THIS edit (never a stale one) and schedules
+the scan on a detached, unref'd child that the edit does not wait for. `--tier advisory` and
+`enforce.advisory: true` still run the scan inline — a human asking, or a repo that already measured
+and accepted the cost — and warm the same cache as a side effect.
 
 The basename-only measurement, kept for scale: two production repos (2 234 and 3 277 files, 204 edges,
 69 of them anchored) reported **40** `CM301` before two structural corrections and **5** after; of

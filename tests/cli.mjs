@@ -661,8 +661,8 @@ function writeStubArchmap(root, edges) {
   chmodSync(bin, 0o755);
 }
 
-// cm:why proves the real edge is consulted, and that a vendored archmap never runs outside the
-//   pre-existing opt-in — the hook's bare tier=all `cm verify` runs on every single-file edit (ISS-2)
+// cm:why proves the real edge is consulted, and that a bare tier=all run — the hook's, on every
+//   single-file edit — only ever reads the cache: never a live scan, never a wrong verdict (ISS-2, ISS-14)
 function archmapCases(pluginRoot, check, roots) {
   const root = makeRepo();
   roots.push(root);
@@ -682,9 +682,9 @@ function archmapCases(pluginRoot, check, roots) {
   ]);
 
   const bareVerify = cm(pluginRoot, root, 'verify');
-  check('cli: a vendored archmap does NOT turn the advisory tier on by itself',
+  check('cli: ISS-14 — a cold cache does not turn the advisory tier on by itself',
     !/CM301/.test(bareVerify.out),
-    `enforce.advisory must still be the only default-tier gate:\n${bareVerify.out}`);
+    `a cold cache must mean no evidence this edit, never a wait or a wrong verdict:\n${bareVerify.out}`);
 
   const explicitTier = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
   check('cli: --tier advisory backed by a real archmap edge silences the wired pair',
@@ -693,6 +693,43 @@ function archmapCases(pluginRoot, check, roots) {
   check('cli: CM301 backed by a real import edge still never gates',
     explicitTier.status === 0,
     `advisory is warning-only regardless of evidence source:\n${explicitTier.out}`);
+
+  // cm:why the explicit ask above ran the live scan and, as a side effect, warmed the cache —
+  //   this is the SAME repo state, so a bare run right after must read it as a hit, no flag at all
+  const warmBare = cm(pluginRoot, root, 'verify');
+  check('cli: ISS-14 — a warm cache auto-enables the advisory tier on a bare verify, no flag needed',
+    !/caller\.ts/.test(warmBare.out) && /lonely\.ts:1/.test(warmBare.out) && /CM301/.test(warmBare.out),
+    `expected the cache the explicit call warmed to back a bare tier=all run:\n${warmBare.out}`);
+  check('cli: the auto-enabled tier still never gates', warmBare.status === 0,
+    `advisory is warning-only however it got enabled:\n${warmBare.out}`);
+
+  writeFileSync(join(root, '.forge', 'codemap.json'), '{"enforce":{"advisory":false}}\n');
+  const optedOut = cm(pluginRoot, root, 'verify');
+  check('cli: ISS-14 — enforce.advisory: false overrides a warm cache; auto-enable is opt-out, not forced',
+    !/CM301/.test(optedOut.out),
+    `an explicit false must suppress the auto-enable path even with real evidence cached:\n${optedOut.out}`);
+  writeFileSync(join(root, '.forge', 'codemap.json'), '{}\n');
+
+  writeFileSync(join(root, 'caller.ts'),
+    '// cm:edge contract -> engine.ts#unrelated — the engine must consume this\n'
+    + 'export function listThings() { return []; }\nexport function extra() { return 2; }\n');
+  const staleBare = cm(pluginRoot, root, 'verify');
+  check('cli: ISS-14 — editing a file invalidates the cache; no evidence, never a stale verdict',
+    !/CM301/.test(staleBare.out),
+    `a fingerprint mismatch must mean no evidence this edit, not the graph from before the edit:\n${staleBare.out}`);
+
+  // cm:why the stub archmap answers instantly, so the detached refresh this edit scheduled should
+  //   finish well inside a 5s poll — a real archmap is the ~15s case this design exists to hide
+  const deadline = Date.now() + 5000;
+  let refreshed = false;
+  while (!refreshed && Date.now() < deadline) {
+    spawnSync('sleep', ['0.2']);
+    const recheck = cm(pluginRoot, root, 'verify');
+    if (!/caller\.ts/.test(recheck.out) && /CM301/.test(recheck.out)) refreshed = true;
+  }
+  check('cli: ISS-14 — the background refresh finishes and a later edit reads the updated graph',
+    refreshed,
+    'expected a detached refresh, scheduled on the stale-cache run above, to warm the cache in time');
 
   writeFileSync(join(root, '.forge', 'codemap.json'), '{"enforce":{"advisory":true}}\n');
   const optedIn = cm(pluginRoot, root, 'verify');

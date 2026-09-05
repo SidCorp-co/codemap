@@ -341,9 +341,11 @@ SCOPING A RUN
   cm verify --staged                 staged files only — what a pre-commit hook must gate
   cm verify <paths...>               explicit paths; resolved against the CWD first, then the repo root
   cm verify --tier grammar           one tier: all | grammar | referential | structural | advisory
-  cm verify --tier advisory          warning-only evidence check (CM301), off in --tier all unless
-                                     the registry sets enforce.advisory — reads archmap's real import
-                                     graph when vendored at .forge/archmap — see §7.1 for why
+  cm verify --tier advisory          warning-only evidence check (CM301) — reads archmap's real
+                                     import graph when vendored at .forge/archmap, else a basename
+                                     guess. In --tier all: on if enforce.advisory is set, or if
+                                     archmap is vendored and its cache is warm (never a live scan on
+                                     a bare run); off with enforce.advisory: false — see §7.1
 
 READING A BIG RUN
 

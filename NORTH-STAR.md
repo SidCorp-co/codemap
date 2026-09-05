@@ -84,7 +84,8 @@ each time, and was reverted). When the tier is enabled by hand, it reads `archma
 real evidence instead of comparing filenames. Re-measured against a real archmap (repo `forge`,
 1905 files): 6 pre-existing CM301 hits, **0** additionally eliminated by the real graph — matching
 the hand analysis already in SPEC §7.1 (all 6 are couplings with no real reference). Not promoted to
-`error` yet — per the roadmap in §8.
+`error` yet — per the roadmap in §8. **Updated 2026-09-06 (ISS-14):** the presence of archmap now
+DOES switch the tier on, once its graph is cached — see §5 leading indicator 4 and §8 Phase 2.
 
 ## 5. North star
 
@@ -111,9 +112,12 @@ of it.*
    an unknown stretch — see the decision log).
 3. Legacy prose falling while `cm:` annotations rise — measurable: `cm metrics show` (SPEC.md §10,
    ISS-3).
-4. CM301 reading a real archmap graph when the tier is enabled — **done** (§8 Phase 2); defaulting it
-   to `warn` still waits on a cache layer for `archmap graph` (~15s a call), because the hook invokes
-   `cm verify` on every file edit.
+4. CM301 reading a real archmap graph when the tier is enabled — **done** (§8 Phase 2). The cache
+   layer `archmap graph` (~15s a call) was waiting on — **done 2026-09-06 (ISS-14)**: a fingerprint-
+   keyed cache plus a detached background refresh means a bare `cm verify` (what the hook runs on
+   every edit) now auto-enables the tier once archmap is vendored, reading the cache in ~50ms
+   (measured on the `forge` repo, 2345 files) instead of running the ~15s scan inline. Promoting the
+   tier itself from advisory to `warn` is separate and still not done (§7, §8 Phase 2).
 5. How often the hook blocks, on which check, and whether that block held or was circumvented —
    measured locally, sending is opt-in: `cm metrics show` / `cm metrics send` (SPEC.md §10). Before
    ISS-3 there was no way to count this at all; every piece of evidence in §4 is reach, not effect.
@@ -169,19 +173,26 @@ distribution. **Do not defend it by writing more documentation.**
   a dedicated issue in each repo, and was not done from ISS-4.
 - Public. Unlock archmap when **1 issue/PR from a stranger** arrives.
 
-**Phase 2 — the joint worth making** *(graph reading and FP measurement done; `warn` by default still
-waits on a cache)*
+**Phase 2 — the joint worth making** *(graph reading, FP measurement and the cache all done; `warn`
+by default is the one piece still open)*
 - `graph.mjs` used to confess: *"Evidence is a basename match, not an import graph"* — CM301 guessed
   whether a coupling was real **by comparing filenames**. Fixed: `cli/lib/archmap.mjs` reads
   `archmap graph --json` when the advisory tier is enabled; the real graph is asked BEFORE the
   basename, and the check still runs unchanged where archmap is absent.
 - Measured against a real archmap instead of guessed: 0 of the 6 re-measured hits on the `forge` repo
   were eliminated by the real graph — all 6 really are couplings without a reference (SPEC §7.1).
-- **Still not enabled by default.** Auto-enabling it when archmap is present (bypassing
-  `enforce.advisory`) was measured to stall EVERY file edit by ~15s, because the hook calls
-  `cm verify` tier=all with no `--tier`, and `archmap graph` is a whole-repo scan. Reverted to the
-  original gate (`enforce.advisory`, or an explicit `--tier advisory`); auto-enabling needs a cache
-  layer for archmap first, left for later. Not promoted to `error`.
+- **Auto-enabling on presence, done 2026-09-06 (ISS-14).** Auto-enabling it when archmap is present
+  (bypassing `enforce.advisory`) was measured to stall EVERY file edit by ~15s, because the hook
+  calls `cm verify` tier=all with no `--tier`, and `archmap graph` is a whole-repo scan — reverted at
+  the time to the original gate (`enforce.advisory`, or an explicit `--tier advisory`), leaving
+  auto-enabling for once a cache layer existed. It now does: a fingerprint keyed off `HEAD` plus the
+  small dirty-file set (never a timer, never the whole tree) gates a `.forge/.codemap-archmap-cache/`
+  read; a miss returns no evidence for that edit and schedules the ~15s scan on a detached,
+  unref'd child so the edit itself never waits on it. Measured on the `forge` repo (2345 files): the
+  hot path (fingerprint + cache read) is ~50ms, against the ~15s the inline scan cost — the bare
+  `cm verify` the hook runs now auto-enables CM301 wherever archmap is vendored, `enforce.advisory`
+  unset. An explicit `enforce.advisory: false` still opts a repo out. Not promoted to `error` or
+  `warn` — that stays its own criterion (§7).
 - Lower priority, still open: de-duplicate the shared layer (`globToRe` ×2, `findRoot` ×2,
   install/vendor ~270 lines ×2) between codemap and archmap — pure cleanup, blocking nothing above.
 
