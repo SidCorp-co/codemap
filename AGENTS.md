@@ -26,7 +26,7 @@ a conflict.
 
 The repository root **is** the plugin. `cli/` is the source of truth for the checker; `spec/` is the
 normative grammar; `patterns/` teaches it; `adapters/` carries the delivery paths that are not
-Claude Code. `plugins/forge-codemap/scripts/cm.mjs` is a forwarding shim for repos whose upgrade
+Claude Code — `adapters/ci/` for pipelines, `adapters/mcp/` for any MCP host. `plugins/forge-codemap/scripts/cm.mjs` is a forwarding shim for repos whose upgrade
 workflow hardcodes the pre-0.17 path — it carries a `cm:hack` with its exit condition.
 
 ## Gates

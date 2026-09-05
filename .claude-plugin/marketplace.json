@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "codemap/1 — the declared-edge layer for source code, as a Claude Code plugin.",
-    "version": "0.17.0"
+    "version": "0.6.0"
   },
   "plugins": [
     {

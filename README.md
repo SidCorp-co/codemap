@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/SidCorp-co/codemap/actions/workflows/ci.yml/badge.svg)](https://github.com/SidCorp-co/codemap/actions/workflows/ci.yml)
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin-d97757)](https://docs.claude.com/en/docs/claude-code/plugins)
-[![Version](https://img.shields.io/badge/codemap-0.17.0-blue)](.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/codemap-0.18.0-blue)](.claude-plugin/plugin.json)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)](cli/lib/registry.mjs)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
@@ -153,6 +153,16 @@ needed rather than at install time.
 
 Exit codes: `0` clean · `1` violations · `2` **the gate could not run** (bad flag, unresolvable
 `--since`, path that matches nothing). Never conflate 1 and 2 in CI — 2 means nothing was checked.
+
+## Reading the layer without the hooks
+
+The hooks are the strongest delivery, and they exist in one product. `adapters/mcp/server.mjs` serves
+the same answers to any MCP host — Cursor, Codex CLI, Zed, an SDK agent — as five read-only tools
+(`codemap_impact`, `codemap_graph`, `codemap_flow`, `codemap_verify`, `codemap_ls`), resolving the
+checker in the same order everything else does, so an agent on MCP and CI cannot reach different
+verdicts. See [`adapters/mcp/README.md`](adapters/mcp/README.md); the cheapest integration of all
+needs no server, only a line in the repo's agent instructions telling it to run `cm impact <file>`
+first.
 
 ## Who enforces
 
@@ -347,7 +357,9 @@ codemap/
 ├── hooks/           hooks.json: what fires before and after an edit
 ├── skills/          the codemap skill an agent loads
 ├── output-styles/   the comment discipline, as an output style
-├── adapters/ci/     CI templates + the weekly upgrade bot
+├── adapters/
+│   ├── ci/          CI templates + the weekly upgrade bot
+│   └── mcp/         MCP server — the layer, for agents that are not Claude Code
 └── tests/           the golden corpus (351 cases) and the wiring tiers
 ```
 
