@@ -267,7 +267,7 @@ Every compiler and linter pragma is exempt in every language. Generated files ar
 Three production repos. Everything in this section is printed by the tool — `cm sweep --json` and the
 debt line `cm verify` ends with — not counted by hand.
 
-**EpodSystem**, 503k lines of Go + Next.js + GraphQL + Liquid, 3 182 files:
+**Repo A** — 503k lines of Go + Next.js + GraphQL + Liquid, 3 182 files:
 
 ```
 27 467 prose lines flagged across 13 696 comment blocks in 1 689 files
@@ -279,18 +279,18 @@ top-level declaration. `docPolicy: required-on-exported` leaves every godoc comm
 requires exactly where it is. The framework that flags those gets uninstalled the same day; this is
 the measurement that says this one does not.
 
-**Forge**, 261k lines of TypeScript, 2 100 files: 13 941 lines across 6 143 blocks in 1 090 files.
+**Repo B** — 261k lines of TypeScript, 2 100 files: 13 941 lines across 6 143 blocks in 1 090 files.
 
 Two unrelated codebases, different teams, 2× apart in size — **5.5% and 5.3% prose density**. That
 appears to be the size of the surface, not a property of either team.
 
-**A large Laravel monorepo**: 111 findings across every `.php` file (TODOs only — no docblock
+**Repo C**, a large PHP (Laravel) monorepo: 111 findings across every `.php` file (TODOs only — no docblock
 touched), against ~73k in the same repo's bundled JS/TS assets. Three ecosystems, three policies, one
 checker.
 
-The number that matters most is smaller than any of those. **134 flagged comments in EpodSystem name
-another file in the repo** — `(see product_create.go)`, `mirrors audience_helpers.go`,
-`see frontend/.../unknown-filters.ts`. Every one is a coupling a developer found, judged worth
+The number that matters most is smaller than any of those. **134 flagged comments in Repo A name
+another file in the same repo** — prose of the form `(see <other>.go)`, `mirrors <helpers>.go`,
+`see <module>/lib/….ts`. Every one is a coupling a developer found, judged worth
 recording, and had no formal channel for: nothing indexes them, nothing notices when the target
 moves, and they only reach a reader already in the right file. The declared-edge layer is not a new
 thing to write. It is a channel for what people are already writing into the void.
