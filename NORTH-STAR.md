@@ -117,7 +117,8 @@ of it.*
    keyed cache plus a detached background refresh means a bare `cm verify` (what the hook runs on
    every edit) now auto-enables the tier once archmap is vendored, reading the cache in ~50ms
    (measured on the `forge` repo, 2345 files) instead of running the ~15s scan inline. Promoting the
-   tier itself from advisory to `warn` is separate and still not done (§7, §8 Phase 2).
+   tier itself from advisory to `warn` was decided **2026-09-06 (ISS-15): stays at advisory** — the
+   measured false-positive rate does not clear the entry bar; see §9 decision log.
 5. How often the hook blocks, on which check, and whether that block held or was circumvented —
    measured locally, sending is opt-in: `cm metrics show` / `cm metrics send` (SPEC.md §10). Before
    ISS-3 there was no way to count this at all; every piece of evidence in §4 is reach, not effect.
@@ -173,8 +174,8 @@ distribution. **Do not defend it by writing more documentation.**
   a dedicated issue in each repo, and was not done from ISS-4.
 - Public. Unlock archmap when **1 issue/PR from a stranger** arrives.
 
-**Phase 2 — the joint worth making** *(graph reading, FP measurement and the cache all done; `warn`
-by default is the one piece still open)*
+**Phase 2 — the joint worth making** *(graph reading, FP measurement, the cache and the
+`warn`-by-default decision all done — §9)*
 - `graph.mjs` used to confess: *"Evidence is a basename match, not an import graph"* — CM301 guessed
   whether a coupling was real **by comparing filenames**. Fixed: `cli/lib/archmap.mjs` reads
   `archmap graph --json` when the advisory tier is enabled; the real graph is asked BEFORE the
@@ -191,8 +192,9 @@ by default is the one piece still open)*
   unref'd child so the edit itself never waits on it. Measured on the `forge` repo (2345 files): the
   hot path (fingerprint + cache read) is ~50ms, against the ~15s the inline scan cost — the bare
   `cm verify` the hook runs now auto-enables CM301 wherever archmap is vendored, `enforce.advisory`
-  unset. An explicit `enforce.advisory: false` still opts a repo out. Not promoted to `error` or
-  `warn` — that stays its own criterion (§7).
+  unset. An explicit `enforce.advisory: false` still opts a repo out. **Decided 2026-09-06 (ISS-15):
+  stays at advisory, not promoted to `warn`** — see §9. `error` needs findings at zero first and
+  stays out of scope.
 - Lower priority, still open: de-duplicate the shared layer (`globToRe` ×2, `findRoot` ×2,
   install/vendor ~270 lines ×2) between codemap and archmap — pure cleanup, blocking nothing above.
 
@@ -245,6 +247,23 @@ by default is the one piece still open)*
   was opened IN each owning project at the plugins tier (9 issues: the 8 new repos plus the one that
   predated ISS-4) so that `cm init` / `cm install` / wiring the gate happen inside the owning
   project, with that project's review.
+- **2026-09-06 (ISS-15)** — CM301's promotion decided: **stays at `advisory`, does not enter at
+  `warn` by default.** Measured on two repos in different language mixes — `EpodSystem` (Go +
+  TS/JS): 137 contract/lockstep-with-symbol edges, 64 anchored, 36 raw `CM301` hits, 2 after the
+  two structural corrections already live in `cli/lib/graph.mjs` (the same-language-family guard
+  and the Go directory-name evidence), 0 actionable; `Forge` (TS/JS): 67 edges, 5 anchored, 4 raw,
+  3 after corrections, 1 "actionable" whose real kind is `naming` not `contract` (§5), so not a
+  genuine `CM301` finding either. Re-measured with a real archmap import graph on a third repo
+  (`forge`, 1905 files): 6 pre-existing hits, **0** suppressed by the real graph — confirming the
+  remaining hits are not an evidence-quality bug. Across every measurement to date, **0** genuine
+  actionable findings: every surviving hit is the same shape, two sides that must implement the
+  same rule with nothing linking them, where absence of a reference is the normal state, not
+  drift (SPEC §7.1). That shape did not shrink when evidence quality went up (basename match →
+  real graph), so it is not measurement noise the cache or a better graph will fix — entering at
+  `warn` would fire on a legitimate pattern, not on drift. No code changed: the existing
+  auto-enable-when-archmap-vendored mechanism (ISS-14) and `enforce.advisory` opt-out are
+  unaffected. Re-open only with a new measurement that finds a genuine missing-reference case
+  `CM301` caught, not with renewed confidence in this same data.
 
 ## 10. Rollout log (ISS-4, measured 2026-09-02)
 

@@ -286,6 +286,14 @@ depend on how that repo's edges are shaped:
 cm verify --tier advisory --json | jq '[.diags[] | select(.code=="CM301")] | length'
 ```
 
+**Decided 2026-09-06 (ISS-15): `CM301` stays at `advisory`, and does not enter at `warn` by
+default.** Every measurement to date — the basename-only pass on two repos above, and a
+re-measurement with a real archmap import graph on a third — found zero genuine actionable hits;
+the survivors are always the same shape, the reference-free pair described above, and a real
+import graph confirmed that shape rather than shrinking it. Entering at `warn` on that evidence
+would warn on a legitimate pattern, not on drift. Re-opening this needs a new measurement that
+finds an actual missing-reference case, not renewed confidence in this same data (NORTH-STAR §9).
+
 ## §8 Registry
 
 `.forge/codemap.json`, JSON so it parses with zero dependencies and validates against
