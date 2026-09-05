@@ -31,7 +31,7 @@ not write it.** `// Load the config` is not ugly, it is invalid — the compiler
 ## Install
 
 ```bash
-claude plugin marketplace add SidCorp-co/forge-pipeline-skills
+claude plugin marketplace add SidCorp-co/codemap
 claude plugin install forge-codemap@forge
 ```
 

@@ -6,8 +6,8 @@
   "author": {
     "name": "SidCorp-co"
   },
-  "homepage": "https://github.com/SidCorp-co/forge-pipeline-skills/tree/main/plugins/forge-codemap",
-  "repository": "https://github.com/SidCorp-co/forge-pipeline-skills",
+  "homepage": "https://github.com/SidCorp-co/codemap/tree/main/plugins/forge-codemap",
+  "repository": "https://github.com/SidCorp-co/codemap",
   "license": "MIT",
   "keywords": [
     "claude-code",

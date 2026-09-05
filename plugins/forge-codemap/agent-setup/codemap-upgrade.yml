@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - id: latest
         run: |
-          git clone --depth 1 https://github.com/SidCorp-co/forge-pipeline-skills /tmp/codemap
+          git clone --depth 1 https://github.com/SidCorp-co/codemap /tmp/codemap
           git -C /tmp/codemap fetch --tags --depth 1 origin
           echo "tag=$(git -C /tmp/codemap tag -l 'codemap-v*' | sort -V | tail -1)" >> "$GITHUB_OUTPUT"
       # cm:why cm.mjs has no --root; it always vendors into $(pwd). `cd /tmp/codemap` here used to

@@ -141,15 +141,12 @@ bằng cách viết thêm tài liệu.**
   điều đó đòi quan sát 4 lần chạy thật trong các repo consumer, ngoài quyền ghi của issue này.
 
 **Phase 1 — phân phối** *(codemap đi trước trong bốn sản phẩm)*
-- **Tách repo riêng.** Hôm nay codemap là `plugins/forge-codemap/` trong
-  `SidCorp-co/forge-pipeline-skills` — public, nhưng chỉ chiếm 34/190 file tracked; phần còn lại là
-  86 file bundle, 32 skill, 26 profile không liên quan. Hai hệ quả chặn Phase 1:
-  1. GitHub **chỉ đọc `.github/ISSUE_TEMPLATE/` ở gốc repo**. Bốn form đã viết sẵn ở
-     `plugins/forge-codemap/.github/ISSUE_TEMPLATE/` — đúng đường dẫn sau khi tách, **nằm im
-     trước khi tách**.
-  2. Điều kiện mở khoá dưới đây là *“1 issue từ người lạ”*. Trong hộp thư dùng chung với 32 skill
-     khác thì tín hiệu đó **không quy về codemap được** — nó không đo được, nên không dùng làm
-     cổng được.
+- **Tách repo riêng — xong 06/09/2026.** Repo `SidCorp-co/codemap` giờ chỉ chở codemap: bộ
+  pipeline skills (86 file bundle, 32 skill, 26 profile) đã bị xoá vì `SidCorp-co/forge-plugin`
+  thay thế nó, và còn truy được ở tag `pipeline-final`. Hai hệ quả từng chặn Phase 1 đã mở:
+  1. Bốn form feedback đã chuyển lên `.github/ISSUE_TEMPLATE/` ở gốc — chỗ duy nhất GitHub đọc.
+  2. Hộp thư giờ chỉ có codemap, nên *“1 issue từ người lạ”* quy được về codemap và dùng làm cổng
+     được.
 - Rollout 5 → 15 repo nội bộ qua `forge_config` → `plugin_sync.rs:89` — **xong 02/09/2026** (ISS-4,
   chi tiết §10). Tầng `plugins` mới chỉ mở visibility (advisory, không chặn); tầng vendored/gated —
   `cm init` đóng băng baseline rồi commit `.forge/codemap/` — còn lại làm trong issue riêng của

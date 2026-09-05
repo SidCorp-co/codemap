@@ -1,16 +1,13 @@
 {
   "name": "forge",
-  "owner": { "name": "SidCorp-co" },
+  "owner": {
+    "name": "SidCorp-co"
+  },
   "metadata": {
-    "description": "Forge extensions for Claude Code: pipeline skill templates and the CodeMap annotation layer.",
-    "version": "0.4.0"
+    "description": "codemap/1 — the declared-edge layer for source code, as a Claude Code plugin.",
+    "version": "0.17.0"
   },
   "plugins": [
-    {
-      "name": "forge-pipeline-skills",
-      "source": "./",
-      "description": "Pipeline skill templates organized by stack × branching × deploy × verification. Base canonical set + per-profile overlays = drop-in bundle."
-    },
     {
       "name": "forge-codemap",
       "source": "./plugins/forge-codemap",

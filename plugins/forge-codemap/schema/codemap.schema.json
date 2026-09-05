@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/SidCorp-co/forge-pipeline-skills/plugins/forge-codemap/schema/codemap.schema.json",
+  "$id": "https://github.com/SidCorp-co/codemap/plugins/forge-codemap/schema/codemap.schema.json",
   "title": "codemap/1 registry",
   "description": "Closes the vocabulary of flow names and scopes enforcement. Steps are never declared here — they are derived from the code (SPEC.md §1.1, §8).",
   "type": "object",
