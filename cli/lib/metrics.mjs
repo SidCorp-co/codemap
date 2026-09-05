@@ -35,13 +35,17 @@ function ensureDir(root) {
 // cm:guard every try/catch below swallows and no-ops — this module is observational, so a disk error,
 //   a missing git binary or a corrupt local file must never be the reason an edit itself fails
 
-/** Every event is exactly these fields — the enforcement point for "shape, not content". */
+/** Every event is exactly these fields — the enforcement point for "shape, not content". A line
+ *  number is not content (ISS-13's business rule: counts, codes, line numbers and repo-relative
+ *  paths only, never annotation text) — it is what lets a held code join back to the declared
+ *  annotation that sits at it, without a second event stream. */
 function shape(fields) {
-  const { ts, event, tier, codes, file, heldMs, data } = fields;
+  const { ts, event, tier, codes, file, line, heldMs, data } = fields;
   const out = { ts, event };
   if (tier !== undefined) out.tier = tier;
   if (codes !== undefined) out.codes = [...codes].sort();
   if (file !== undefined) out.file = file;
+  if (line !== undefined) out.line = line;
   if (heldMs !== undefined) out.heldMs = heldMs;
   if (data !== undefined) out.data = data;
   return out;
@@ -102,10 +106,10 @@ export function reconcile(root, relPath, current) {
     if (entry) {
       for (const [key, info] of Object.entries(entry.at)) {
         if (!stillBlocking.has(key)) {
-          appendEvent(root, { ts: Date.now(), event: 'held', tier: 'grammar', codes: [info.code], file: relPath, heldMs: Date.now() - info.ts });
+          appendEvent(root, { ts: Date.now(), event: 'held', tier: 'grammar', codes: [info.code], file: relPath, line: info.line, heldMs: Date.now() - info.ts });
           delete entry.at[key];
         } else if (commitsSince(root, relPath, info.ts) > 0) {
-          appendEvent(root, { ts: Date.now(), event: 'circumvented', tier: 'grammar', codes: [info.code], file: relPath });
+          appendEvent(root, { ts: Date.now(), event: 'circumvented', tier: 'grammar', codes: [info.code], file: relPath, line: info.line });
           delete entry.at[key];
         }
       }
@@ -118,7 +122,7 @@ export function reconcile(root, relPath, current) {
       const now = Date.now();
       for (const d of current) {
         const key = pendingKey(d.code, d.line);
-        if (!(key in e.at)) e.at[key] = { code: d.code, ts: now };
+        if (!(key in e.at)) e.at[key] = { code: d.code, line: d.line, ts: now };
       }
     }
 
@@ -230,6 +234,52 @@ export function eventCounts(events) {
 }
 
 /**
+ * Per-declared-annotation effect (ISS-13) — has THIS exact annotation ever been the reason a block
+ * held? Joins already-collected `held`/`circumvented` events back onto the current graph by
+ * `(file, line)`, the same key `reconcile` already dedupes pending blocks on. No new event stream:
+ * VISION.md §3.3 names the join as already possible from data `cm metrics` already writes.
+ *
+ * Local-detail only — one row per file:line, so this must never enter `buildPayload`/`send`; that
+ * is what `annotationEffectSummary` is for. An annotation with zero holds is not flagged here: the
+ * business rule is that the measure reports, it does not judge.
+ */
+export function annotationEffect(root, g) {
+  const held = new Map();
+  const circumvented = new Map();
+  const key = (file, line) => `${file}\n${line}`;
+  for (const e of readEvents(root)) {
+    if (e.file === undefined || e.line === undefined) continue;
+    const k = key(e.file, e.line);
+    if (e.event === 'held') held.set(k, (held.get(k) ?? 0) + 1);
+    else if (e.event === 'circumvented') circumvented.set(k, (circumvented.get(k) ?? 0) + 1);
+  }
+
+  const rows = [];
+  for (const [file, anns] of g.byFile) {
+    for (const a of anns) {
+      const k = key(file, a.line);
+      rows.push({ file, line: a.line, tag: a.tag, held: held.get(k) ?? 0, circumvented: circumvented.get(k) ?? 0 });
+    }
+  }
+  return rows;
+}
+
+/**
+ * Aggregate-only rollup of `annotationEffect`'s rows — counts and a per-tag breakdown, never a file,
+ * a line or annotation text, so this (unlike the rows above) is safe for `buildPayload`/`send`.
+ */
+export function annotationEffectSummary(rows) {
+  const byTag = {};
+  let everHeld = 0;
+  for (const r of rows) {
+    const t = byTag[r.tag] ?? (byTag[r.tag] = { total: 0, everHeld: 0 });
+    t.total++;
+    if (r.held > 0) { t.everHeld++; everHeld++; }
+  }
+  return { total: rows.length, everHeld, byTag };
+}
+
+/**
  * The one payload both `cm metrics show --json` and `cm metrics send` produce — shape only, ready to
  * leave the machine. `send` without `--yes` prints exactly this and stops (see cm.mjs), so there is
  * no separate "preview" implementation that could drift from what actually gets sent.
@@ -244,6 +294,7 @@ export function buildPayload(root, { reg, g }) {
     blocks: eventCounts(events),
     pendingUnresolved: pendingCount,
     annotations: { total: ann.total, byTag: ann.byTag, distinctAuthors: ann.distinctAuthors },
+    annotationEffect: annotationEffectSummary(annotationEffect(root, g)),
     registry: registrySnapshot(reg),
   };
 }
