@@ -425,6 +425,34 @@ function drainCases(pluginRoot, check, roots) {
   git(root, 'add', '-A');
   git(root, 'commit', '-qm', 'freeze');
 
+  // cm:why every case below lives in a ONE-block file, where a paid comment always takes its block key
+  //   with it — the per-file coarsening this rule carried until 2026-09-05 was structurally invisible here
+  // cm:guard two blocks, and the payment is made in the FIRST — the surviving second block is what used
+  //   to keep every frozen key in the file counted, so a real repo's debt could not fall by one at all
+  const many = makeRepo();
+  roots.push(many);
+  const mf = join(many, 'two-blocks.ts');
+  const blockA = `// ${FROZEN}\n// ${GONE}\n`;
+  const blockB = `// ${FROZEN} in the second block\n// ${GONE} in the second block\n`;
+  writeFileSync(mf, `${blockA}export const a = 1;\n\n${blockB}export const b = 2;\n`);
+  git(many, 'add', '-A');
+  git(many, 'commit', '-qm', 'debt');
+  cm(pluginRoot, many, 'baseline');
+  git(many, 'add', '-A');
+  git(many, 'commit', '-qm', 'freeze');
+
+  writeFileSync(mf, `// ${FROZEN}\nexport const a = 11;\n\n${blockB}export const b = 2;\n`);
+  const twoPaid = cm(pluginRoot, many, 'verify', '--since', 'HEAD');
+  check('cli: one comment paid in a multi-block file is a payment',
+    twoPaid.status === 0 && !/CM013/.test(twoPaid.out),
+    `an untouched block elsewhere in the file must not keep the debt at its full count:\n${twoPaid.out}`);
+
+  writeFileSync(mf, `${blockA}export const a = 11;\n\n${blockB}export const b = 2;\n`);
+  const twoUnpaid = cm(pluginRoot, many, 'verify', '--since', 'HEAD');
+  check('cli: a multi-block file that pays nothing is still billed',
+    twoUnpaid.status === 1 && /CM013/.test(twoUnpaid.out) && /4 still frozen/.test(twoUnpaid.out),
+    `the rule must still fire when no comment went anywhere:\n${twoUnpaid.out}`);
+
   writeFileSync(file, `${prose}export const a = 11;\nexport const b = 2;\n`);
   const unpaid = cm(pluginRoot, root, 'verify', '--since', 'HEAD');
   check('cli: CM013 fires when a code edit pays none of the file\'s frozen debt',

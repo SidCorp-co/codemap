@@ -11,7 +11,7 @@ Do the following yourself. Do not ask the user to run these.
 It is plain node (>= 18) with zero dependencies, so it runs anywhere without installing anything:
 
 ```sh
-git clone --depth 1 --branch codemap-v0.16.0 https://github.com/SidCorp-co/forge-pipeline-skills /tmp/codemap
+git clone --depth 1 --branch codemap-v0.16.1 https://github.com/SidCorp-co/forge-pipeline-skills /tmp/codemap
 alias cm="node /tmp/codemap/plugins/forge-codemap/scripts/cm.mjs"
 ```
 

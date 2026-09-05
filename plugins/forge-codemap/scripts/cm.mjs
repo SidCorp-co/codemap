@@ -33,7 +33,7 @@ import {
 
 // cm:guard the bootstrap prompt pins a TAG, never a branch — a floating gate turns a PR red with no
 //   code change, which is the property §8.1's pin exists to protect (ISS-B)
-const TAG_HINT = 'codemap-v0.16.0';
+const TAG_HINT = 'codemap-v0.16.1';
 
 const COLOR = process.stdout.isTTY && !process.env.NO_COLOR;
 const c = (n, s) => (COLOR ? `[${n}m${s}[0m` : s);
