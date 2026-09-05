@@ -102,9 +102,9 @@ of it.*
 
 **Leading indicators (achievable alone):**
 1. Internal repos carrying codemap: **5 → 15 — done 2026-09-02** (ISS-4), though the honest split is
-   **6 vendored (own baseline) / 9 plugins-advisory (no baseline yet)** — `sidboss` was already at
-   the plugins tier BEFORE ISS-4, not vendored, so "7 pre-existing" in §10 was the old count and has
-   been corrected. The count measures reach, not effect — §5 still measures effect separately, by
+   **6 vendored (own baseline) / 9 plugins-advisory (no baseline yet)** — one of the nine was already
+   at the plugins tier BEFORE ISS-4, not vendored, so "7 pre-existing" was the old count and has been
+   corrected. The count measures reach, not effect — §5 still measures effect separately, by
    annotations outsiders write. "Every repo has its own baseline" (ISS-4's intended outcome) holds
    for only 6/15 — see §10 and the tracking issues there for the remaining 9.
 2. The weekly upgrade bot demonstrably running, with logs, **4 weeks in a row** (it died silently for
@@ -220,80 +220,52 @@ waits on a cache)*
   (or wait for next Monday's cron) for its vendored copy to actually reach `0.15.0` — this issue could
   only fix the tag source and the template, with no write access to the `forge` repo.
 - **2026-09-02** (ISS-4) — Re-measured before installing: the "5" in §4 was stale; the reality was
-  6 vendored + 1 plugins-advisory (`sidboss`, installed outside this issue) = 7 repos carrying
-  codemap in some form, not 7 vendored as the first draft of this log wrongly recorded. The rollout of
+  6 vendored + 1 plugins-advisory (installed outside this issue) = 7 repos carrying codemap in some
+  form, not 7 vendored as the first draft of this log wrongly recorded. The rollout of
   8 new repos in ISS-4 reached only the `forge_config.plugins` tier (advisory) — the vendored/gated
   tier (which requires `cm init` to freeze a baseline inside each repo) was not done from that
   session, because ISS-4 had no worktree in those repos, and pushing code to another project's main
   branch from an issue owned by `codemap` crosses an ownership boundary. Instead: one tracking issue
-  was opened IN each owning project at the plugins tier (9 issues, covering `sidboss` and the 8 new
-  repos) so that `cm init` / `cm install` / wiring the gate happen inside the owning project, with
-  that project's review — see §10 for the issue ids.
+  was opened IN each owning project at the plugins tier (9 issues: the 8 new repos plus the one that
+  predated ISS-4) so that `cm init` / `cm install` / wiring the gate happen inside the owning
+  project, with that project's review.
 
 ## 10. Rollout log (ISS-4, measured 2026-09-02)
 
-Tier `vendored` = `.forge/codemap/` committed into the repo + a blocking gate in CI (legacy prose
-frozen into a baseline). Tier `plugins` = designated through `forge_config.plugins` only — the
-`PreToolUse`/`PostToolUse` hooks run for anyone with an agent session, but with no `cm init` there is
-**no baseline**, so the block-on-prose branch of `PostToolUse` disables itself (see README "How it
-works"); what remains is advisory (`cm impact`, plus blocking on annotation syntax errors). This is
-"measure first, install second" in the literal sense: no measurement, no unlocked blocking.
+**Aggregate, because the detail is not this file's to publish.** The per-repository table — which
+internal repositories carry codemap, which checks each has switched off and why, and the tracking
+issue opened in each — lives in the project's own knowledge store under
+`codemap-rollout-log-internal`. Naming other teams' repositories and the gates they have disabled is
+not evidence of anything a reader here needs, and it is not this project's information to hand out.
 
-| Repo | Tier | Checks disabled |
+| Tier | Count | What it means |
 |---|---|---|
-| `apiflow` | vendored + CI gate | none — `cm verify` must reach 0 errors |
-| `KineTrak` | vendored | none — `enforce.grammar: true` |
-| `getcontent` | vendored + CI gate | none — the only root-scope repo, see ISS-462 (in that repo) |
-| `forge-dev` (repo `forge`) | vendored + CI gate | none |
-| `epodsystem-core` | vendored + CI gate | none |
-| `anhome` | vendored | `enforce.grammar: false` — `eslint-plugin-code-quality` already holds the comment-density axis at `webapp:lint`; deliberately not run twice |
-| `sidboss` | plugins (advisory) | block-on-prose off (no `cm init` yet) — tracking: sidboss ISS-159 |
-| `ceo-dashboard` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: ceo-dashboard ISS-82 (`draft`, awaiting that project's triage) |
-| `finance-automation` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: finance-automation ISS-78 (`draft`, awaiting that project's triage) |
-| `pixelight` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: pixelight ISS-358 |
-| `sidpeak` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: sidpeak ISS-351 |
-| `brand-gateway` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: brand-gateway ISS-56 |
-| `sidcorp-mail` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: sidcorp-mail ISS-10 |
-| `sid-desk` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: sid-desk ISS-158 |
-| `dodgeprint-api` | plugins (advisory) — new in ISS-4 | block-on-prose off (no `cm init` yet) — tracking: dodgeprint-api ISS-73 |
+| vendored | **6** | `.forge/codemap/` committed + a blocking gate in CI; legacy prose frozen into that repo's own baseline |
+| plugins (advisory) | **9** | designated through `forge_config.plugins` only — the hooks run, but with no `cm init` there is no baseline, so the block-on-prose branch disables itself and only `cm impact` plus annotation-syntax blocking remain |
+| **total** | **15** | the 5 → 15 figure in §5, measured 2026-09-02 |
 
-**Valid candidates, not installed — deferred to a later batch, not for lack of a boundary.** They
-have a real `repoPath`, an `autonomous` pipeline, and clear structure/gates (their `projectFacts`
-prove it) — the 8 above simply already met the 5→15 mark, so this round stopped there. Listed so the
-next batch need not re-measure from scratch: `adminhub-api`, `dodgeprint-fe`, `dodgeprint-ui-v2`,
-`portal-lighthuman`, `server-vault`, `archmap`, `devbox`, `forge-plugin` (the `forge` plugin's own
-repo — its `pipelineConfig.mode` moved from `staged` to `autonomous` while this session was running,
-so the observation was stale within the session itself; it has a real `npm run check` gate and is a
-good candidate for the next batch, not a rejection).
+Of the 9 at the plugins tier, 8 were added by ISS-4 and 1 predates it. Every one of them has a
+tracking issue open **inside its owning project**, each asking for the same three things: `cm init`
+to freeze a baseline, `cm install` to vendor and pin the checker, then wiring `cm verify` into that
+repo's CI gate. That split is deliberate: ISS-4 had no worktree in those repositories, and pushing to
+another project's main branch from an issue owned by `codemap` crosses an ownership boundary.
 
-**Excluded from every batch, with a reason (not silently skipped):**
+Four repositories were excluded from every batch with a recorded reason rather than skipped silently:
+one is a repo-less storefront with no module boundary to annotate, three have no real repository path
+on their project yet, one is a subdirectory of a tree already installed at its root, and one lives
+outside the fleet whose hook reviewers can be identified. Eight more are valid candidates deferred
+only because the 5 → 15 mark was already met.
 
-| Repo | Why not |
-|---|---|
-| `mowment` | Repo-less storefront — 2 files in git, no build, no module boundary to annotate |
-| `erp`, `sid-growth`, `adminhub-ui` | `repoPath: null` on the project — no real repo to install into yet |
-| `forge-redesign` | `repoPath` is a subdirectory of `forge-dev` (`jarvis-agents/`) — the same tree is already installed at its root; installing again duplicates it |
-| `house-supabase` | `repoPath` is on a personal machine (`/Users/…`), outside the devbox fleet under `/home/…` — no way to verify who reviews the hook; kept as a question for the next batch |
+**The caveat that must travel with these numbers.** "Every repository has its own baseline" — ISS-4's
+own brief — holds for **6 of 15**, the vendored tier. The 9 at the plugins tier have no baseline yet,
+exactly as "measure first, install second" intends: nothing is unlocked before it is measured. That
+is a designed gap with issues against it, not a hidden one. And the count itself is **reach, not
+effect** — §5 measures effect separately, by annotations that people outside this project write.
 
-**Next step — issues opened, not merely intended:** the 9 tracking issues (the "tracking" column
-above) were created INSIDE each owning project — each asking for exactly three things: `cm init`
-(freeze the baseline), `cm install` (vendor + pin the version), then wiring `cm verify` into that
-repo's CI gate — reference model: `getcontent` ISS-462 (in that project). 7 of the 9 went straight to
-`open` (that project's pipeline dispatches them itself); 2 (`ceo-dashboard` ISS-82,
-`finance-automation` ISS-78) went to `draft` because those projects have a manual `intakeGate`/triage
-— a human or that project's driver has to approve before dispatch, and ISS-4 had no authority to move
-status in another project.
-
-"Every repo has its own baseline", as ISS-4's brief put it, holds for **6/15** (the vendored tier) at
-the time that issue closed — the 9 `plugins`-tier repos have NO baseline yet, exactly as the
-"measure first, install second" design intends: nothing is unlocked before it is measured. That is
-not a hidden gap, and there are now real tracking issues to close it. Anyone reading §10 who wants to
-call ISS-4 "done" in the brief's own terms should read this line first.
-
-**ISS-6 status (picked up 2026-09-06, not closed):** the 0.17.0 path move landed the same day this
-was picked up, so none of the six vendored-tier repos above could have migrated their upgrade
-workflow yet. One tracking issue was opened in each, asking it to point at `cli/cm.mjs`: `apiflow`
-ISS-16, `KineTrak` ISS-11, `getcontent` ISS-503, `forge-dev` ISS-918, `epodsystem-core` ISS-220
-(`draft` — that project's `intakeGate` requires triage), `anhome` ISS-472. The forwarding shim at
-`plugins/forge-codemap/scripts/cm.mjs` and its `cm:hack` stay until all six land; do not re-open
-this work by filing duplicates — check those six issues' status first.
+**ISS-6 status (picked up 2026-09-06, not closed).** The 0.17.0 path move landed the same day the
+issue was picked up, so none of the six vendored-tier repositories could have migrated their upgrade
+workflow to `cli/cm.mjs` yet, and deleting the forwarding shim now would strand all six on a
+hardcoded path with nothing behind it — the ISS-5 failure class exactly. One tracking issue was
+opened in each of the six instead; they are listed, by repository, in the same knowledge entry as the
+rest of the detail. The shim at `plugins/forge-codemap/scripts/cm.mjs` and its `cm:hack` stay until
+all six land. Before re-opening this work, read those six issues' status — do not file duplicates.
