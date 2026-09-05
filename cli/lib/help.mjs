@@ -38,6 +38,7 @@ export const VERBS = [
   ['metrics show', '', 'local north-star counters: blocks held vs circumvented, annotation trend  [--json]'],
   ['metrics reconcile', '', 'sweep pending blocks the hook never saw resolved (for the weekly bot)'],
   ['metrics send', '[--endpoint <url>] [--yes]', 'opt-in send of the show --json payload; no --yes previews only'],
+  ['metrics annotations', '', 'which declared annotations ever held a block (local-detail only)  [--limit N] [--json]'],
   ['codes', '', 'diagnostic reference (same as: cm help codes)'],
   ['help', '[topic]', 'this guidebook'],
   ['version', '', 'tool version + spec version'],

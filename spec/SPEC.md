@@ -469,3 +469,19 @@ does can reach the network. `cm metrics send --endpoint <url> [--yes]` builds th
 `show --json` prints — one function, `buildPayload`, so there is no separate "preview" that could
 drift from what actually goes out — and only performs the POST when BOTH `--endpoint` and `--yes` are
 given. Either one missing prints the payload and stops. There is no default endpoint.
+
+**Per-annotation effect (ISS-13).** Neither `cm ls`/`cm graph` (annotation counts, i.e. volume) nor
+the aggregate above (gate behaviour by code) says which *declared* annotation ever earned its place —
+"every number rising while the value is zero" is indistinguishable from success otherwise (the same
+trap this whole section exists to avoid). The join needs no new event stream: `held`/`circumvented`
+events already carry `line` (a line number is not annotation text, so it is inside the shape-not-
+content allow-list above), the same `(file, code, line)` key the pending-block dedup already uses.
+`annotationEffect(root, g)` (`cli/lib/metrics.mjs`) reads the local event log and indexes it against
+the CURRENT graph's declared annotations by `(file, line)`, returning one row per annotation —
+`{file, line, tag, held, circumvented}` — local-detail only, exactly like `cm sweep`'s rows, and it
+must never enter `buildPayload`. `cm metrics annotations [--json]` is the local-only verb that lists
+them. The safe-to-send rollup, `annotationEffectSummary`, drops file/line/tag-instance detail down to
+`{total, everHeld, byTag}` and rides inside `buildPayload` as `annotationEffect`, so `cm metrics
+send` gains only aggregate counts, never a path or a line. An annotation with zero holds is not
+flagged as wrong by any of this — many guard the rare case — and nothing here feeds back into what
+the checker blocks.

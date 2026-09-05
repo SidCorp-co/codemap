@@ -29,6 +29,7 @@ import { resolveCm } from './lib/locate.mjs';
 import {
   reconcileAll, buildPayload, annotationCounts, registrySnapshot,
   recordAnnotationSnapshot, recordRegistrySnapshot, annotationTrend, registryTrend, registryFlips, metricsPaths,
+  annotationEffect,
 } from './lib/metrics.mjs';
 
 // cm:guard the bootstrap prompt pins a TAG, never a branch — a floating gate turns a PR red with no
@@ -961,8 +962,8 @@ switch (cmd) {
   //   blocks, not scale; this verb is the only place that count is produced (ISS-3)
   case 'metrics': {
     const sub = positional[0];
-    if (!['show', 'reconcile', 'send'].includes(sub)) {
-      console.error('usage: cm metrics show [--json] | cm metrics reconcile | cm metrics send --endpoint <url> [--yes]');
+    if (!['show', 'reconcile', 'send', 'annotations'].includes(sub)) {
+      console.error('usage: cm metrics show [--json] | cm metrics reconcile | cm metrics send --endpoint <url> [--yes] | cm metrics annotations [--json]');
       process.exit(2);
     }
     const reg = loadOrDie();
@@ -971,6 +972,26 @@ switch (cmd) {
       const cm = resolveCm(root);
       const r = reconcileAll(root, cm.path);
       console.log(`codemap metrics reconcile: ${r.checked}/${r.pendingBefore} pending file(s) checked`);
+      break;
+    }
+
+    // cm:why local-detail only (file:line, like `cm sweep`/`cm ls`) — annotationEffect's rows must
+    //   never reach buildPayload, so this reads it directly rather than through the shared payload
+    if (sub === 'annotations') {
+      const perFile = analyzeAll(reg, annotatedFiles(reg));
+      const g = buildGraph(perFile);
+      const rows = annotationEffect(root, g);
+      if (flags.has('--json')) { console.log(JSON.stringify(rows, null, 2)); break; }
+      rows.sort((a, b) => b.held - a.held || a.file.localeCompare(b.file) || a.line - b.line);
+      const limit = numericFlag('--limit', 40);
+      for (const r of rows.slice(0, limit)) {
+        console.log(`${bold(`${r.file}:${r.line}`)} ${dim(r.tag.padEnd(6))} held ${r.held}${r.circumvented ? `  circumvented ${r.circumvented}` : ''}`);
+      }
+      if (rows.length > limit) console.log(dim(`… and ${rows.length - limit} more (--limit ${rows.length} to see all)`));
+      console.log('');
+      const everHeld = rows.filter((r) => r.held > 0).length;
+      console.log(`${bold('codemap metrics annotations')} · ${rows.length} declared, ${everHeld} ever held a block`);
+      console.log(dim('an annotation that has never held is not thereby wrong — many guard the rare case (ISS-13)'));
       break;
     }
 
@@ -1007,6 +1028,10 @@ switch (cmd) {
         const delta = payload.annotations.total - first.total;
         console.log(dim(`  ${delta >= 0 ? '+' : ''}${delta} since ${new Date(first.ts).toISOString().slice(0, 10)} (${trend.length} snapshots)`));
       }
+      console.log('');
+      console.log(bold('annotation effect'));
+      console.log(`  ${payload.annotationEffect.everHeld} of ${payload.annotationEffect.total} declared annotation(s) have ever held a block`);
+      console.log(dim('  a zero here is not thereby wrong — many guard the rare case. Per-annotation detail: cm metrics annotations'));
       console.log('');
       console.log(bold('registry'));
       console.log(`  grammar ${payload.registry.grammarEnabled ? 'on' : yellow('off')}  ·  advisory ${payload.registry.advisoryEnabled ? 'on' : dim('off')}`);

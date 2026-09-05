@@ -9,7 +9,9 @@ import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { blockingDiags } from '../cli/lib/blocking.mjs';
-import { reconcile, eventCounts, buildPayload, metricsPaths, registryFlips } from '../cli/lib/metrics.mjs';
+import {
+  reconcile, eventCounts, buildPayload, metricsPaths, registryFlips, annotationEffect, annotationEffectSummary,
+} from '../cli/lib/metrics.mjs';
 
 function git(root, ...args) {
   execFileSync('git', ['-C', root, ...args], {
@@ -104,8 +106,8 @@ export function metricsCases(pluginRoot, check) {
       const held = events(root).filter((e) => e.event === 'held');
       check('metrics: reconcile marks a code held once it stops blocking', held.length === 1 && held[0].codes.includes('CM001'),
         `events: ${JSON.stringify(events(root))}`);
-      check('metrics: a held event never carries the diagnostic text, only code/tier/file/heldMs',
-        Object.keys(held[0]).sort().join(',') === 'codes,event,file,heldMs,tier,ts',
+      check('metrics: a held event carries its line (ISS-13: what lets a hold join back to a declared annotation), never diagnostic text',
+        Object.keys(held[0]).sort().join(',') === 'codes,event,file,heldMs,line,tier,ts' && held[0].line === 1,
         `held event shape was: ${JSON.stringify(held[0])}`);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -158,14 +160,58 @@ export function metricsCases(pluginRoot, check) {
     const root = mkdtempSync(join(tmpdir(), 'cm-metrics-payload-'));
     mkdirSync(join(root, '.forge'));
     try {
-      reconcile(root, 'secret-customer-file.ts', [{ code: 'CM001', line: 1 }]);
-      const payload = buildPayload(root, { reg: { specVersion: 'codemap/1' }, g: { guards: [], edges: [], hacks: [], whys: [], flows: new Map(), byFile: new Map() } });
+      reconcile(root, 'secret-customer-file.ts', [{ code: 'CM001', line: 137 }]);
+      const g = { guards: [{ file: 'secret-customer-file.ts', line: 137, tag: 'guard' }], edges: [], hacks: [], whys: [], flows: new Map(), byFile: new Map([['secret-customer-file.ts', [{ file: 'secret-customer-file.ts', line: 137, tag: 'guard' }]]]) };
+      const payload = buildPayload(root, { reg: { specVersion: 'codemap/1' }, g });
       const flat = JSON.stringify(payload);
       check('metrics: the send/show payload never names a file', !flat.includes('secret-customer-file'),
         `payload leaked a filename: ${flat}`);
+      check('metrics: ISS-13 — annotationEffect in the send/show payload never carries a line number either',
+        !flat.includes('137'), `payload leaked a line number: ${flat}`);
       check('metrics: the payload has exactly the documented top-level keys',
-        Object.keys(payload).sort().join(',') === 'annotations,blocks,generatedAt,pendingUnresolved,registry,specVersion',
+        Object.keys(payload).sort().join(',') === 'annotationEffect,annotations,blocks,generatedAt,pendingUnresolved,registry,specVersion',
         `payload keys: ${Object.keys(payload).sort().join(',')}`);
+      check('metrics: ISS-13 — annotationEffect is aggregate-only (total/everHeld/byTag), never file/line/text',
+        Object.keys(payload.annotationEffect).sort().join(',') === 'byTag,everHeld,total',
+        `annotationEffect keys: ${Object.keys(payload.annotationEffect).sort().join(',')}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+
+  {
+    const root = mkdtempSync(join(tmpdir(), 'cm-metrics-effect-'));
+    mkdirSync(join(root, '.forge'));
+    git(root, 'init', '-q');
+    writeFileSync(join(root, 'e.ts'), 'e\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '-qm', 'seed');
+    try {
+      const g = {
+        byFile: new Map([['e.ts', [
+          { file: 'e.ts', line: 10, tag: 'guard' },
+          { file: 'e.ts', line: 20, tag: 'why' },
+        ]]]),
+      };
+
+      reconcile(root, 'e.ts', [{ code: 'CM007', line: 10 }]);
+      reconcile(root, 'e.ts', []);
+      const rows = annotationEffect(root, g);
+      check('metrics: annotationEffect returns one row per declared annotation, held ones and never-held ones alike',
+        rows.length === 2, `rows: ${JSON.stringify(rows)}`);
+      const heldRow = rows.find((r) => r.line === 10);
+      const untouchedRow = rows.find((r) => r.line === 20);
+      check('metrics: annotationEffect joins a held event onto the annotation at its exact (file, line)',
+        heldRow?.held === 1, `rows: ${JSON.stringify(rows)}`);
+      check('metrics: annotationEffect reports zero for an annotation that never held — not omitted, not flagged wrong',
+        untouchedRow?.held === 0, `rows: ${JSON.stringify(rows)}`);
+
+      const summary = annotationEffectSummary(rows);
+      check('metrics: annotationEffectSummary counts everHeld across all declared annotations',
+        summary.total === 2 && summary.everHeld === 1, `summary: ${JSON.stringify(summary)}`);
+      check('metrics: annotationEffectSummary breaks down by tag, never by file/line',
+        summary.byTag.guard?.everHeld === 1 && summary.byTag.why?.everHeld === 0,
+        `summary: ${JSON.stringify(summary)}`);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -196,11 +242,23 @@ export function metricsCases(pluginRoot, check) {
       payload.blocks.CM001?.block === 1 && payload.blocks.CM001?.held === 1,
       `show --json said: ${show.out}`);
 
+    check('metrics: cm metrics show --json includes the ISS-13 annotationEffect field',
+      payload.annotationEffect && typeof payload.annotationEffect.total === 'number',
+      `show --json said: ${show.out}`);
+
+    const annotationsVerb = runCm(pluginRoot, root, 'metrics', 'annotations', '--json');
+    check('metrics: cm metrics annotations --json runs and returns an array (no declared annotations in this repo yet)',
+      annotationsVerb.status === 0 && Array.isArray(JSON.parse(annotationsVerb.stdout)),
+      `metrics annotations said: ${annotationsVerb.out}`);
+
     const sendNoEndpoint = runCm(pluginRoot, root, 'metrics', 'send', '--yes');
     const previewedNoEndpoint = JSON.parse(sendNoEndpoint.out.split('\n\n')[0]);
     check('metrics: send refuses without --endpoint even with --yes',
       /no --endpoint given/.test(sendNoEndpoint.out) && JSON.stringify(previewedNoEndpoint.blocks) === JSON.stringify(payload.blocks),
       `send said: ${sendNoEndpoint.out}`);
+    check('metrics: ISS-13 — annotationEffect is identical between show and send (one shared builder, no drift)',
+      JSON.stringify(previewedNoEndpoint.annotationEffect) === JSON.stringify(payload.annotationEffect),
+      `show said ${JSON.stringify(payload.annotationEffect)}, send previewed ${JSON.stringify(previewedNoEndpoint.annotationEffect)}`);
 
     const sendDryRun = runCm(pluginRoot, root, 'metrics', 'send', '--endpoint', 'https://example.invalid/collect');
     const previewedDryRun = JSON.parse(sendDryRun.out.split('\n\n')[0]);
@@ -226,6 +284,9 @@ export function metricsCases(pluginRoot, check) {
     check('metrics: a block shipped anyway (past the hook, into a commit) is counted circumvented, not held',
       events(root).some((e) => e.event === 'circumvented' && e.file === 'b.ts'),
       `a block that made it into a commit unresolved must never read as a success: ${JSON.stringify(events(root))}`);
+    check('metrics: a circumvented event carries its line too (ISS-13 — same join key as held)',
+      events(root).some((e) => e.event === 'circumvented' && e.file === 'b.ts' && e.line === 1),
+      `events: ${JSON.stringify(events(root))}`);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
   }

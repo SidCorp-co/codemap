@@ -117,6 +117,11 @@ of it.*
 5. How often the hook blocks, on which check, and whether that block held or was circumvented —
    measured locally, sending is opt-in: `cm metrics show` / `cm metrics send` (SPEC.md §10). Before
    ISS-3 there was no way to count this at all; every piece of evidence in §4 is reach, not effect.
+   **Done 2026-09-06 (ISS-13):** that measure was still per-code, never per-annotation — "every
+   number rising while the value is zero" (VISION §3.3) applied just as much to `cm:` annotations
+   themselves as to file/annotation/test counts. `cm metrics annotations` now joins a held/
+   circumvented event back onto the declared annotation at its exact `(file, line)`, off data the
+   gate already collected — no new event stream.
 
 ## 6. Kill criteria
 
