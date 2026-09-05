@@ -411,6 +411,140 @@ function diffScopeCases(pluginRoot, check, roots) {
     `entries changed outside the scope:\n${scoped2.out}\n${JSON.stringify(bl2)}`);
 }
 
+// cm:why the baseline had exactly one drain path — siting — and it only ever fires when an author
+//   reaches for a tag, so a file could be rewritten for years with its frozen count untouched (ISS-844)
+function drainCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  const file = join(root, 'debt.ts');
+  const prose = `// ${FROZEN}\n// ${GONE}\n`;
+  writeFileSync(file, `${prose}export const a = 1;\nexport const b = 2;\n`);
+  git(root, 'add', '-A');
+  git(root, 'commit', '-qm', 'debt');
+  cm(pluginRoot, root, 'baseline');
+  git(root, 'add', '-A');
+  git(root, 'commit', '-qm', 'freeze');
+
+  writeFileSync(file, `${prose}export const a = 11;\nexport const b = 2;\n`);
+  const unpaid = cm(pluginRoot, root, 'verify', '--since', 'HEAD');
+  check('cli: CM013 fires when a code edit pays none of the file\'s frozen debt',
+    unpaid.status === 1 && /CM013/.test(unpaid.out) && /2 still frozen/.test(unpaid.out),
+    `an edit to a file with frozen debt must be asked why the count is unchanged:\n${unpaid.out}`);
+
+  // cm:guard the anchor is frozen prose, so it is a line the diff never touched — without fileLevel the
+  //   changed-line filter removes it and the rule is structurally unable to fire (the fail-open shape)
+  const filtered = cm(pluginRoot, root, 'verify', '--since', 'HEAD', '--json');
+  let codes = [];
+  try { codes = JSON.parse(filtered.out).diags.map((d) => d.code); } catch { codes = ['parse-error']; }
+  check('cli: CM013 survives the changed-line filter that its own anchor line fails',
+    codes.includes('CM013'),
+    `the diff touched line 3, the anchor is line 1; got [${codes}]`);
+
+  writeFileSync(file, `// ${FROZEN}\nexport const a = 11;\nexport const b = 2;\n`);
+  const paid = cm(pluginRoot, root, 'verify', '--since', 'HEAD');
+  check('cli: deleting one frozen comment satisfies the rule',
+    paid.status === 0 && !/CM013/.test(paid.out),
+    `one comment per file you were editing anyway is the whole ask:\n${paid.out}`);
+
+  // cm:why the frozen key is the comment's TEXT, so converting one to an annotation pays it too
+  writeFileSync(file,
+    `// cm:guard the run lock is held for the whole batch, never per row\n// ${GONE}\nexport const a = 11;\n`
+    + 'export const b = 2;\n');
+  const reworded = cm(pluginRoot, root, 'verify', '--since', 'HEAD');
+  check('cli: converting one frozen comment to an annotation satisfies the rule',
+    !/CM013/.test(reworded.out),
+    `a frozen key whose text is gone is paid, however it went:\n${reworded.out}`);
+
+  writeFileSync(file, `// ${FROZEN.replace(' frozen', '\n// frozen')}\n// ${GONE}\nexport const a = 1;\nexport const b = 2;\n`);
+  const reflow = cm(pluginRoot, root, 'verify', '--since', 'HEAD');
+  check('cli: a rewrap of the frozen prose is not an edit that costs anything',
+    !/CM013/.test(reflow.out),
+    `rewrapping moves no words and changes no code:\n${reflow.out}`);
+
+  writeFileSync(file, `${prose}export  const   a = 1;\n\n\nexport const b = 2;\n`);
+  const reindent = cm(pluginRoot, root, 'verify', '--since', 'HEAD');
+  check('cli: reformatting code is not an edit that costs anything either',
+    !/CM013/.test(reindent.out),
+    `billing a repo-wide fmt run for every file it touched is how a gate gets switched off:\n${reindent.out}`);
+
+  writeFileSync(file, `${prose}export const a = 1;\nexport const b = 2;\n`);
+  git(root, 'mv', 'debt.ts', 'moved.ts');
+  const moved = cm(pluginRoot, root, 'verify', '--since', 'HEAD', '--staged');
+  check('cli: --since and --staged still refuse to combine, drain or not',
+    moved.status === 2, `expected exit 2:\n${moved.out}`);
+  const movedStaged = cm(pluginRoot, root, 'verify', '--staged');
+  check('cli: moving a file with frozen debt costs nothing',
+    !/CM013/.test(movedStaged.out),
+    `a rename's new path has no baseline entry, so it carries no debt to pay:\n${movedStaged.out}`);
+  git(root, 'mv', 'moved.ts', 'debt.ts');
+  git(root, 'add', '-A');
+
+  writeFileSync(file, `${prose}export const a = 11;\nexport const b = 2;\n`);
+  for (const args of [['verify'], ['verify', 'debt.ts'], ['verify', '--changed-lines', 'debt.ts']]) {
+    const r = cm(pluginRoot, root, ...args);
+    check(`cli: \`cm ${args.join(' ')}\` never raises CM013 — it has no base revision`,
+      !/CM013/.test(r.out),
+      `a whole-tree run compared against HEAD would demand a re-freeze of the entire baseline:\n${r.out}`);
+  }
+
+  writeFileSync(join(root, 'fresh.ts'), 'export const f = 1;\n');
+  git(root, 'add', 'fresh.ts');
+  const fresh = cm(pluginRoot, root, 'verify', '--staged');
+  const billed = (out) => (out.match(/^(\S+) error CM013/gm) ?? []).map((l) => l.split(' ')[0]);
+  check('cli: a file that did not exist at the base revision is never billed',
+    JSON.stringify(billed(fresh.out)) === '[]',
+    `only a file that carried debt at the base can owe any:\n${fresh.out}`);
+  git(root, 'rm', '-q', '-f', '--cached', 'fresh.ts');
+  rmSync(join(root, 'fresh.ts'));
+
+  // cm:why `cm baseline --include-new` can freeze a file that is not in HEAD at all, so a baseline
+  //   entry is NOT evidence the file existed at the base revision
+  // cm:guard reading a null blob as an empty one bills a brand-new file for debt it introduced in
+  //   this very change, and the file it names has no frozen comment anyone could delete
+  writeFileSync(join(root, 'unborn.ts'), `// ${FROZEN}\n// ${GONE}\nexport const u = 1;\n`);
+  git(root, 'add', 'unborn.ts');
+  cm(pluginRoot, root, 'baseline', '--include-new');
+  const unborn = cm(pluginRoot, root, 'verify', '--staged');
+  check('cli: a frozen file with no blob at the base revision is not billed',
+    !/CM013/.test(unborn.out), `a null base blob is "unanswerable", never "empty":\n${unborn.out}`);
+  // cm:guard reading the null blob as content throws inside isGenerated, and an uncaught throw is
+  //   exit 1 — the same code as "violations found", so CI reads the crash as a lint failure (§9.1)
+  check('cli: a null base blob is not a stack trace either',
+    !/\bat \w+ \(/.test(unborn.out) && !/node:internal/.test(unborn.out),
+    `a raw stack trace is not a diagnostic:\n${unborn.out}`);
+  git(root, 'rm', '-q', '-f', 'unborn.ts');
+  cm(pluginRoot, root, 'baseline');
+  git(root, 'add', '-A');
+  git(root, 'commit', '-qm', 'drop unborn');
+
+  // cm:guard the ignore sits at the BOTTOM, nowhere near the anchor — every other code reads its
+  //   ignore from the line above it
+  // cm:why an ignore beside the anchor is caught by that generic filter instead, which left this
+  //   rule's own file-wide lookup passing under a mutation that deleted it
+  writeFileSync(file, `${prose}export const a = 1111;\nexport const b = 2;\n`
+    + '// cm:ignore CM013 — this file is generated downstream and its comments are the contract\n');
+  const ignored = cm(pluginRoot, root, 'verify', '--since', 'HEAD');
+  check('cli: cm:ignore CM013 is honoured from anywhere in the file',
+    !/CM013/.test(ignored.out),
+    `an escape hatch pinned to a line the author cannot predict is not one:\n${ignored.out}`);
+
+  writeFileSync(file, `${prose}export const a = 2222;\nexport const b = 2;\n`);
+  writeFileSync(join(root, '.forge', 'codemap.json'), '{"enforce":{"drain":false}}\n');
+  const off = cm(pluginRoot, root, 'verify', '--since', 'HEAD');
+  check('cli: enforce.drain false turns the rule off repo-wide',
+    !/CM013/.test(off.out),
+    `a rule this consequential needs a documented off switch:\n${off.out}`);
+  writeFileSync(join(root, '.forge', 'codemap.json'), '{}\n');
+
+  // cm:why --staged is the other enforcement point — it is what `cm install --git-hook` runs
+  writeFileSync(file, `${prose}export const a = 111;\nexport const b = 2;\n`);
+  git(root, 'add', '-A');
+  const staged = cm(pluginRoot, root, 'verify', '--staged');
+  check('cli: --staged is an enforcement point too — the commit is the unit',
+    staged.status === 1 && /CM013/.test(staged.out),
+    `the pre-commit hook runs --staged:\n${staged.out}`);
+}
+
 // cm:why an edge is one-sided: nothing checked that the coupling it claims exists at the other end, so a
 //   function could declare a contract its target had never called and cm reported green (ISS-8)
 function advisoryCases(pluginRoot, check, roots) {
@@ -740,6 +874,7 @@ export function cliCases(pluginRoot, check) {
     targetCases(pluginRoot, check, roots);
     outputCases(pluginRoot, check, roots);
     diffScopeCases(pluginRoot, check, roots);
+    drainCases(pluginRoot, check, roots);
     advisoryCases(pluginRoot, check, roots);
     archmapCases(pluginRoot, check, roots);
   } finally {

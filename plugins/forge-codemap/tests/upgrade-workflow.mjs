@@ -37,12 +37,13 @@ export function upgradeWorkflowCases(pluginRoot, check) {
   const consumer = mkdtempSync(join(tmpdir(), 'cm-upgrade-consumer-'));
   try {
     execFileSync('git', ['clone', '-q', join(pluginRoot, '..', '..'), clone]);
-    // any real tag stands in for "${{ steps.latest.outputs.tag }}" — this checks the *cwd* the
-    // install runs with, not tag resolution (release-tag.mjs already covers that)
+    // cm:why any real tag stands in for "${{ steps.latest.outputs.tag }}" — what this asserts is
+    //   the *cwd* the install runs with, not tag resolution (release-tag.mjs owns that)
     const tag = execFileSync('git', ['tag', '-l', 'codemap-v*'], { cwd: clone, encoding: 'utf8' })
       .split('\n').filter(Boolean).sort().at(-1);
 
-    install({ root: consumer, version: '0.1.0' }); // stand-in for "vendored a long time ago"
+    // cm:why 0.1.0 stands in for "vendored a long time ago", so the upgrade has somewhere to move
+    install({ root: consumer, version: '0.1.0' });
     const before = vendoredVersion(consumer);
 
     const rendered = script

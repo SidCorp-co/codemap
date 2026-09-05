@@ -123,3 +123,9 @@ Three moves look like resolutions and are not, and each now reports itself:
 
 The two real resolutions are deleting the comment and converting it into an annotation whose text says
 something the compiler, the types, the path and the LSP cannot state.
+
+`CM013` is the rule that makes those two happen on inherited debt rather than only on new prose: on a
+run with a base revision, a file whose code changed while none of its frozen debt fell is asked why.
+It is the only grammar code the edit hook does not raise — the unit is a change, so it holds at the
+commit (`--staged`) and the PR (`--since <ref>`). Reflow, formatter runs and file moves cost nothing.
+See `cm help baseline`.

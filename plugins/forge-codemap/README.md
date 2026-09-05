@@ -69,11 +69,18 @@ Legacy is frozen by CONTENT: only a comment whose text is new gets flagged, so r
 code and deleting old comments are all free. Legacy is frozen, never migrated — a mass comment
 deletion is a separate, reviewable change.
 
-One exception, or the total never falls: prose sharing a comment block with a `cm:` annotation is
-**not** frozen. Annotating a site means you have read it, so the noise there is yours to delete —
-otherwise annotations only ever accrete on top of legacy comments and onboarding ends with more
-comments than it started with. `cm sweep` shows what the baseline is hiding, and `cm verify` prints
-the remaining debt on every run.
+Two things make the total fall, or annotations only ever accrete on top of legacy comments and
+onboarding ends with more comments than it started with:
+
+- **the site.** Prose sharing a comment block with a `cm:` annotation is **not** frozen. Annotating a
+  site means you have read it, so the noise there is yours to delete.
+- **the file** (`CM013`). On a run with a base revision — `cm verify --since <ref>`, or `--staged` —
+  a file whose *code* changed while none of its frozen debt fell is asked why the count is still the
+  same. One comment deleted or reworded satisfies it. A reflow, a formatter run and a file move all
+  cost nothing; so does a whole-tree run, which has no notion of "edited". Off with
+  `enforce.drain: false`.
+
+`cm sweep` shows what the baseline is hiding, and `cm verify` prints the remaining debt on every run.
 
 Then annotate **from evidence**: take the couplings that have already caused a manual intervention
 or a broken deploy and declare those. A flow nobody has been burned by has not earned its

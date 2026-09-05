@@ -549,6 +549,53 @@ export const baselineCases = [
   { name: 'a one-character change is detected', a: 'retry once', b: 'retry twice', same: false },
 ];
 
+// cm:why CM013's exemption for reflow IS this identity — a formatter run or a rewrap must leave it
+//   untouched, and only a change to what the file DOES may move it (SPEC.md §8)
+export const codeShapeCases = [
+  {
+    name: 'codeShape: rewrapping a comment run does not move it',
+    a: '// one long sentence of narration that was written on a single line\nexport const a = 1;\n',
+    b: '// one long sentence of narration that\n// was written on a single line\nexport const a = 1;\n',
+    same: true,
+  },
+  {
+    name: 'codeShape: deleting a comment does not move it either',
+    a: '// narration\nexport const a = 1;\n',
+    b: 'export const a = 1;\n',
+    same: true,
+  },
+  {
+    name: 'codeShape: reindenting and reblanking code does not move it',
+    a: 'export function f() {\n  return 1;\n}\n',
+    b: 'export function f() {\n\n        return 1;\n\n}\n',
+    same: true,
+  },
+  {
+    name: 'codeShape: a one-character change to the code moves it',
+    a: 'export const a = 1;\n',
+    b: 'export const a = 2;\n',
+    same: false,
+  },
+  {
+    name: 'codeShape: a trailing comment is cut at its leader, and its line of code is kept',
+    a: 'export const a = 1; // why one\n',
+    b: 'export const a = 1; // a completely different remark\n',
+    same: true,
+  },
+  {
+    name: 'codeShape: cutting a trailing comment must not take the code with it',
+    a: 'export const a = 1; // why one\n',
+    b: 'export const b = 1; // why one\n',
+    same: false,
+  },
+  {
+    name: 'codeShape: a leader inside a string literal is code, not a comment',
+    a: 'export const u = "https://example.com/a";\n',
+    b: 'export const u = "https://example.com/b";\n',
+    same: false,
+  },
+];
+
 export const graphCases = [
   {
     name: 'flow ordering follows after:, not declaration order',

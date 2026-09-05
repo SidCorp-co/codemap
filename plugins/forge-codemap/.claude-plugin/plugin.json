@@ -2,7 +2,7 @@
   "name": "forge-codemap",
   "displayName": "Forge CodeMap",
   "description": "Declared-edge layer for code: cm: annotations carrying the couplings LSP cannot derive (cross-language and cross-process contracts, parallel rules, flows, guards), verified in CI and auto-injected into the agent's context before it edits the file they are on.",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "author": {
     "name": "SidCorp-co"
   },

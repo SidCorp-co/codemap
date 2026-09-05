@@ -7,7 +7,7 @@ import { analyzeFile } from '../scripts/lib/analyze.mjs';
 import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact, annText } from '../scripts/lib/graph.mjs';
 import { DEFAULT_REGISTRY } from '../scripts/lib/registry.mjs';
 import { baselineKey } from '../scripts/lib/parse.mjs';
-import { analyzeCases, baselineCases, graphCases } from './cases.mjs';
+import { analyzeCases, baselineCases, codeShapeCases, graphCases } from './cases.mjs';
 import { wiringCases } from './wiring.mjs';
 import { cliCases } from './cli.mjs';
 import { installCases } from './install.mjs';
@@ -83,6 +83,13 @@ for (const t of analyzeCases) {
 for (const t of baselineCases) {
   const same = baselineKey(t.a) === baselineKey(t.b);
   check(`baseline: ${t.name}`, same === t.same, `expected same=${t.same}, got ${same}`);
+}
+
+for (const t of codeShapeCases) {
+  const shape = (src) => analyzeFile({ relPath: 'shape.ts', src, reg: DEFAULT_REGISTRY }).codeShape;
+  const same = shape(t.a) === shape(t.b);
+  check(t.name, same === t.same,
+    `expected same=${t.same}, got ${same} — CM013 reads this to tell a code edit from a reflow`);
 }
 
 for (const t of graphCases) {

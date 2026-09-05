@@ -43,6 +43,7 @@
       "properties": {
         "grammar": { "type": "boolean", "default": true },
         "advisory": { "type": "boolean", "default": false, "description": "Run the advisory tier (CM301) in a --tier all run. Warning-only and never gating; off by default because its false-positive rate is unmeasured (SPEC.md §7.1)." },
+        "drain": { "type": "boolean", "default": true, "description": "Raise CM013 on a run with a base revision: a file whose code changed while none of its frozen prose debt fell (SPEC.md §8). On by default — it is the only path by which the baseline drains from work that was happening anyway." },
         "include": { "type": "array", "items": { "type": "string" }, "default": ["**"] },
         "exclude": { "type": "array", "items": { "type": "string" } },
         "headerMaxLines": { "type": "integer", "minimum": 1, "default": 20 }

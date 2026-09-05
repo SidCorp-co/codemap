@@ -1,6 +1,7 @@
 // cm:why every consumer repo's weekly upgrade bot resolves "latest" via `git tag -l codemap-v* |
-//   sort -V | tail -1` (agent-setup/codemap-upgrade.yml) — a version bump landed on main without
-//   its tag is invisible to it, and reads as "already up to date" instead of "stale" (ISS-5)
+//   sort -V | tail -1` (agent-setup/codemap-upgrade.yml), never plugin.json
+// cm:guard a version bump landed on main without its tag is INVISIBLE to that bot, and reads to
+//   every consumer as "already up to date" rather than "stale" (ISS-5)
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -20,9 +21,12 @@ export function releaseTagCases(pluginRoot, check) {
   try {
     existingTags = git(repoRoot, ['tag', '-l', 'codemap-v*']).split('\n').filter(Boolean);
   } catch {
-    return; // no git, or not a git checkout — nothing to verify against
+    // cm:why no git, or not a git checkout — there is nothing here to verify a tag against
+    return;
   }
-  if (existingTags.length === 0) return; // shallow clone with tags never fetched — not this check's job
+  // cm:why a shallow clone that never fetched tags has nothing to compare, and saying "no tag" there
+  //   would fail every consumer's CI on the one thing this check is not about
+  if (existingTags.length === 0) return;
 
   const newest = existingTags
     .map((t) => t.slice('codemap-v'.length))

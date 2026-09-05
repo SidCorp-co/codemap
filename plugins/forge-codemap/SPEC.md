@@ -211,6 +211,7 @@ is scoped — a one-file graph made a legal two-step flow report `CM103`/`CM201`
 | `CM010` | grammar | new `TODO`/`FIXME` introduced (§3). Marker-shaped only — at the start of a comment, or followed by `:`/`(` — so identifiers like `TC-XXX` are not flagged |
 | `CM011` | grammar | module header longer than `headerMaxLines` (§4.1) |
 | `CM012` | grammar | `cm:edge` kind and target parse, but the rationale follows with no ` — ` (§4). Split from `CM005`, which blamed the `->` that was already correct |
+| `CM013` | grammar | the file was edited and paid none of its frozen prose debt (§8). The one grammar code the edit hook does not raise — it needs a base revision, so it holds at the commit and the PR |
 | `CM101` | referential | flow not declared in the registry (§8) |
 | `CM102` | referential | `cm:edge` target does not exist |
 | `CM103` | referential | `after:` names a step that does not exist |
@@ -288,7 +289,7 @@ cm verify --tier advisory --json | jq '[.diags[] | select(.code=="CM301")] | len
   "specVersion": "codemap/1",
   "flows": [{ "name": "job-dispatch", "description": "issue → dispatched job" }],
   "externals": [{ "name": "laravel-app", "description": "the PHP original this service replaces" }],
-  "enforce": { "grammar": true, "include": ["**"], "exclude": ["**/*.test.ts"] },
+  "enforce": { "grammar": true, "drain": true, "include": ["**"], "exclude": ["**/*.test.ts"] },
   "languages": { "sql": { "enforce": false } }
 }
 ```
@@ -347,16 +348,37 @@ author for a comment they did not write is the wrong half of the trade. The edit
 A frozen key is dropped only when its text is **gone from the file**. Sited prose (below) is still in the
 file, so it stays frozen: it is reported anyway, and the annotation that sited it may be removed later.
 
-**Sited prose is never frozen.** A `CM001`/`CM010` violation sharing a comment block with a `cm:`
-annotation is reported regardless of the baseline. Contiguous standalone comment lines form one
-block; a trailing comment on a code line is not part of one. `CM011` is excluded — it measures a
-header's length, not one comment's text, so no site can own it.
+The baseline has two paths that reduce it, and they are the same question asked at two scales: did
+the person who just worked here leave the noise behind? Without either, legacy prose is spared
+forever, annotations only accrete, and a repo ends with more comments than before onboarding.
 
-Without this exception the baseline has no path that ever reduces: legacy prose is spared forever,
-annotations only accrete, and a repo ends with more comments than before onboarding. The rule is
-narrow on purpose — an author who annotates a site has just read it, so the noise there is theirs;
-prose they never touched stays frozen. `cm sweep` lists what the baseline is hiding, and
-`cm sweep --prune-baseline` drops keys matching nothing, so paid-off debt stops being counted.
+**The site: sited prose is never frozen.** A `CM001`/`CM010` violation sharing a comment block with a
+`cm:` annotation is reported regardless of the baseline. Contiguous standalone comment lines form one
+block; a trailing comment on a code line is not part of one. `CM011` is excluded — it measures a
+header's length, not one comment's text, so no site can own it. The rule is narrow on purpose — an
+author who annotates a site has just read it, so the noise there is theirs; prose they never touched
+stays frozen.
+
+**The file: `CM013`.** Siting fires only when an author reaches for a tag, so a file with frozen debt
+could be refactored, extended and rewritten for years with its frozen count never moving. `CM013`
+asks what siting cannot: this change altered what the file *does* and paid none of that file's frozen
+debt — why is the count still the same? Deleting or rewording one comment satisfies it.
+
+It is raised only on a run that has a base revision (`--since <ref>`, or `--staged` ⇒ `HEAD`), because
+"edited" has no meaning without one. A whole-tree or single-path `cm verify` never raises it, and
+neither does the edit hook: the unit is a change, not a keystroke, and a rule that stopped an author
+mid-edit to demand unrelated cleanup is the mistake the hook's own `--changed-lines` scoping already
+records paying once.
+
+Reflow, rewrap, reindent and a repo-wide formatter run are free — not by exemption, but because the
+rule compares the two revisions' *code* with comments stripped and whitespace normalized, so only an
+edit that changed what the file does can trigger it. A file move is free for the same structural
+reason the rest of §8 is: the new path has no baseline entry, so there is no debt there to drain.
+`enforce.drain: false` turns it off; `cm:ignore CM013 — <reason>` does so for one file, and is read
+from anywhere in that file because the anchor line moves as the prose above it does.
+
+`cm sweep` lists what the baseline is hiding, and `cm sweep --prune-baseline` drops keys matching
+nothing, so paid-off debt stops being counted.
 
 ## §9 Stability
 

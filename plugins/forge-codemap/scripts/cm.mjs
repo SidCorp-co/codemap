@@ -23,6 +23,7 @@ import { canonical, CODE_TABLE, PROSE_CODES, baselineKey } from './lib/parse.mjs
 import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
 import { install } from './lib/install.mjs';
+import { debtOf, drainBase, drainDiags } from './lib/drain.mjs';
 import { renderHelp, VERBS } from './lib/help.mjs';
 import { resolveCm } from './lib/locate.mjs';
 import {
@@ -32,7 +33,7 @@ import {
 
 // cm:guard the bootstrap prompt pins a TAG, never a branch — a floating gate turns a PR red with no
 //   code change, which is the property §8.1's pin exists to protect (ISS-B)
-const TAG_HINT = 'codemap-v0.15.0';
+const TAG_HINT = 'codemap-v0.16.0';
 
 const COLOR = process.stdout.isTTY && !process.env.NO_COLOR;
 const c = (n, s) => (COLOR ? `[${n}m${s}[0m` : s);
@@ -310,7 +311,11 @@ function lineScope(sinceRef, staged) {
 // cm:guard a file with NO entry is not filtered — an untracked file never appears in `git diff`, and
 //   treating "no ranges" as "nothing changed" lets a brand-new file of prose through the hook (ISS-7)
 function inScope(ranges, d) {
-  if (!ranges || d.tier !== 'grammar' || d.sited) return true;
+  // cm:guard a fileLevel diagnostic is a verdict on the FILE, so a changed-line filter has no line to
+  //   be right about — CM013's anchor is frozen prose the diff by definition never touched
+  // cm:why filtering it made the gate structurally unable to fire, which is this CLI's own recurring
+  //   fail-open shape: a scope nobody could compute, reported as a scope with nothing wrong in it
+  if (!ranges || d.fileLevel || d.tier !== 'grammar' || d.sited) return true;
   const spans = ranges.get(d.file);
   if (!spans) return true;
   return spans.some(([a, b]) => d.line >= a && d.line <= b);
@@ -373,15 +378,19 @@ switch (cmd) {
         || !(frozen.has(baselineKey(d.text ?? d.message)) || (d.blockKey && frozen.has(d.blockKey))));
       diags.push(...keep);
 
-      const present = new Set(f.presentKeys ?? f.proseKeys ?? []);
-      // cm:guard a reflow changes every LINE key while the block key survives, so a frozen line whose block
-      //   is still here is still debt — coarse per file, which over-reports debt rather than progress (ISS-21)
-      const blockAlive = (f.blockKeys ?? []).some((b) => frozen.has(b));
-      for (const k of frozen) {
-        if (k.startsWith('b:')) continue;
-        (present.has(k) || blockAlive ? debt++ : cleaned++);
-      }
+      // cm:edge contract -> plugins/forge-codemap/scripts/lib/drain.mjs — CM013 must count debt exactly
+      //   as this line reports it, so the accounting lives there and both read the one copy
+      const still = debtOf(frozen, f);
+      debt += still;
+      cleaned += [...frozen].filter((k) => !k.startsWith('b:')).length - still;
     }
+
+    // cm:edge contract -> plugins/forge-codemap/scripts/lib/drain.mjs — CM013 rides the grammar tier from
+    //   here, so `--tier referential` wipes it below with the rest and no second tier test is needed
+    diags.push(...drainDiags({
+      root, reg, baseline, perFile,
+      baseRef: drainBase({ since: flagValue('--since'), staged: flags.has('--staged') }),
+    }));
 
     const ranges = lineScope(flagValue('--since'), flags.has('--staged'));
     const beforeScope = diags.length;
