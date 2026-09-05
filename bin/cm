@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stable entrypoint. Resolves its own real location, so a symlink from anywhere
+# (~/.local/bin/cm) keeps working across plugin updates and version directories.
+d=$(dirname "$(readlink -f "$0")")
+exec node "$d/../cli/cm.mjs" "$@"

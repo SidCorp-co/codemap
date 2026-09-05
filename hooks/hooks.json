@@ -1,0 +1,31 @@
+{
+  "description": "codemap/1 — inject declared couplings before an edit, hold the grammar tier after one",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/cli/hooks/hook-pre-edit.mjs",
+            "args": [],
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/cli/hooks/hook-post-edit.mjs",
+            "args": [],
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

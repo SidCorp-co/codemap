@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "forge-codemap",
-      "source": "./plugins/forge-codemap",
+      "source": "./",
       "description": "codemap/1 — declare the couplings LSP cannot derive (cross-language contracts, flows, edit-time guards) as cm: annotations, and get them injected into the agent's context before it edits the file. Comment spam stops as a side effect."
     }
   ]

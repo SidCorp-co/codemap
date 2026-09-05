@@ -1,0 +1,717 @@
+// codemap/1 §9 — the golden corpus. Source snippet in, diagnostics and graph out.
+// Changing the grammar without updating these fails CI; this is the spec's own test suite.
+
+export const analyzeCases = [
+  {
+    name: 'ts: prose in an annotated block is sited, so the baseline cannot spare it (§8)',
+    file: 'sited.ts',
+    src: [
+      '// Load the config',
+      '// cm:guard callers must hold the run lock',
+      'function f() {}',
+      '',
+      '// unrelated narration far from any annotation',
+      'function g() {}',
+    ].join('\n'),
+    codes: ['CM001', 'CM001'],
+    annotations: ['guard'],
+    sited: [1],
+    // cm:why BOTH keys — siting decides what is REPORTED, never what the baseline knows exists
+    // (lib/analyze.mjs header has what excluding the sited one cost)
+    proseKeyCount: 2,
+  },
+  {
+    name: 'ts: an annotation may wrap onto one line, and only one (§4)',
+    file: 'wrap.ts',
+    src: [
+      '// cm:why the retry budget is per-run because a per-attempt one lets a flapping step spend it all',
+      '// and the dispatcher cannot tell that apart from genuine progress',
+      '// a third line is prose again',
+      'const r = 1;',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['why'],
+    sited: [3],
+    texts: ['the retry budget is per-run because a per-attempt one lets a flapping step spend it all'
+      + ' and the dispatcher cannot tell that apart from genuine progress'],
+  },
+  {
+    // cm:why the wrap must reach a QUERY without reaching canonical(): joining it into `text` makes every
+    // wrapped annotation a CM009 whose --fix duplicates the wrap onto line one (§4, ISS-3)
+    name: 'ts: a wrapped annotation is carried whole and is still canonical',
+    file: 'wrap-canonical.ts',
+    src: [
+      '// cm:guard the run lock is held for the whole batch, never per row —',
+      '// releasing between rows lets a second dispatcher claim the tail of this one',
+      'function f() {}',
+    ].join('\n'),
+    codes: [],
+    annotations: ['guard'],
+    texts: ['the run lock is held for the whole batch, never per row —'
+      + ' releasing between rows lets a second dispatcher claim the tail of this one'],
+  },
+  {
+    name: 'ts: a malformed annotation keeps its wrap, so one mistake is one diagnostic (ISS-6)',
+    file: 'wrap-malformed.ts',
+    src: [
+      '// cm:edge lockstep -> packages/core/refs.ts writes these refs; the',
+      '// provenance gate allows them through via this predicate',
+      'const x = 1;',
+    ].join('\n'),
+    codes: ['CM012'],
+    annotations: [],
+    fixMatches: /put " — " before the rationale/,
+  },
+  {
+    name: 'edge: a target followed by prose AFTER a separator is still CM005, not CM012',
+    file: 'wrap-separated.ts',
+    src: '// cm:edge lockstep -> packages/core/refs.ts and also x.ts — two targets is not a thing',
+    codes: ['CM005'],
+    annotations: [],
+    fixMatches: /use cm:why/,
+  },
+  {
+    name: 'ts: a wrapped line under a DIFFERENT leader is not a continuation',
+    file: 'wrap-leader.ts',
+    src: [
+      '// cm:why the retry budget is per-run, not per-attempt',
+      '/* narration in a block comment */',
+      'const r = 1;',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['why'],
+  },
+  {
+    name: 'ts: a blank line ends the block, so prose below it is not sited',
+    file: 'gap.ts',
+    src: [
+      '// cm:guard callers must hold the run lock',
+      '',
+      '// Load the config',
+      'function f() {}',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['guard'],
+    sited: [],
+  },
+  {
+    name: 'ts: a trailing comment on a code line is not part of the block above it',
+    file: 'trailing.ts',
+    src: [
+      '// cm:guard callers must hold the run lock',
+      'function f() {} // Load the config',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['guard'],
+    sited: [],
+  },
+  {
+    name: 'ts: a TODO glued to an annotation is sited too',
+    file: 'sited-todo.ts',
+    src: [
+      '// cm:why the retry budget is per-run, not per-attempt',
+      '// TODO tune the ceiling',
+      'const r = 1;',
+    ].join('\n'),
+    codes: ['CM010'],
+    annotations: ['why'],
+    sited: [2],
+    proseKeyCount: 1,
+  },
+  {
+    // cm:why a URL regex is the everyday shape of this — `/https?:\/\//` ends with an escaped slash
+    // against its own closing delimiter, and a false CM001 on real code is how a validator gets switched off
+    name: 'ts: an escaped slash in a regex literal is not a comment leader',
+    file: 'regex.ts',
+    src: [
+      'const isUrl = /^https?:\\/\\//.test(u);',
+      'const p = /\\.forge\\/codemap\\//;',
+      'const ok = 1; // this one really is a comment',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: [],
+  },
+  {
+    name: 'ts: prose comment is invalid, pragmas and annotations are not',
+    file: 'a.ts',
+    src: [
+      '// Load the config',
+      'const c = load();',
+      '// @ts-expect-error upstream types are wrong',
+      'const d: number = c;',
+      '// cm:guard callers must hold the run lock',
+      'function f() {}',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['guard'],
+  },
+  {
+    name: 'ts: comment leader inside a string literal is not a comment',
+    file: 'b.ts',
+    src: ['const url = "https://example.com/a#b";', "const p = 'a // b';", 'const t = `x // y`;'].join('\n'),
+    codes: [],
+    annotations: [],
+  },
+  {
+    name: 'ts: a bare URL in markup text is code, but a trailing comment after one still counts',
+    file: 'b2.tsx',
+    src: [
+      'const a = <p>Visit https://example.com/a//b#frag for docs</p>;',
+      'const b = 1; // cm:why https://example.com/rfc pins this constant',
+      'const c = <a>https://x.dev</a>; // Load the config',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['why'],
+  },
+  {
+    name: 'ts: a colon that is not a known scheme still opens a comment',
+    file: 'b4.ts',
+    src: [
+      'const t = a?b:c// Load the config',
+      'const o = { key://cm:guard callers must hold the run lock',
+      '  1 };',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['guard'],
+  },
+  {
+    name: 'yaml: a #fragment inside a bare URL is not a comment',
+    file: 'b3.yaml',
+    src: ['url: https://example.com#frag', 'other: 1 # a real comment'].join('\n'),
+    codes: [],
+    annotations: [],
+  },
+  {
+    name: 'ts: annotation inside a doc comment is CM003',
+    file: 'c.ts',
+    src: ['/**', ' * cm:guard must not live in a docblock', ' */', 'function f() {}'].join('\n'),
+    codes: ['CM003'],
+    annotations: [],
+  },
+  {
+    name: 'ts: a /** */ block is documentation; a /* */ block and // prose are not',
+    file: 'd.ts',
+    src: [
+      '/** Returns the config. */',
+      'export function a() {}',
+      '/** @param x the thing */',
+      'export function b(x) {}',
+      '/** Internal helper that does the thing. */',
+      'function c() {}',
+      '/** @param x on an interface member */',
+      'export interface I { x: number }',
+      '/* not a doc block, just prose */',
+      'export function d() {}',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: [],
+  },
+  {
+    // cm:why 3036 blocks / 5925 lines in one Go repo, the largest single bucket measured — godoc renders a
+    // field's doc exactly as a package-level one, so the policy was flagging what the ecosystem requires
+    name: 'go: a field and a method of an exported type are exempt, like the type itself (§6)',
+    file: 'thing.go',
+    src: [
+      '// Thing is a thing.',
+      'type Thing struct {',
+      '\t// Name is the display name shown to the user.',
+      '\tName string',
+      '\t// internal is not exported and gets no pass.',
+      '\tinternal string',
+      '}',
+      '',
+      '// Doer does.',
+      'type Doer interface {',
+      '\t// Do performs the action.',
+      '\tDo() error',
+      '}',
+      '',
+      '// Status codes.',
+      'const (',
+      '\t// StatusOK is fine.',
+      '\tStatusOK = 1',
+      ')',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: [],
+  },
+  {
+    // cm:guard capitalisation ALONE would exempt this — a same-package exported call inside a body reads
+    // exactly like an interface method, and this bucket (1628 blocks measured) is the policy's whole point
+    name: 'go: narration above a capitalised call in a function body is still CM001',
+    file: 'body.go',
+    src: [
+      '// Run runs.',
+      'func Run() {',
+      '\t// first we do the thing, then we do the other thing',
+      '\tDoThing()',
+      '}',
+      '',
+      'type thing struct {',
+      '\t// a field of an UNEXPORTED type is not godoc',
+      '\tName string',
+      '}',
+    ].join('\n'),
+    codes: ['CM001', 'CM001'],
+    annotations: [],
+  },
+  {
+    name: 'non-canonical form is CM009 and carries its fix',
+    file: 'e.ts',
+    src: '// cm:edge contract->packages/core/x.ts - both sides share the token',
+    codes: ['CM009'],
+    annotations: ['edge'],
+    canonical: 'cm:edge contract -> packages/core/x.ts — both sides share the token',
+  },
+  {
+    name: 'edge: unknown kind, absolute target, missing arrow',
+    file: 'f.ts',
+    src: [
+      '// cm:edge magic -> a/b.ts — nope',
+      '// cm:edge contract -> /abs/path.ts — nope',
+      '// cm:edge contract a/b.ts — nope',
+    ].join('\n'),
+    codes: ['CM004', 'CM005', 'CM005'],
+    annotations: [],
+  },
+  {
+    // cm:why the grammar tier is the edit hook, so a target the author can still see on screen is
+    // rejected there — as a referential CM102 it arrived weeks later, in CI, for someone else (ISS-5)
+    name: 'edge: a source-relative target is rejected by the grammar tier, not by CI',
+    file: 'apps/web/src/f.ts',
+    src: [
+      '// cm:edge contract -> ../api/src/routes/thing.ts — the sibling app',
+      '// cm:edge contract -> ./sibling.ts — same directory',
+    ].join('\n'),
+    codes: ['CM005', 'CM005'],
+    annotations: [],
+    fixMatches: /cm fmt rewrites a \.\.\/ target that resolves/,
+  },
+  {
+    // cm:why the target of a migration's original codebase is not in the tree, so it was the one coupling
+    // that had to stay prose — 354 comments in one repo were carrying it that way (ISS-11)
+    name: 'edge: an external target parses, and its shape is still checked',
+    file: 'x.ts',
+    src: [
+      '// cm:edge contract -> external:laravel-app/App/Models/Quote.php — mirrors the original model',
+      '// cm:edge contract -> external:laravel-app — a name with no path inside it',
+      '// cm:edge contract -> external:LaravelApp/x.php — a name that is not registry-shaped',
+    ].join('\n'),
+    codes: ['CM005', 'CM005'],
+    annotations: ['edge'],
+    fixMatches: /cm new external <name>/,
+  },
+  {
+    name: 'flow: needs flow/step, rejects unknown tokens',
+    file: 'g.ts',
+    src: [
+      '// cm:flow job-dispatch — missing the step',
+      '// cm:flow job-dispatch/claim-row after:pick-runner — ok',
+      '// cm:flow job-dispatch/next order:2 — bad token',
+    ].join('\n'),
+    codes: ['CM006', 'CM006'],
+    annotations: ['flow'],
+  },
+  {
+    name: 'hack: needs issue, until: and text',
+    file: 'h.ts',
+    src: [
+      '// cm:hack ISS-712 — no exit condition',
+      '// cm:hack ISS-712 until:core ships ws ack — poll instead of listening',
+    ].join('\n'),
+    codes: ['CM007'],
+    annotations: ['hack'],
+  },
+  {
+    name: 'unknown tag and empty body',
+    file: 'i.ts',
+    src: ['// cm:note something', '// cm:guard'].join('\n'),
+    codes: ['CM002', 'CM008'],
+    annotations: [],
+  },
+  {
+    name: 'TODO is CM010, not a comment violation',
+    file: 'j.ts',
+    src: '// TODO: wire the retry',
+    codes: ['CM010'],
+    annotations: [],
+  },
+  {
+    name: 'cm:ignore on the line above suppresses that code only',
+    file: 'k.ts',
+    src: [
+      '// cm:ignore CM001 — frozen vendor snippet',
+      '// Load the config',
+      '// Load it again',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: [],
+  },
+  {
+    name: 'cm:ignore without a code and reason is itself invalid',
+    file: 'l.ts',
+    src: '// cm:ignore',
+    codes: ['CM008'],
+    annotations: [],
+  },
+
+  {
+    name: 'module header: first comment run followed by a blank line is exempt',
+    file: 'hdr1.ts',
+    src: [
+      '// Dispatch gates.',
+      '// Every gate must be cheap enough to run on every dispatch tick.',
+      '',
+      'export function gate() {}',
+    ].join('\n'),
+    codes: [],
+    annotations: [],
+  },
+  {
+    name: 'module header: narration glued to the first statement is not a header',
+    file: 'hdr2.ts',
+    src: ['// Load the config', 'const c = load();'].join('\n'),
+    codes: ['CM001'],
+    annotations: [],
+  },
+  {
+    name: 'module header: allowed after a shebang',
+    file: 'hdr3.mjs',
+    src: ['#!/usr/bin/env node', '// One-shot migration runner.', '', 'run();'].join('\n'),
+    codes: [],
+    annotations: [],
+  },
+  {
+    name: 'module header: over the cap is CM011',
+    file: 'hdr4.ts',
+    src: [...Array.from({ length: 21 }, (_, i) => `// line ${i + 1}`), '', 'run();'].join('\n'),
+    codes: ['CM011'],
+    annotations: [],
+  },
+  {
+    name: 'module header: allowed after a "use client" directive prologue (§4.1)',
+    file: 'hdr5.tsx',
+    src: [
+      '"use client";',
+      '',
+      '// Agent MCP servers panel. Renders what the dispatch-time resolvers inject.',
+      '',
+      'export function Panel() {}',
+    ].join('\n'),
+    codes: [],
+    annotations: [],
+  },
+  {
+    name: 'module header: the prologue is a closed vocabulary, not any string statement',
+    file: 'hdr6.ts',
+    src: ['"side effect";', '', '// Load the config', '', 'run();'].join('\n'),
+    codes: ['CM001'],
+    annotations: [],
+  },
+  {
+    name: 'module header: over the cap after a prologue is still CM011',
+    file: 'hdr7.tsx',
+    src: [
+      "'use strict';",
+      '',
+      ...Array.from({ length: 21 }, (_, i) => `// line ${i + 1}`),
+      '',
+      'run();',
+    ].join('\n'),
+    codes: ['CM011'],
+    annotations: [],
+  },
+  {
+    // cm:why the near-miss must stay REPORTED — exempting it would license narration above the first
+    // statement, which is §4.1's whole subject; only the fix line changes
+    name: 'module header: a top-of-file run glued to the code is still CM001, with a blank-line fix',
+    file: 'hdr8.ts',
+    src: ['// Dispatch gates.', '// Cheap enough to run every tick.', 'export function gate() {}'].join('\n'),
+    codes: ['CM001', 'CM001'],
+    annotations: [],
+    fixMatches: /blank line/,
+  },
+  {
+    // cm:why a repo can adopt the graph without the comment discipline (`enforce.grammar: false`), and
+    // every prose-family code has to go quiet together or that mode ships surprise header errors
+    name: 'enforce.grammar: false silences the whole prose family, never the annotation grammar',
+    file: 'graphonly.ts',
+    src: [
+      ...Array.from({ length: 21 }, (_, i) => `// header line ${i + 1}`),
+      '',
+      '// plain narration a compiler already knows',
+      '// TODO wire the retry',
+      '// cm:edge magic -> nowhere.ts — a malformed annotation is still malformed',
+      '// cm:guard this one is fine',
+      'run();',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM004'],
+    annotations: ['guard'],
+  },
+
+  {
+    name: 'go: doc comment above an exported decl is exempt, elsewhere it is not',
+    file: 'm.go',
+    src: [
+      '//go:build linux',
+      '',
+      '// Package runner claims jobs.',
+      'package runner',
+      '',
+      '// Claim takes the next job.',
+      'func Claim() {}',
+      '',
+      '// helper does things',
+      'func helper() {}',
+      '',
+      'func other() {',
+      '\tx := 1 // count of things',
+      '\t_ = x',
+      '}',
+    ].join('\n'),
+    codes: ['CM001', 'CM001'],
+    annotations: [],
+  },
+  {
+    name: 'go: methods on exported receivers are exempt',
+    file: 'n.go',
+    src: ['// Run starts the loop.', 'func (r *Runner) Run() {}'].join('\n'),
+    codes: [],
+    annotations: [],
+  },
+  {
+    name: 'php: docblocks and prose are allowed, annotations still parse',
+    file: 'o.php',
+    src: [
+      '<?php',
+      '/** @param int $x */',
+      '// a plain note, allowed in php',
+      '# cm:guard tenant scope must be applied before this query',
+      'function f($x) {}',
+    ].join('\n'),
+    codes: [],
+    annotations: ['guard'],
+  },
+  {
+    name: 'python: docstring is a string not a comment; pragmas exempt; # leader annotates',
+    file: 'p.py',
+    src: [
+      'def f():',
+      '    """Docstring mentioning # not a comment."""',
+      '    x = 1  # noqa',
+      '    # cm:edge sideeffect -> app/jobs/worker.py — enqueues out of process',
+      '    return x',
+    ].join('\n'),
+    codes: [],
+    annotations: ['edge'],
+  },
+  {
+    name: 'rust: /// docs and SAFETY are exempt; lifetimes do not desync the scanner',
+    file: 'q.rs',
+    src: [
+      '/// Claims a job.',
+      'pub fn claim<\'a>(s: &\'a str) -> &\'a str {',
+      '    // SAFETY: pointer is checked above',
+      '    // cm:edge contract -> packages/core/src/pipeline/failure-classifier.ts — token must match',
+      '    s',
+      '}',
+    ].join('\n'),
+    codes: [],
+    annotations: ['edge'],
+  },
+  {
+    name: 'sql: enforcement off, annotations still collected',
+    file: 'r.sql',
+    src: [
+      '-- plain migration note, fine',
+      '--> statement-breakpoint',
+      '-- cm:edge sideeffect -> packages/core/src/jobs/dispatch-gates.ts — trigger cancels rows this reads',
+      'CREATE TRIGGER t AFTER UPDATE ON jobs EXECUTE FUNCTION f();',
+    ].join('\n'),
+    codes: [],
+    annotations: ['edge'],
+  },
+  {
+    name: 'generated files are skipped entirely',
+    file: 's.go',
+    src: ['// Code generated by protoc. DO NOT EDIT.', '', '// noise everywhere', 'func x() {}'].join('\n'),
+    codes: [],
+    annotations: [],
+    skipped: 'generated',
+  },
+];
+
+export const baselineCases = [
+  { name: 'identical text hashes identically', a: 'Load the config', b: 'Load the config', same: true },
+  { name: 'whitespace is normalized away', a: '  Load   the config ', b: 'Load the config', same: true },
+  { name: 'different text hashes differently', a: 'Load the config', b: 'Load the cache', same: false },
+  { name: 'a one-character change is detected', a: 'retry once', b: 'retry twice', same: false },
+];
+
+// cm:why CM013's exemption for reflow IS this identity — a formatter run or a rewrap must leave it
+//   untouched, and only a change to what the file DOES may move it (SPEC.md §8)
+export const codeShapeCases = [
+  {
+    name: 'codeShape: rewrapping a comment run does not move it',
+    a: '// one long sentence of narration that was written on a single line\nexport const a = 1;\n',
+    b: '// one long sentence of narration that\n// was written on a single line\nexport const a = 1;\n',
+    same: true,
+  },
+  {
+    name: 'codeShape: deleting a comment does not move it either',
+    a: '// narration\nexport const a = 1;\n',
+    b: 'export const a = 1;\n',
+    same: true,
+  },
+  {
+    name: 'codeShape: reindenting and reblanking code does not move it',
+    a: 'export function f() {\n  return 1;\n}\n',
+    b: 'export function f() {\n\n        return 1;\n\n}\n',
+    same: true,
+  },
+  {
+    name: 'codeShape: a one-character change to the code moves it',
+    a: 'export const a = 1;\n',
+    b: 'export const a = 2;\n',
+    same: false,
+  },
+  {
+    name: 'codeShape: a trailing comment is cut at its leader, and its line of code is kept',
+    a: 'export const a = 1; // why one\n',
+    b: 'export const a = 1; // a completely different remark\n',
+    same: true,
+  },
+  {
+    name: 'codeShape: cutting a trailing comment must not take the code with it',
+    a: 'export const a = 1; // why one\n',
+    b: 'export const b = 1; // why one\n',
+    same: false,
+  },
+  {
+    name: 'codeShape: a leader inside a string literal is code, not a comment',
+    a: 'export const u = "https://example.com/a";\n',
+    b: 'export const u = "https://example.com/b";\n',
+    same: false,
+  },
+];
+
+export const graphCases = [
+  {
+    name: 'flow ordering follows after:, not declaration order',
+    files: [
+      { relPath: 'c.ts', annotations: [{ tag: 'flow', flow: 'f', step: 'three', after: 'two', file: 'c.ts', line: 1 }] },
+      { relPath: 'a.ts', annotations: [{ tag: 'flow', flow: 'f', step: 'one', after: null, file: 'a.ts', line: 1 }] },
+      { relPath: 'b.ts', annotations: [{ tag: 'flow', flow: 'f', step: 'two', after: 'one', file: 'b.ts', line: 1 }] },
+    ],
+    flows: [{ name: 'f' }],
+    order: ['one', 'two', 'three'],
+    codes: [],
+  },
+  {
+    name: 'undeclared flow is CM101',
+    files: [{ relPath: 'a.ts', annotations: [
+      { tag: 'flow', flow: 'ghost', step: 'one', after: null, file: 'a.ts', line: 1 },
+      { tag: 'flow', flow: 'ghost', step: 'two', after: 'one', file: 'a.ts', line: 2 },
+    ] }],
+    flows: [],
+    codes: ['CM101'],
+  },
+  {
+    name: 'dangling edge target is CM102',
+    files: [{ relPath: 'a.ts', annotations: [
+      { tag: 'edge', kind: 'contract', target: 'spec/SPEC.md', file: 'a.ts', line: 1 },
+      { tag: 'edge', kind: 'contract', target: 'does/not/exist.ts', file: 'a.ts', line: 2 },
+    ] }],
+    flows: [],
+    codes: ['CM102'],
+  },
+  {
+    // cm:why 110 of one production repo's 186 edges carry an anchor, so without this the majority of the
+    // edge layer was verified no further than "the file still exists" (ISS-4)
+    name: 'an anchor that is not in the target is CM106, and a live one is green',
+    files: [{ relPath: 'a.ts', annotations: [
+      { tag: 'edge', kind: 'contract', target: 'cli/lib/parse.mjs#parseAnnotation', file: 'a.ts', line: 1 },
+      { tag: 'edge', kind: 'contract', target: 'cli/lib/parse.mjs#thisSymbolMovedAway', file: 'a.ts', line: 2 },
+    ] }],
+    flows: [],
+    codes: ['CM106'],
+  },
+  {
+    name: 'an anchor is matched on its first dot-segment, and never as a substring',
+    files: [{ relPath: 'a.ts', annotations: [
+      { tag: 'edge', kind: 'contract', target: 'cli/lib/parse.mjs#PROSE_CODES.has', file: 'a.ts', line: 1 },
+      { tag: 'edge', kind: 'contract', target: 'cli/lib/parse.mjs#arseAnnotatio', file: 'a.ts', line: 2 },
+    ] }],
+    flows: [],
+    codes: ['CM106'],
+  },
+  {
+    name: 'an undeclared external is CM107, and a declared one is green with no path check',
+    files: [{ relPath: 'a.ts', annotations: [
+      { tag: 'edge', kind: 'contract', target: 'external:laravel-app/App/Models/Quote.php', external: 'laravel-app', file: 'a.ts', line: 1 },
+      { tag: 'edge', kind: 'contract', target: 'external:laravel-app/nothing/here/at/all.php', external: 'laravel-app', file: 'a.ts', line: 2 },
+      { tag: 'edge', kind: 'contract', target: 'external:ghost-app/x.php', external: 'ghost-app', file: 'a.ts', line: 3 },
+    ] }],
+    flows: [],
+    externals: [{ name: 'laravel-app' }],
+    codes: ['CM107'],
+  },
+  {
+    name: 'an anchor on a directory target is CM106, not a silent pass',
+    files: [{ relPath: 'a.ts', annotations: [
+      { tag: 'edge', kind: 'contract', target: 'cli/lib#somewhereInThere', file: 'a.ts', line: 1 },
+      { tag: 'edge', kind: 'contract', target: 'cli/lib', file: 'a.ts', line: 2 },
+    ] }],
+    flows: [],
+    codes: ['CM106'],
+  },
+  {
+    name: 'after: pointing nowhere is CM103, duplicate step id is CM105',
+    files: [{ relPath: 'a.ts', annotations: [
+      { tag: 'flow', flow: 'f', step: 'one', after: null, file: 'a.ts', line: 1 },
+      { tag: 'flow', flow: 'f', step: 'one', after: null, file: 'a.ts', line: 2 },
+      { tag: 'flow', flow: 'f', step: 'two', after: 'nope', file: 'a.ts', line: 3 },
+    ] }],
+    flows: [{ name: 'f' }],
+    codes: ['CM103', 'CM105', 'CM202'],
+  },
+  {
+    name: 'single-step flow is CM201',
+    files: [{ relPath: 'a.ts', annotations: [{ tag: 'flow', flow: 'f', step: 'only', after: null, file: 'a.ts', line: 1 }] }],
+    flows: [{ name: 'f' }],
+    codes: ['CM201'],
+  },
+  {
+    name: 'two roots is CM202',
+    files: [{ relPath: 'a.ts', annotations: [
+      { tag: 'flow', flow: 'f', step: 'one', after: null, file: 'a.ts', line: 1 },
+      { tag: 'flow', flow: 'f', step: 'two', after: null, file: 'a.ts', line: 2 },
+    ] }],
+    flows: [{ name: 'f' }],
+    codes: ['CM202'],
+  },
+  {
+    name: 'impact unions guards, both edge directions and adjacent flow steps',
+    // cm:why targets are real files in the plugin so the referential tier stays silent here
+    files: [
+      { relPath: 'cli/cm.mjs', annotations: [
+        { tag: 'guard', text: 'hold the lock', file: 'cli/cm.mjs', line: 5 },
+        { tag: 'flow', flow: 'f', step: 'two', after: 'one', file: 'cli/cm.mjs', line: 6 },
+      ] },
+      { relPath: 'cli/lib/graph.mjs', annotations: [
+        { tag: 'flow', flow: 'f', step: 'one', after: null, file: 'cli/lib/graph.mjs', line: 1 },
+        { tag: 'edge', kind: 'contract', target: 'cli/cm.mjs', file: 'cli/lib/graph.mjs', line: 2 },
+      ] },
+    ],
+    flows: [{ name: 'f' }],
+    impact: {
+      of: 'cli/cm.mjs',
+      guards: 1,
+      incoming: 1,
+      outgoing: 0,
+      flowNeighbours: ['one'],
+    },
+    codes: [],
+  },
+];

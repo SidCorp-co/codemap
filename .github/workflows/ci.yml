@@ -13,5 +13,5 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
-      - run: node plugins/forge-codemap/tests/run.mjs
-      - run: plugins/forge-codemap/bin/cm verify
+      - run: node tests/run.mjs
+      - run: bin/cm verify
