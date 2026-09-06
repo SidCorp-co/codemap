@@ -198,6 +198,17 @@ distribution. **Do not defend it by writing more documentation.**
 - Lower priority, still open: de-duplicate the shared layer (`globToRe` ×2, `findRoot` ×2,
   install/vendor ~270 lines ×2) between codemap and archmap — pure cleanup, blocking nothing above.
 
+**Phase 3 — federation** *(VISION rung 3, ISS-17)*
+- Design drafted and prototyped, not shipped: `spec/FEDERATION.md`. A federated edge is `external:`
+  (ISS-16) with a stronger far side — the target is another git repository, not an opaque name, so
+  it can be checked against real, current content (shallow `git fetch` + `git show`, no daemon, no
+  new dependency) instead of trusted blind. Prototyped against the real coupling this repo already
+  has on `archmap` (`cli/lib/archmap.mjs` depends on `archmap graph --json`'s shape) and against
+  archmap's own real repository — not a fixture. Still open: the grammar, the registry, the
+  `federated` tier and `cm federate check` itself, and the harder "B is told the moment B breaks it"
+  direction, which needs its own measurement before it is decided. See the design for what a
+  follow-up implementation issue should scope first.
+
 ## 9. Decision log
 
 - **2026-08-19** — Positioning settled: *redirect* comments rather than *ban* them. This is the most
