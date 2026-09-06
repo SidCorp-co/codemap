@@ -35,7 +35,11 @@ is not a change anyone can rely on.
 Consumers pin by tag, and the weekly upgrade bot reads that tag stream — see
 `adapters/ci/codemap-upgrade.yml`. Bump the `version` in
 `.claude-plugin/plugin.json` and push a matching `codemap-v<version>` tag in
-the same change, or the bot goes quiet with nothing to report.
+the same change, or the bot goes quiet with nothing to report. Pushing that
+tag also runs `.github/workflows/notify-consumers.yml`, which fires that same
+upgrade workflow on every vendored-tier consumer immediately instead of
+waiting for its Monday cron — see NORTH-STAR.md §9 for the credential it
+needs.
 
 ## Language
 

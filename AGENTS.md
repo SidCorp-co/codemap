@@ -42,6 +42,8 @@ Both run in CI on every push and pull request (`.github/workflows/ci.yml`).
 
 Consumers pin by tag and the weekly upgrade bot reads that tag stream. Bump `version` in
 `.claude-plugin/plugin.json` and push a matching `codemap-v<version>` tag in the same change —
-`tests/release-tag.mjs` fails the build if you do not.
+`tests/release-tag.mjs` fails the build if you do not. That tag push also runs
+`.github/workflows/notify-consumers.yml`, which fires `workflow_dispatch` on every vendored-tier
+consumer's own upgrade workflow so it does not wait for its cron — see NORTH-STAR.md §9.
 
 One line to remember: **redirect comments into data, do not ban comments.**

@@ -275,6 +275,33 @@ distribution. **Do not defend it by writing more documentation.**
   auto-enable-when-archmap-vendored mechanism (ISS-14) and `enforce.advisory` opt-out are
   unaffected. Re-open only with a new measurement that finds a genuine missing-reference case
   `CM301` caught, not with renewed confidence in this same data.
+- **2026-09-06 (ISS-21)** — Consumers are now told, not just polled.
+  `.github/workflows/notify-consumers.yml` fires on every `codemap-v*` tag push and calls
+  `workflow_dispatch` on each vendored-tier consumer's own already-shipped `codemap-upgrade.yml`,
+  cutting the worst-case ~7 day wait (§0, measured the same day) down to minutes for any consumer
+  it can reach. `workflow_dispatch` was chosen over `repository_dispatch`: the shipped template
+  already listens for `workflow_dispatch`, so this needs no change inside any consumer, unlike
+  `repository_dispatch`, which every consumer's own workflow would first have to opt into. The
+  credential this needed, as flagged when the issue was filed: one PAT, stored here as
+  `CONSUMER_DISPATCH_TOKEN`, scoped to `actions: write` on every listed consumer. The consumer
+  list itself lives in a second secret, `VENDORED_CONSUMERS` (JSON), not in tracked source — the
+  same reason §10 keeps other teams' repository names in the internal knowledge store rather than
+  in this public file. **One job, one step, on purpose:** an earlier draft split parsing the
+  secret into its own job and passed the result to a second job's matrix as a job *output* — but
+  the runner treats a job output that matches a registered secret as unmaskable and drops it
+  entirely rather than redacting it, so the moment the secret held a real value the second job
+  received an empty string and failed at matrix setup, breaking exactly the "must not fail the tag
+  push" rule this issue exists to satisfy. Collapsing to one script that reads the secret and loops
+  in bash keeps the parsed value inside the one step that has it. The same collapse also drops the
+  per-consumer job/step name a matrix would have templated from `matrix.consumer.repo` — this
+  repo's Actions log is public, and a step titled with another team's repository name would have
+  handed out exactly what §10 already keeps out of this tree; the log now reports only a
+  dispatched/failed count. A consumer that 404s (private, archived, not yet in the secret, or
+  simply missing its `repo` field) is caught per-entry in that loop and never aborts the script or
+  fails the tag push that triggered it; it just stays on its Monday cron, same as before this
+  issue. Both secrets start unset, by design: a not-yet-configured secret parses to an empty
+  consumer list rather than failing the workflow, so shipping the mechanism cannot itself break a
+  release.
 
 ## 10. Rollout log (ISS-4, measured 2026-09-02)
 

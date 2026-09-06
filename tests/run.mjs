@@ -16,6 +16,7 @@ import { metricsCases } from './metrics.mjs';
 import { releaseTagCases } from './release-tag.mjs';
 import { mcpCases } from './mcp.mjs';
 import { upgradeWorkflowCases } from './upgrade-workflow.mjs';
+import { notifyConsumersCases } from './notify-consumers.mjs';
 import { prCommentCases } from './prcomment.mjs';
 import { proposeCases } from './propose.mjs';
 
@@ -130,6 +131,7 @@ helpCases(PLUGIN_ROOT, check);
 metricsCases(PLUGIN_ROOT, check);
 releaseTagCases(PLUGIN_ROOT, check);
 upgradeWorkflowCases(PLUGIN_ROOT, check);
+notifyConsumersCases(PLUGIN_ROOT, check);
 mcpCases(PLUGIN_ROOT, check);
 prCommentCases(PLUGIN_ROOT, check);
 proposeCases(PLUGIN_ROOT, check);

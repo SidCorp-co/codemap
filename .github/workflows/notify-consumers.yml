@@ -1,0 +1,59 @@
+# Fires on every codemap-v* tag so a vendored-tier consumer's upgrade bot runs within minutes,
+# not on the next Monday cron. Never a second upgrade path: this only calls workflow_dispatch on
+# the consumer's own already-shipped adapters/ci/codemap-upgrade.yml, so a consumer needs no change
+# to be reached, and one unreachable consumer never fails this run or the tag push that triggered it.
+#
+# Setup (not done by this file, on purpose — see NORTH-STAR.md §9):
+#   - secret VENDORED_CONSUMERS: JSON array of {"repo":"owner/name"[,"ref":"main"][,"workflow_file":"codemap-upgrade.yml"]}
+#     (repo is required; ref defaults to main and workflow_file to codemap-upgrade.yml)
+#   - secret CONSUMER_DISPATCH_TOKEN: a PAT with `actions: write` on every listed consumer repo
+# Both are secrets, not tracked files: naming other teams' repos in this public repo is exactly what
+# NORTH-STAR.md §10 already keeps out of this tree, for the same reason.
+#
+# cm:why everything below runs as one step in one job, never crossing a job boundary with a value
+#   derived from the secrets: a job OUTPUT that matches a registered secret is silently dropped by
+#   the runner rather than masked, so passing the parsed list between jobs made this look wired up
+#   with the secret unset and then break on the first real tag push once it was actually configured.
+# cm:why the loop never echoes a repo name or the token: this workflow's own run log is world-
+#   readable (public repo), and a job/step name templated from the matrix used to print it there —
+#   the summary line only counts, it never lists which consumer was which.
+name: notify vendored-tier consumers
+on:
+  push:
+    tags: ['codemap-v*']
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: dispatch to vendored-tier consumers
+        env:
+          RAW: ${{ secrets.VENDORED_CONSUMERS }}
+          TOKEN: ${{ secrets.CONSUMER_DISPATCH_TOKEN }}
+        run: |
+          RAW=${RAW:-[]}
+          if ! printf '%s' "$RAW" | jq -e 'type == "array"' >/dev/null 2>&1; then RAW='[]'; fi
+
+          ok=0
+          fail=0
+          while IFS= read -r entry; do
+            repo=$(printf '%s' "$entry" | jq -r '.repo // empty')
+            ref=$(printf '%s' "$entry" | jq -r '.ref // "main"')
+            wf=$(printf '%s' "$entry" | jq -r '.workflow_file // "codemap-upgrade.yml"')
+            if [ -z "$repo" ]; then
+              fail=$((fail + 1))
+              continue
+            fi
+            if curl -sS --fail -X POST \
+                 -H "Authorization: Bearer ${TOKEN}" \
+                 -H "Accept: application/vnd.github+json" \
+                 "https://api.github.com/repos/${repo}/actions/workflows/${wf}/dispatches" \
+                 -d "{\"ref\":\"${ref}\"}" >/dev/null 2>&1
+            then
+              ok=$((ok + 1))
+            else
+              fail=$((fail + 1))
+            fi
+          done < <(printf '%s' "$RAW" | jq -c '.[]')
+
+          echo "notify-consumers: ${ok} dispatched, ${fail} failed/skipped"
