@@ -1,0 +1,29 @@
+# This repository ships adapters/ci/pr-comment.yml for its consumers and, until now, never ran it on
+# itself. Same reasoning as ISS-19: a checker whose own repository is not held to it has one fewer
+# place the rule is ever exercised.
+#
+# NOT a copy of the adapter, and it must not become one. The adapter calls `.forge/codemap/cm` —
+# correct for a vendored consumer, wrong here, where the checker IS the source tree and ci.yml
+# already runs `bin/cm`. Leave the adapter alone; the vendored-tier repos in NORTH-STAR.md §10
+# depend on that path being the consumer's.
+#
+# Advisory only, like the adapter: `bin/cm verify` in ci.yml is the gate, this never blocks.
+name: pr comment
+on:
+  pull_request:
+permissions: { contents: read, pull-requests: write }
+jobs:
+  pr-comment:
+    runs-on: ubuntu-latest
+    steps:
+      # cm:why fetch-depth 0 because the verb needs a real merge-base, and a shallow checkout has no origin/<base> to compute one from
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: |
+          git fetch -q origin "${{ github.event.pull_request.base.ref }}"
+          BASE=$(git merge-base "origin/${{ github.event.pull_request.base.ref }}" HEAD)
+          bin/cm pr-comment --base "$BASE"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
