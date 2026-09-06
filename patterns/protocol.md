@@ -1,6 +1,10 @@
 # `protocol`
 
-> Call semantics the signature does not show.
+```mermaid
+flowchart LR
+  A["caller passes a partial value"] -.->|"the signature does not say this"| B["config.ts PATCH replaces the whole map"]
+  A -->|"a field is omitted"| X{{"the field is gone in production — types and tests both said it was fine"}}
+```
 
 ```ts
 // cm:edge protocol -> packages/api/src/config.ts — PATCH replaces the whole map; it does not deep-merge
@@ -16,11 +20,6 @@
   if the callee throws.
 - A parameter whose absence means "leave unchanged" versus "set to null" — the single most expensive
   ambiguity in any update API.
-
-## What breaks without it
-
-Data loss that reads as a correct call. The types accept it, the tests (which pass whole objects)
-pass, and the field that was omitted is gone in production for the subset of callers who omitted it.
 
 ## How to spot the candidate
 

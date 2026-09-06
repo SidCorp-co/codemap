@@ -1,6 +1,10 @@
 # `lockstep`
 
-> These files must change in the same commit.
+```mermaid
+flowchart LR
+  A["tauri.conf.json version field"] -.->|"must change together — nothing enforces it"| B["the other two version fields"]
+  A -->|"only one gets edited"| X{{"half the change ships — the undesigned in-between state runs in production"}}
+```
 
 ```ts
 // cm:edge lockstep -> apps/desktop/tauri.conf.json — the three version fields are read by three different tools and must agree
@@ -12,11 +16,6 @@
   compose file and a client config, a schema mirrored into a fixture.
 - A generated file plus its generator input, where the generator is not run in CI.
 - Two sides of a migration that must land together or the intermediate state is broken.
-
-## What breaks without it
-
-Half the change ships. The state between the two commits is not a state anybody designed, and it is
-usually the state production runs in for a day.
 
 ## How to spot the candidate
 

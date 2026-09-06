@@ -1,6 +1,10 @@
 # `naming`
 
-> The coupling is a *name*, not a reference. Nothing links the two ends; only the string matches.
+```mermaid
+flowchart LR
+  A["the config key string"] -.->|"same text — no reference links them"| B["SKILL.md directory name"]
+  A -->|"an IDE renames the symbol"| X{{"the string is left untouched — build stays green"}}
+```
 
 ```ts
 // cm:edge naming -> skills/codemap/SKILL.md — the config key must equal the skill directory name
@@ -12,12 +16,6 @@
 - Convention-based dispatch: a handler found by `require(`./${type}.js`)`, a template chosen by
   `views/${name}.html`, a job resolved from a string.
 - A CSS class, a test id, or a feature-flag key shared between two codebases.
-
-## What breaks without it
-
-Rename refactoring is the whole risk. Every IDE will rename the symbol and every reference to it —
-and leave the string that had to match untouched, because to the tooling it was never a reference at
-all. The build stays green.
 
 ## How to spot the candidate
 

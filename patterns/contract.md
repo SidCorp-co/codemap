@@ -1,6 +1,10 @@
 # `contract`
 
-> Two sides must agree on a value or a format, and neither compiler checks the other.
+```mermaid
+flowchart LR
+  A["failure-classifier.ts<br/>emits a bracketed token"] -.->|"same string — no shared symbol checks it"| B["the file that parses it"]
+  A -->|"renamed"| X{{"parser silently stops matching — no error, ever"}}
+```
 
 ```ts
 // cm:edge contract -> packages/core/src/pipeline/failure-classifier.ts — the bracketed token this emits must have a matching pattern there
@@ -13,12 +17,6 @@
 - Two implementations of the same wire format in different languages: a Rust writer and a TypeScript
   reader, a Go struct tag and a SQL column, a queue message and its consumer.
 - A regex in one file that only makes sense against text produced in another.
-
-## What breaks without it
-
-The emitting side is renamed by someone who greps for the symbol, finds nothing else, and ships. The
-parser silently stops matching — no type error, no test failure if the test builds its own fixture,
-and the failure surfaces as a category of event simply never firing again.
 
 ## How to spot the candidate
 

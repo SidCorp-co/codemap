@@ -1,6 +1,10 @@
 # `ordering`
 
-> A must happen before B, and nothing in the code enforces it.
+```mermaid
+flowchart LR
+  A["core deploys"] -.->|"must happen before B — nothing enforces it"| B["runner reads the new column"]
+  B -->|"lands first"| X{{"breaks once, in the deploy window — review and tests saw nothing wrong"}}
+```
 
 ```go
 // cm:edge ordering -> deploy/runner.yaml — core must be deployed before the runner reads the new column
@@ -13,11 +17,6 @@
 - Initialization order that is legal to violate: a registry that must be populated before the first
   lookup, a feature flag that must exist before the code branching on it ships.
 - Two async operations whose success looks identical in either order but whose failure does not.
-
-## What breaks without it
-
-The reordering looks harmless in review — both changes are correct, both tests pass — and the failure
-appears only in the window between the two deploys, on production, once.
 
 ## How to spot the candidate
 

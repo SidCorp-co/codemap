@@ -16,6 +16,9 @@ Read [`choosing-a-tag.md`](choosing-a-tag.md) first. Then the page for the edge 
 | [`protocol.md`](protocol.md) | call semantics the signature does not show |
 | [`finding-candidates.md`](finding-candidates.md) | where the first ten annotations in a legacy repo come from |
 
+Each of the six edge pages opens with a diagram in one shared grammar: a dashed arrow is the
+coupling nothing checks; a solid arrow into a hexagon is the concrete failure when it is violated.
+
 ## The one test every page applies
 
 > **If a tool can derive it, you may not write it.**
