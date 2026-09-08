@@ -59,6 +59,12 @@ paragraph telling how it was found. History already has a home: the changelog, t
 the tracker. Under ~30 characters an annotation is usually deletable; past ~200, look for the
 paragraph that should have been a citation.
 
+`cm verify --tier advisory` names an annotation that cites its incident and then retells it anyway
+(`CM303`), and `cm mass` prints how many characters of story the whole repo's annotations carry, per
+file, ranked. Length alone is never what either counts. Both read whole sentences, so a rule with a
+past-tense clause in it does get flagged sometimes — `cm:ignore CM303 — <why the history is the rule>`
+is the answer there, and it clears the number as well as the warning.
+
 A cited issue must exist and be the one you mean. A number nobody filed — or somebody else's — is
 worse than no citation at all, because it looks checked.
 

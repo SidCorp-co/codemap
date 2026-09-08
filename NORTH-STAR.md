@@ -71,12 +71,12 @@ On the forge repo (`cm verify --tier referential`, exit 0):
 **The 13,410 / 1,086 ratio is the progress measure for the redirection** — it measures comment
 *quality*, not volume, and it is measurable today without anyone outside.
 
-Maturity: **290 tests green** · 18 verbs · 8 language profiles (ts/go/php/py/rust/sql/sh/yaml) ·
+Maturity: **465 tests green** · 20 verbs · 8 language profiles (ts/go/php/py/rust/sql/sh/yaml) ·
 `tests/cli.mjs` is 687 lines of end-to-end tests · 1 self-declared stub (`cm migrate`, exit 2) ·
 installed in **15 internal repos** (re-measured 2026-09-02 — see §10) ·
 carries **both `PreToolUse` and `PostToolUse`** — the only one of the four products at tier 1.
 
-CM301/CM302 (advisory) are still **off by default** — `enforce.advisory` in the registry, or an
+CM301/CM302/CM303 (advisory) are still **off by default** — `enforce.advisory` in the registry, or an
 explicit `--tier advisory`, remains the only gate; the presence of archmap does not switch the tier
 on by itself (`archmap graph` costs ~15s on a 1600+ file repo, and the hook runs `cm verify`
 tier=all on EVERY file edit — auto-enabling on archmap was measured to stall the edit by seconds
@@ -86,6 +86,13 @@ real evidence instead of comparing filenames. Re-measured against a real archmap
 the hand analysis already in SPEC §7.1 (all 6 are couplings with no real reference). Not promoted to
 `error` yet — per the roadmap in §8. **Updated 2026-09-06 (ISS-14):** the presence of archmap now
 DOES switch the tier on, once its graph is cached — see §5 leading indicator 4 and §8 Phase 2.
+
+**Updated 2026-09-08 (ISS-8):** the tier gains `CM303` — an annotation that cites its incident and
+then retells it — and `cm mass` gives the volume axis its first number: comment characters by channel,
+whole tree, no base revision, so the tail no verb could reach is measurable without anyone editing it.
+Measured on repo `forge`: 77 KB of story across 314 annotations, 6% of a 1,330 KB annotation channel;
+its false-positive rate is 17-31%, measured by hand on two trees, which is why it only warns.
+`CM303` enters at `advisory` on that measurement and the audit behind it — SPEC §7.1, §11.
 
 ## 5. North star
 

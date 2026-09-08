@@ -25,6 +25,7 @@ import { candidateFiles } from './lib/candidates.mjs';
 import { proseCandidates, lockstepCandidates, contractCandidates } from './lib/propose.mjs';
 import { install } from './lib/install.mjs';
 import { debtOf, drainBase, drainDiags } from './lib/drain.mjs';
+import { fileMass, massOf, narrativeMass, NARRATIVE_MIN } from './lib/mass.mjs';
 import { lockstepFindings, guardFindings, renderComment, MARKER } from './lib/prcomment.mjs';
 import { renderHelp, VERBS } from './lib/help.mjs';
 import { resolveCm } from './lib/locate.mjs';
@@ -542,6 +543,15 @@ switch (cmd) {
         `${scoped ? dim(' — scoped run, whole-tree figures need a bare `cm verify`') : ''}`);
       if (debt) console.log(dim('frozen comments are debt, not absolution — list them with: cm sweep <path>'));
     }
+    // cm:why the whole-tree run is the only one that can total the channel, and it has already analyzed
+    //   every file — so the number CI needs costs no second walk, and a scoped run stays silent (§11)
+    if (!scoped) {
+      const nm = narrativeMass(perFile);
+      if (nm.chars) {
+        console.log(dim(`comment mass: ${(nm.chars / 1024).toFixed(1)} KB of the annotation channel is incident story`
+          + ` across ${plural(nm.retelling, 'annotation')} — see it per file with: cm mass`));
+      }
+    }
     // cm:guard a repo's CI runs its VENDORED checker, so a newer plugin reporting green here says nothing
     //   about the gate — two production repos sat 6 and 8 minors behind with no signal at all (ISS-B)
     const vend = vendoredVersion(root);
@@ -750,6 +760,66 @@ switch (cmd) {
       `across ${new Set(rows.map((r) => r.file)).size} file(s)${scoped ? dim(' — scoped run') : ''}`);
     if (stale) console.log(dim(`${stale} baseline key(s) no longer match any comment — drop them with: cm sweep --prune-baseline`));
     console.log(dim('deleting these is a reviewable change of its own (principle 7) — cm never edits them for you'));
+    break;
+  }
+
+  // cm:edge contract -> cli/lib/mass.mjs — the channels and the narrative
+  //   verdict live there beside CM303's, so this verb is formatting and nothing else
+  case 'mass': {
+    const reg = loadOrDie();
+    // cm:guard NO base revision may scope this verb — the tail it exists to reach is the files nobody
+    //   has edited, and `fileList` honours --since/--staged, so they are refused rather than filtered (§11)
+    for (const f of ['--since', '--staged']) {
+      if (flags.has(f)) {
+        die(`cm mass takes no ${f}`,
+          'the point of the total is the files a diff never names; a path scopes it when you mean one file');
+      }
+    }
+    const files = fileList(reg);
+    const baseline = loadBaseline(root);
+
+    const rows = [];
+    for (const f of analyzeAll(reg, files, baseline)) {
+      let src;
+      try { src = readFileSync(join(root, f.relPath), 'utf8'); } catch { continue; }
+      rows.push(fileMass({ relPath: f.relPath, src, res: f, frozen: baseline[f.relPath] }));
+    }
+    const m = massOf(rows);
+
+    if (flags.has('--json')) {
+      console.log(JSON.stringify({ specVersion: SPEC_VERSION, toolVersion: toolVersion(), narrativeMin: NARRATIVE_MIN, ...m }, null, 2));
+      break;
+    }
+
+    const kb = (n) => `${(n / 1024).toFixed(1)} KB`;
+    const pct = (n) => (m.total.comment ? `${Math.round((n / m.total.comment) * 100)}%` : '0%');
+    console.log(bold('comment mass by channel') + dim('  (characters of comment text, leaders and indentation excluded)'));
+    for (const [name, key] of [['annotation', 'annotation'], ['doc comment', 'doc'], ['module header', 'header'], ['frozen prose', 'frozen'], ['live prose', 'live']]) {
+      console.log(`  ${name.padEnd(14)} ${kb(m.total[key]).padStart(10)}  ${pct(m.total[key]).padStart(4)}`);
+    }
+    console.log(`  ${'total'.padEnd(14)} ${bold(kb(m.total.comment).padStart(10))}`);
+    console.log('');
+
+    const limit = numericFlag('--limit', 20);
+    console.log(bold('story in the injected channel'));
+    console.log(`  ${kb(m.total.narrative)} of the ${kb(m.total.annotation)} annotation channel is incident narrative`
+      + ` — ${m.total.annotation ? Math.round((m.total.narrative / m.total.annotation) * 100) : 0}%`);
+    console.log(dim(`  counted per SENTENCE, in an annotation that already cites its incident: past tense, a date, the story retold (§11)`));
+    console.log('');
+    for (const r of m.byNarrative.slice(0, limit)) {
+      console.log(`${bold(r.relPath)} ${dim(`${kb(r.narrative)} of ${kb(r.annotation)} in ${plural(r.annotations, 'annotation')}`)}`);
+    }
+    if (m.byNarrative.length > limit) console.log(dim(`… and ${m.byNarrative.length - limit} more (--limit ${m.byNarrative.length} to see all)`));
+    console.log('');
+    // cm:why this is the number that says whether a drain can be TARGETED — a flat distribution has no
+    //   head to pick off, and a top-heavy one is reachable by ranking rather than by editing every file
+    const shown = m.byNarrative.slice(0, limit);
+    const headShare = m.total.narrative ? Math.round((shown.reduce((n, r) => n + r.narrative, 0) / m.total.narrative) * 100) : 0;
+    console.log(`${bold('codemap mass')} · ${plural(files.length, 'file')} · ${plural(m.total.annotations, 'annotation')} · `
+      + `${plural(m.total.retelling, 'annotation')} carrying story in ${plural(m.byNarrative.length, 'file')} · `
+      + `the ${plural(shown.length, 'file')} above hold${shown.length === 1 ? 's' : ''} ${headShare}% of it`);
+    console.log(dim('name the incident and stop there; the ISS-, the date and the measured number are the evidence (cm codes CM303)'));
+    console.log(dim('this is local only — nothing here is sent anywhere, and no cm metrics payload carries it'));
     break;
   }
 

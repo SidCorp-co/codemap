@@ -19,6 +19,7 @@ import { upgradeWorkflowCases } from './upgrade-workflow.mjs';
 import { notifyConsumersCases } from './notify-consumers.mjs';
 import { prCommentCases } from './prcomment.mjs';
 import { proposeCases } from './propose.mjs';
+import { massCases } from './mass.mjs';
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -135,6 +136,7 @@ notifyConsumersCases(PLUGIN_ROOT, check);
 mcpCases(PLUGIN_ROOT, check);
 prCommentCases(PLUGIN_ROOT, check);
 proposeCases(PLUGIN_ROOT, check);
+massCases(PLUGIN_ROOT, check);
 
 console.log(`codemap golden corpus: ${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.error(`  FAIL ${f}`);

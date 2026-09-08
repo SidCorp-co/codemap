@@ -180,6 +180,9 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     // cm:edge contract -> cli/lib/drain.mjs — CM013 compares this across two
     //   revisions to tell a code edit from a reflow, so it must ignore everything a reflow can change
     codeShape: codeShape(lines, comments),
+    // cm:edge contract -> cli/lib/mass.mjs — §11 bills the header as its own
+    //   channel, and only this function knows where one ends: a glued run is not a header at all
+    header,
     skipped: null,
   };
 }

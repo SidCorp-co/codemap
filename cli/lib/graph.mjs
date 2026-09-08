@@ -4,6 +4,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { diag, baselineKey } from './parse.mjs';
+import { retells } from './mass.mjs';
 import { connected } from './archmap.mjs';
 
 const trim = (t) => (t.length > 60 ? `${t.slice(0, 57)}...` : t);
@@ -125,11 +126,22 @@ export function advisoryDiags(g, { root, baseline = {}, importGraph } = {}) {
   const codeOnly = (src) => src.split('\n').filter((l) => !/^\s*(\/\/|#|--|\*|\/\*)/.test(l)).join('\n');
   // cm:why prose prefixed with a tag was the cheapest way to clear CM001, and nothing looked at what the
   //   tag carried — the baseline already holds the evidence, since those exact words are frozen (ISS-27)
-  for (const a of [...g.guards, ...g.whys, ...g.hacks, ...g.edges]) {
+  // cm:why the story rides the ONE channel loaded before every edit, and the repo already holds it in
+  //   a changelog, a commit and a tracker — so the citation is the whole of what belongs here (§11)
+  // cm:guard CM303 must see EVERY tag, flow steps included — `cm mass` counts them all, and a tag the
+  //   rule cannot reach is a tag whose story is billed to a number nothing tells the author how to pay
+  const flowSteps = [...g.flows.values()].flatMap((f) => f.steps);
+  for (const a of [...g.guards, ...g.whys, ...g.hacks, ...g.edges, ...flowSteps]) {
     const frozen = baseline[a.file];
-    if (frozen && a.text && frozen.has(baselineKey(a.text))) {
+    // cm:guard CM302's scope is unchanged by CM303's — a flow step's text was never asked whether the
+    //   baseline froze it, and widening that here would report a code nobody measured on a new set
+    if (a.tag !== 'flow' && frozen && a.text && frozen.has(baselineKey(a.text))) {
       out.push(diag('CM302', a.file, a.line, trim(a.text)));
     }
+    // cm:edge contract -> cli/lib/mass.mjs#retells — the rule and the
+    //   number `cm mass` prints read one verdict, so neither can call a thing a story the other counts as rule
+    const story = retells(a);
+    if (story) out.push(diag('CM303', a.file, a.line, `${story.chars} characters of story — ${trim(story.sentences[0])}`));
   }
 
   for (const e of g.edges) {

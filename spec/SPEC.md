@@ -219,6 +219,7 @@ is scoped — a one-file graph made a legal two-step flow report `CM103`/`CM201`
 | `CM106` | referential | `cm:edge` `#symbol` is not in the target file, or the target is a directory (§4). A word-boundary match on the anchor's first dot-segment — not resolution, which stays LSP's job |
 | `CM107` | referential | `cm:edge` names an `external:` that the registry does not declare (§8) |
 | `CM302` | advisory | an annotation's text is prose the baseline already froze — a tag worn by legacy narration (§7.1) |
+| `CM303` | advisory | an annotation cites its incident and then retells it — story riding the injected channel (§7.1, §11) |
 | `CM301` | advisory | a `contract`/`lockstep` edge with a `#symbol` where NEITHER file names the other — the coupling may be intention rather than code (§7.1) |
 | `CM201` | structural | flow has a single step — either it is not a flow, or steps are missing |
 | `CM202` | structural | `after:` chain is cyclic or the flow has several roots |
@@ -226,7 +227,7 @@ is scoped — a one-file graph made a legal two-step flow report `CM103`/`CM201`
 
 ### §7.1 The advisory tier
 
-Both codes here ask a question the other tiers cannot: not *is this well-formed* or *does this resolve*,
+Every code here asks a question the other tiers cannot: not *is this well-formed* or *does this resolve*,
 but *does this annotation carry what it claims to*. `CM302` exists because the rigour was one-sided —
 prose was judged on form and position with twelve codes, while an annotation's text was judged only on
 being non-empty, so under a blocking hook a six-character prefix was the cheapest way to clear `CM001`.
@@ -285,6 +286,86 @@ depend on how that repo's edges are shaped:
 ```bash
 cm verify --tier advisory --json | jq '[.diags[] | select(.code=="CM301")] | length'
 ```
+
+#### `CM303` — the story rides the channel nothing prices
+
+`CM001` polices where a comment may sit and `CM302` polices a tag worn by frozen prose. Neither prices
+what an annotation's own text carries, and nothing else does either: a `cm:` line returns from the
+comment loop in `analyzeFile` before the `CM001` branch, and `CM011` caps a module *header*. So prose
+banned in one place reappears in the one channel that is loaded into an agent's context before every
+edit of the file — measured on one consumer repo over the five weeks after adoption, policed prose fell
+~203 KB while annotations added ~527 KB (§11).
+
+The question is not length. A rule with a real consequence keeps its characters however many it takes,
+and a byte cap is paid by shortening the consequence clause into taste, which loses the half that
+carries. The question is the one the doctrine already answers — "name the incident and stop there",
+`output-styles/codemap.md`, commit `9656ceb` — so `CM303` asks whether an annotation that cites its
+incident then goes on to retell it.
+
+Three conditions, each biased toward silence, all of them required:
+
+- the annotation carries a **citation**: `ISS-<n>` or an ISO date. Both are listed as evidence by the
+  doctrine, so an annotation with neither is never billed here — with no citation the story is not
+  recoverable from anywhere else, and deleting it would lose it.
+- some **sentence** of it carries a marker from a closed, past-tense-only vocabulary (`was`, `were`,
+  `had been`, `used to`, `turned out`, `until <date>`, `landed on <date>`, `regressed`, `broke`). The
+  unit is the sentence, not the tail after the citation: measured across 1,141 cited annotations in one
+  consumer repo, the story sits before the citation as often as after it, so a positional rule missed
+  every `…six files failed on it (ISS-937)` shape.
+- those sentences together run to **120 characters or more**, a floor read off the distribution rather
+  than chosen: on 4,879 annotations the flagged narrative runs p10=123, median=225. What the floor
+  actually throws away was measured rather than assumed — 32 annotations carry narrative under it, of
+  which 2 are the bare `Measured 2026-08-14 on <file>.` shape the doctrine allows as evidence and 30
+  are short retellings (`Both were removed on 2026-09-02 with 0 projects setting either.`). So the
+  floor buys its silence on one-clause asides at the price of those 30: a recall cost, taken
+  deliberately, because a warning tier survives on not crying wolf.
+
+The vocabulary stays closed and past-tense-only for the same reason `CM301` stays narrow. A present-tense
+verb states a rule, and two candidates were dropped after measuring: `shipped` and `measured` both double
+as adjectives (`every shipped SKILL.md example`, `Measured 2026-08-14`), and admitting them fired on the
+consequence clause this code exists to protect — 477 hits fell to 346 on the same corpus when they went,
+and every hit they carried that mattered was already caught by another marker in the same sentence.
+
+Three known limits, stated rather than papered over.
+
+Narrative in an annotation carrying **no** citation is invisible here by construction: with nothing
+naming the incident the story is not recoverable from anywhere else, and asking for its deletion would
+lose it. That costs recall.
+
+The sentence unit bills the whole sentence, so a rule and its story fused into one are charged
+together — and, worse, a rule with a subordinate past-tense clause is charged alone. `a registry that
+was written by a pre-0.2 checker has no baseline block keys, so every reader must treat a missing key
+as legacy prose` is a pure rule and `CM303` flags it. **That costs precision**, and it is the residue
+the tier decision below is taken on: measured by hand, 7 of 40 sampled hits on one consumer repo and 4
+of the 13 in codemap's own tree are this shape. A closed vocabulary of past-tense-only markers is what
+keeps it to that, and a tightening was measured and rejected rather than silently kept. The predicate
+tried, stated so the figures can be re-derived: *a sentence carrying only `was`/`were` counts only when
+the annotation carries, anywhere in its own text, one of the stronger markers (`had been`, `used to`,
+`turned out`, `until <date>`, `landed on <date>`, `regressed`, `broke`) or an ISO date; the 120-character
+floor is then applied to what survives.* Under it the flagged set falls from 314 to 159 on the consumer
+repo and from 13 to 3 here — and most of what goes is genuine retelling (`source-relative targets were
+accepted here and resolved from the root, so they failed as a referential CM102 in CI`). It bought
+precision by giving up the majority of the finding, which is the wrong trade at a tier that only warns.
+Those two figures belong to that predicate and to no other: "a second signal" has several readings and
+they do not agree with each other, which is the whole reason the one measured is written out here.
+
+The floor's recall cost is the third, measured above.
+
+`cm mass` totals exactly what `CM303` flags, from the same function (`cli/lib/mass.mjs#retells`). A total
+that counted narrative the rule leaves alone would ask a repo to make a number fall with nothing telling
+it how to reach it.
+
+**Decided 2026-09-08 (ISS-8): `CM303` enters at `advisory`, warning-only, and is not promoted to the
+grammar tier.** Measured on one consumer repo (2,368 files, 4,879 annotations, its own registry and
+baseline): **314 annotations flagged across 226 files, 6% of them, 77 KB of a 1,330 KB annotation
+channel.** Two hand audits, both of them on the flagged set rather than on a sample of the corpus: 40
+evenly-spaced hits there gave 33 genuine retelling and 7 the fused-sentence shape above; all 13 hits in
+codemap's own tree gave 9 and 4. So the false-positive rate is **17–31%**, and it is a property of the
+sentence unit rather than a threshold to tune. A rate like that at a tier that only warns is worth
+having: the reader loses a few seconds on a rule that reads as a story. The same rate blocking an edit
+is how a tier gets switched off, which §7.1 has recorded once already. Promotion needs a measurement on
+a repo that has drained its narrative under the advisory tier and found what the rate settled at, not
+renewed confidence in this data (NORTH-STAR §9).
 
 **Decided 2026-09-06 (ISS-15): `CM301` stays at `advisory`, and does not enter at `warn` by
 default.** Every measurement to date — the basename-only pass on two repos above, and a
@@ -500,3 +581,62 @@ them. The safe-to-send rollup, `annotationEffectSummary`, drops file/line/tag-in
 send` gains only aggregate counts, never a path or a line. An annotation with zero holds is not
 flagged as wrong by any of this — many guard the rare case — and nothing here feeds back into what
 the checker blocks.
+
+## §11 Comment mass (ISS-8)
+
+The prose tiers police where a comment may sit; the graph tiers police what an annotation resolves to.
+Neither answers the question a repo asks five weeks after adopting this: **is there less comment now?**
+
+Measured on one consumer repo over exactly that window (2026-08-01 → 2026-09-06, `cm` 0.16.x):
+
+| | 2026-08-01 | 2026-08-20 | 2026-09-06 |
+|---|---|---|---|
+| `cm:guard` lines | 10 | 488 | **1,721** |
+| line prose | 13,715 | 13,997 | **10,870** |
+| jsdoc lines | 14,504 | 16,460 | **17,699** |
+
+Policed prose fell ~203 KB. Annotations added ~527 KB, jsdoc ~64 KB. **The comments did not go away;
+they changed channel** — into the one loaded into an agent's context before every edit of the file, and
+the one channel no rule prices. That is the whole of why this section exists.
+
+Two mechanisms allowed it, and neither is a bug in isolation. `CM013` fires only on a file the diff
+names (`drainBase` returns `null` without a base revision, which is deliberate — §8), so a file nobody
+opens keeps its debt forever and the tail is out of reach of every verb that gates. And nothing totals
+the annotation channel, so no repo could see the trade it had just made.
+
+**`cm mass [paths...] [--limit N] [--json]`** is the total. Characters of comment text, by channel —
+annotation (including the one line §4 lets it wrap onto), doc comment, module header, frozen prose, live
+prose — then the narrative inside the annotation channel, then the files holding the most of it, ranked,
+with the head's share of the whole.
+
+- **It reaches the tail.** No `--since`, no `--staged`, no base revision anywhere in its path: a bare run
+  walks the tree the way `cm baseline` and `cm sweep` already do, so a file nobody has edited is
+  measured exactly like one edited this morning. Draining does not wait for someone to open the file.
+- **It is keyed on the narrative signal, not on bytes.** The narrative figure is what `CM303` flags and
+  nothing else (§7.1) — past tense, dates, the incident retold, in an annotation that already cites it.
+  Length alone contributes nothing: an annotation with no citation, or none of the markers, is not
+  counted however long it runs. It is not a clean separation of rule from story, and §7.1 says where it
+  fails: a rule with a past-tense clause is counted, at a measured 17–31% of the flagged set. Both
+  figures move together, because the rule and the number read one function.
+- **Every tag, both escape hatches, one channel each.** Every comment carrying text is billed to exactly
+  one channel, so the channels plus the `cm:ignore` directives reconcile to the file's whole comment text
+  — verified across the consumer repo below, 3,378,467 characters with none unexplained. A `cm:ignore
+  CM303` clears the diagnostic and the number together, and the directive's own characters are billed
+  nowhere: an escape hatch that raised the total it cleared would be a fine for taking it. Files with no
+  language profile and generated files are analyzed by nothing and so counted as nothing.
+- **The head's share is the number that says whether a drain can be targeted.** A flat distribution has
+  no head to pick off; a top-heavy one is reachable by ranking rather than by editing every file. On the
+  repo above, 100 of 965 files held 47% of the frozen debt.
+- **Nothing is sent.** `massOf` never enters `buildPayload`; it is local detail exactly like `cm sweep`'s
+  rows and `cm metrics annotations` (§10's shape-not-content rule).
+
+A whole-tree `cm verify` prints the narrative total in its footer, computed off the analysis it has
+already done — so CI sees the number with no second walk and no second step. A scoped run prints nothing:
+it cannot total a tree it did not read.
+
+**Baseline for the next measurement.** Same consumer repo, whole tree, 2026-09-08, `cm mass --json`:
+2,368 files, 4,879 annotations, 3,297 KB of comment in total — annotation channel 1,330 KB (40%), doc
+comments 981 KB (30%), module headers 516 KB (16%), frozen prose 467 KB (14%), live prose 1 KB.
+Narrative: **77 KB across 314 annotations in 226 files**, 5.8% of the annotation channel, the top 20
+files holding 26% of it. A repo making this fall is doing the thing the section is for; a repo whose
+annotation channel grows while the narrative figure stays flat is adding rules, which is the intent.

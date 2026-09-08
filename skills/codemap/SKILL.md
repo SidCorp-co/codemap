@@ -59,6 +59,7 @@ Exit codes matter when you script it: `0` clean, `1` violations, `2` the gate co
 | `cm init` / `cm baseline` | onboard a repo; freeze its legacy comments |
 | `cm install [--git-hook]` | vendor cm into `.forge/codemap/` so the rules hold with no plugin |
 | `cm new flow <name>` | declare a flow before annotating its steps |
+| `cm mass [--limit N]` | comment characters by channel, and how much of the annotation channel is story |
 | `cm codes` | diagnostic reference |
 
 ## Answering "what does this change affect?"
@@ -120,6 +121,10 @@ Three moves look like resolutions and are not, and each now reports itself:
 - **`cm baseline`.** It is an operator decision about inherited debt, not a step in resolving a
   diagnostic. It refuses to freeze a comment that is not in `git HEAD`.
 - **`cm sweep --prune-baseline`.** Bookkeeping only; it never absolves a comment that is still in the file.
+- **moving the sentence into an annotation you were writing anyway.** The words leave the policed
+  channel and arrive in the one injected before every edit of the file. `cm verify --tier advisory`
+  names it (`CM303`) when the annotation cites its incident and then retells it, and `cm mass` prints
+  the repo's total. Name the incident — the `ISS-`, the date, the measured number — and stop there.
 
 The two real resolutions are deleting the comment and converting it into an annotation whose text says
 something the compiler, the types, the path and the LSP cannot state.

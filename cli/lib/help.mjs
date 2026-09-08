@@ -30,6 +30,7 @@ export const VERBS = [
   ['ls', '', 'every annotation in the repo'],
   ['graph', '', 'the whole declared graph, for another tool to consume  [--json]'],
   ['sweep', '[paths...]', 'list the prose the baseline is hiding  [--limit N] [--json] [--prune-baseline]'],
+  ['mass', '[paths...]', 'comment characters by channel, and how much of the annotation channel is story  [--limit N] [--json]'],
   ['baseline', '[paths...]', 're-freeze legacy prose by content hash; a path scopes it and MERGES  [--include-new]'],
   ['new flow', '<name>', 'declare a flow before annotating its steps  [--description "..."]'],
   ['new external', '<name>', 'declare an out-of-tree system a cm:edge may target  [--description "..."]'],
