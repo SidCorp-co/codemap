@@ -9,7 +9,7 @@ where the two disagree, this one wins.
 **Read §2 and §7 before adding any feature.** A proposal that cannot be traced back to a pain in §2
 is a proposal that gets refused.
 
-Updated 2026-09-06. Siblings: [`VISION.md`](./VISION.md) (the ceiling) · `spec/SPEC.md` (mechanism) ·
+Updated 2026-09-08. Siblings: [`VISION.md`](./VISION.md) (the ceiling) · `spec/SPEC.md` (mechanism) ·
 `README.md` (usage) · `patterns/` (which tag, and when) ·
 `~/tools/repo-gates/NORTH-STAR.md` (index of the four products).
 
@@ -73,7 +73,7 @@ On the forge repo (`cm verify --tier referential`, exit 0):
 
 Maturity: **465 tests green** · 20 verbs · 8 language profiles (ts/go/php/py/rust/sql/sh/yaml) ·
 `tests/cli.mjs` is 687 lines of end-to-end tests · 1 self-declared stub (`cm migrate`, exit 2) ·
-installed in **15 internal repos** (re-measured 2026-09-02 — see §10) ·
+installed in **15 internal repos**, a floor (re-measured 2026-09-08 — see §10) ·
 carries **both `PreToolUse` and `PostToolUse`** — the only one of the four products at tier 1.
 
 CM301/CM302/CM303 (advisory) are still **off by default** — `enforce.advisory` in the registry, or an
@@ -109,12 +109,18 @@ of it.*
 | 12 months | **10 outside repos**, each with ≥5 annotations written by somebody else |
 
 **Leading indicators (achievable alone):**
-1. Internal repos carrying codemap: **5 → 15 — done 2026-09-02** (ISS-4), though the honest split is
-   **6 vendored (own baseline) / 9 plugins-advisory (no baseline yet)** — one of the nine was already
-   at the plugins tier BEFORE ISS-4, not vendored, so "7 pre-existing" was the old count and has been
-   corrected. The count measures reach, not effect — §5 still measures effect separately, by
-   annotations outsiders write. "Every repo has its own baseline" (ISS-4's intended outcome) holds
-   for only 6/15 — see §10 and the tracking issues there for the remaining 9.
+1. Internal repos carrying codemap: **5 → 15 — done 2026-09-02** (ISS-4). Re-measured 2026-09-08
+   (ISS-23), the split is **10 vendored (own baseline + a blocking gate) / 3 committed but ungated /
+   2 plugins-advisory**, against the 6 / 9 recorded on 2026-09-02. Most of that move is real growth
+   rather than a correction: four repositories wired a blocking gate after the first measurement. The
+   6 itself was arithmetically right; what was wrong was its *membership*, by two errors that happened
+   to cancel — one repo counted vendored that has never run a gate, and one gated since 2026-08-04
+   filed under advisory. The total did not move, so the reach figure here did not move either: it was
+   already a floor and still is, because only the fleet's local checkouts are counted. The count
+   measures reach, not effect — §5 still measures effect separately, by annotations outsiders write.
+   "Every repo has its own baseline" (ISS-4's intended outcome) now holds for **13 of 15**: the three
+   ungated repositories froze a baseline and vendored a checker, and only the CI gate is
+   outstanding — see §10, and the knowledge entry for the tracking issues on the remaining 5.
 2. The weekly upgrade bot demonstrably running, with logs, **4 weeks in a row** (it died silently for
    an unknown stretch — see the decision log).
 3. Legacy prose falling while `cm:` annotations rise — measurable: `cm metrics show` (SPEC.md §10,
@@ -246,7 +252,8 @@ distribution. **Do not defend it by writing more documentation.**
   on EVERY run — regardless of whether a newer tag existed. The `forge` repo had found and patched
   exactly this in its own copy (switching to `git -C`, and recording it in a comment in that file),
   but the patch **was never carried back to the template here** — meaning every repo that copies the
-  template from here (the 9 `plugins`-tier repos in §10) would hit the very bug `forge` had already
+  template from here (9 repositories at the advisory tier when this was written; §10 carries the
+  current split) would hit the very bug `forge` had already
   fixed. Fixed: both steps switched to `git -C /tmp/codemap` (matching `forge`'s patch), plus
   `tests/upgrade-workflow.mjs` — which runs **that exact `run:` block**, cut straight from the yml
   file, against a simulated repo, to confirm it vendors into the right place; the test went red when
@@ -284,9 +291,13 @@ distribution. **Do not defend it by writing more documentation.**
   `CM301` caught, not with renewed confidence in this same data.
 - **2026-09-06 (ISS-21)** — Consumers are now told, not just polled.
   `.github/workflows/notify-consumers.yml` fires on every `codemap-v*` tag push and calls
-  `workflow_dispatch` on each vendored-tier consumer's own already-shipped `codemap-upgrade.yml`,
-  cutting the worst-case ~7 day wait (§0, measured the same day) down to minutes for any consumer
-  it can reach. `workflow_dispatch` was chosen over `repository_dispatch`: the shipped template
+  `workflow_dispatch` on each vendored-tier consumer's own `codemap-upgrade.yml`, cutting the
+  worst-case ~7 day wait (§0, measured the same day) down to minutes for any consumer it can reach.
+  **How far that reaches, re-measured 2026-09-08 (ISS-23): one repository.** Of the 10 now at the
+  vendored tier, exactly one has a `codemap-upgrade.yml` to dispatch — the same finding ISS-6
+  landed on from the other direction (§10 below). The mechanism is right and costs nothing idle,
+  but until consumers take the upgrade workflow it is a fast path for one repository, not ten.
+  `workflow_dispatch` was chosen over `repository_dispatch`: the shipped template
   already listens for `workflow_dispatch`, so this needs no change inside any consumer, unlike
   `repository_dispatch`, which every consumer's own workflow would first have to opt into. The
   credential this needed, as flagged when the issue was filed: one PAT, stored here as
@@ -309,8 +320,25 @@ distribution. **Do not defend it by writing more documentation.**
   issue. Both secrets start unset, by design: a not-yet-configured secret parses to an empty
   consumer list rather than failing the workflow, so shipping the mechanism cannot itself break a
   release.
+- **2026-09-08 (ISS-23)** — The rollout tiers re-measured, and the method changed so the next reader
+  does not have to trust the number. Thirteen repositories carry a committed checker, 10 of them
+  behind a blocking gate, against the 6 / 9 recorded on 2026-09-02. **Most of that is growth, not a
+  correction** — four repositories wired a gate after the measurement, and six of the thirteen first
+  committed a checker the day after it. The recorded 6 was arithmetically right; its membership was
+  wrong by two errors that cancelled, one repo counted vendored that has never run a gate and one
+  gated repo filed as advisory. The total, 15, did not move — so §5's reach figure did not move
+  either; it was already a floor and is now labelled one. **The durable change is not the count but
+  the command beside it** (§10): a denominator nobody can re-derive goes stale in silence, and every
+  claim resting on it inherits the staleness. ISS-6 came within one re-verification of shipping on
+  it. Three things the measurement taught about measuring: a repository's gate may reach the checker
+  through a build script one indirection away, so grepping CI files alone under-counts it; a grep
+  finds a mention, never a *blocking* step, so whether a gate can actually fail the build is still
+  read by hand; and a repository can mention the checker without gating on it at all — a local
+  pre-commit hook is not a gate. Deliberately not done here: no consumer's pinned version or CI was
+  touched, though most were found pinned well behind — each is that repository's own issue, as
+  ISS-4 and ISS-6 both concluded.
 
-## 10. Rollout log (ISS-4, measured 2026-09-02)
+## 10. Rollout log (ISS-4, re-measured 2026-09-08 by ISS-23)
 
 **Aggregate, because the detail is not this file's to publish.** The per-repository table — which
 internal repositories carry codemap, which checks each has switched off and why, and the tracking
@@ -320,27 +348,72 @@ not evidence of anything a reader here needs, and it is not this project's infor
 
 | Tier | Count | What it means |
 |---|---|---|
-| vendored | **6** | `.forge/codemap/` committed + a blocking gate in CI; legacy prose frozen into that repo's own baseline |
-| plugins (advisory) | **9** | designated through `forge_config.plugins` only — the hooks run, but with no `cm init` there is no baseline, so the block-on-prose branch disables itself and only `cm impact` plus annotation-syntax blocking remain |
-| **total** | **15** | the 5 → 15 figure in §5, measured 2026-09-02 |
+| vendored | **10** | `.forge/codemap/` committed + a blocking gate in CI; legacy prose frozen into that repo's own baseline |
+| committed, ungated | **3** | `.forge/codemap/` committed, but no CI gate runs it — one has a single unrelated workflow, two have no CI configuration at all |
+| plugins (advisory) | **2** | designated through `forge_config.plugins` only — the hooks run, but with no `cm init` there is no baseline, so the block-on-prose branch disables itself and only `cm impact` plus annotation-syntax blocking remain |
+| **total** | **15** | the 5 → 15 figure in §5 — a floor, not a ceiling: it counts the fleet's local checkouts |
 
-Of the 9 at the plugins tier, 8 were added by ISS-4 and 1 predates it. Every one of them has a
-tracking issue open **inside its owning project**, each asking for the same three things: `cm init`
-to freeze a baseline, `cm install` to vendor and pin the checker, then wiring `cm verify` into that
-repo's CI gate. That split is deliberate: ISS-4 had no worktree in those repositories, and pushing to
-another project's main branch from an issue owned by `codemap` crosses an ownership boundary.
+**The command, so the number is re-runnable rather than hand-counted.** From the directory holding
+the fleet's checkouts:
 
-Four repositories were excluded from every batch with a recorded reason rather than skipped silently:
+```bash
+for r in */; do r=${r%/}
+  git -C "$r" ls-files --error-unmatch .forge/codemap/cm >/dev/null 2>&1 || continue
+  if git -C "$r" grep -qlE 'codemap|cm\.mjs' -- '.github/workflows' '.gitlab-ci.yml' \
+       'scripts' 'package.json' 'Makefile' 2>/dev/null \
+     && [ -n "$(git -C "$r" ls-files '.github/workflows' '.gitlab-ci.yml')" ]
+  then echo "vendored  $r"; else echo "ungated   $r"; fi
+done | sort
+```
+
+It printed 10 vendored and 3 ungated on 2026-09-08; the 2 advisory repos carry no committed checker
+and so do not appear. **It is a screen, not the verdict** — the gate column in the knowledge entry was
+read by hand, file and line, and that is the authority. Three cautions for whoever re-runs it.
+
+It searches `scripts`, `package.json` and `Makefile`, not only the CI files, because one repository's
+gate reaches the checker through a build script one indirection away, and a workflow-file grep alone
+records it as ungated. Its blocking step was confirmed by reading that script, not a CI file.
+
+It screens for a *mention*, so it cannot tell a blocking step from one marked `continue-on-error` or
+`allow_failure`, nor a gate from a mention that is not one: a repository that installs the pre-commit
+hook from `package.json` and happens to carry any unrelated workflow satisfies both halves of the
+predicate and prints as vendored. Every one of the 10 was confirmed against its actual configuration
+by hand; the screen only decides who is worth reading.
+
+It probes one fixed path, `.forge/codemap/cm`. If a future release stops shipping that path in the
+vendored payload the loop skips every repository and prints **nothing** — which is a broken probe, not
+a rollout of zero. An empty result means read the probe first.
+
+Each of the 5 repositories not at the vendored tier has a tracking issue **inside its own project**,
+asking for the same three things: `cm init` to freeze a baseline, `cm install` to vendor and pin the
+checker, then wiring `cm verify` into that repo's CI gate. For the 3 that already carry a committed
+checker only the third is outstanding. Three of the five are open; two are still at draft, awaiting
+their own project's triage. That split is deliberate: ISS-4 had no worktree in
+those repositories, and pushing to another project's main branch from an issue owned by `codemap`
+crosses an ownership boundary.
+
+Seven of the repositories ISS-4 recorded as advisory had vendored a checker by the 2026-09-08
+re-measurement and **five** of those reached the full vendored tier, most through their own tracking
+issue — which is why the count moved without this project pushing to
+anyone. The re-measurement also found most committed checkers pinned well
+behind the current release; whether that drift is worth acting on is each repository's own issue, not
+this file's.
+
+Six repositories were excluded from every batch with a recorded reason rather than skipped silently:
 one is a repo-less storefront with no module boundary to annotate, three have no real repository path
 on their project yet, one is a subdirectory of a tree already installed at its root, and one lives
-outside the fleet whose hook reviewers can be identified. Eight more are valid candidates deferred
-only because the 5 → 15 mark was already met.
+outside the fleet whose hook reviewers can be identified. Those six are counted against the
+tracker's project list, not the checkouts the command above walks — four of them have no checkout
+at all, which is why that set cannot be reconciled against the command's population. Eight more
+are valid candidates deferred only because the 5 → 15 mark was already met.
 
 **The caveat that must travel with these numbers.** "Every repository has its own baseline" — ISS-4's
-own brief — holds for **6 of 15**, the vendored tier. The 9 at the plugins tier have no baseline yet,
-exactly as "measure first, install second" intends: nothing is unlocked before it is measured. That
-is a designed gap with issues against it, not a hidden one. And the count itself is **reach, not
-effect** — §5 measures effect separately, by annotations that people outside this project write.
+own brief — holds for **13 of 15**. The tier split above keys on the *gate*, not the baseline: the 3
+ungated repositories did run `cm init` and committed the frozen baseline, and only the CI wiring is
+outstanding. The 2 at the advisory tier have no baseline, exactly as "measure first, install second"
+intends: nothing is unlocked before it is measured. That is a designed gap with issues against it,
+not a hidden one. And the count itself is **reach, not effect** — §5 measures effect separately, by
+annotations that people outside this project write.
 
 **ISS-6 (2026-09-08): the forwarding shim is deleted, and the premise it rested on was false.**
 The shim was kept because every repository that vendored a checker before 0.17.0 was believed to
@@ -361,12 +434,12 @@ cron. And a sweep across the local and remote refs of all thirteen consumers fou
 Dockerfile, Makefile, package script or cron that resolves the path — with the caveat that two of
 the thirteen have never been re-fetched, so their remote refs are only as fresh as the original clone.
 
-**Note the denominator, because §10's own table is behind it.** The table above still reports the
-2026-09-02 split of 6 vendored / 9 plugins-tier; thirteen repositories carry a committed checker
-today, so the vendored count is under-reported and the reach figure in §5 is a floor, not a
-measurement. Re-measuring the rollout is ISS-4's axis, not this issue's, and it has its own tracking
-issue. The per-repository detail and the tracking issues' outcomes are in the knowledge entry —
-read it before re-filing anything against this.
+**What the stale denominator cost, since the table above is the correction.** ISS-6 reasoned about
+"the six" while thirteen repositories carried a committed checker, and its conclusion survived only
+because it was re-verified against all thirteen. A count nobody can re-derive goes stale silently and
+takes every claim resting on it along; that is why the command now sits beside the number. The
+per-repository detail and the tracking issues' outcomes are in the knowledge entry — read it before
+re-filing anything against this.
 
 The lesson §10 keeps from this: a `cm:hack` whose `until:` names a condition in *other* repositories
 has to be measured there, not inferred from the change that created it. Written as "until every repo
