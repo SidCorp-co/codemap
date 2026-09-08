@@ -100,6 +100,7 @@ which case it is reported regardless. A frozen key is dropped only when its text
 | Python | allowed; docstrings are strings, so they are out of scope |
 | Rust | `///`, `//!` and `// SAFETY:` exempt |
 | SQL, shell, YAML | enforcement off; annotations still collected |
+| Docker | enforcement off; annotations still collected — resolved by basename, and a `Dockerfile.md` is documentation, not a Dockerfile |
 
 Every compiler and linter pragma is exempt in every language. Generated files are skipped.
 

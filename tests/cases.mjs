@@ -550,6 +550,49 @@ export const analyzeCases = [
     annotations: [],
     skipped: 'generated',
   },
+  {
+    name: 'docker: a guard in a Dockerfile is read, and the syntax directive is exempt (ISS-25)',
+    file: 'Dockerfile',
+    src: [
+      '# syntax=docker/dockerfile:1',
+      '# cm:guard the build stage and the runtime stage must install the same lockfile',
+      'FROM node:22',
+    ].join('\n'),
+    codes: [],
+    annotations: ['guard'],
+  },
+  {
+    name: 'docker: a variant name resolves, and prose in one is legal (docPolicy allowed)',
+    file: 'Dockerfile.preview',
+    src: [
+      '# the preview image differs from prod only in its entrypoint',
+      '# cm:edge lockstep -> compose.preview.yml — the service name is repeated there',
+      'FROM node:22',
+    ].join('\n'),
+    codes: [],
+    annotations: ['edge'],
+  },
+  {
+    name: 'docker: <variant>.Dockerfile resolves too',
+    file: 'prod.Dockerfile',
+    src: ['# cm:guard the runtime image installs no build toolchain', 'FROM node:22'].join('\n'),
+    codes: [],
+    annotations: ['guard'],
+  },
+  {
+    // cm:why a fenced example under a `#` leader would otherwise enter the graph as a real guard,
+    //   which is a false edge — the one failure direction the scanner may not have (ISS-25)
+    name: 'docker: a Dockerfile.md is documentation and is never scanned',
+    file: 'Dockerfile.md',
+    src: [
+      '# How to build this image',
+      '',
+      '    # cm:guard this is an example, not a declaration',
+    ].join('\n'),
+    codes: [],
+    annotations: [],
+    skipped: 'no-profile',
+  },
 ];
 
 export const baselineCases = [

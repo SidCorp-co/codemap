@@ -74,6 +74,10 @@ const SQL_EXEMPT = [
 
 const SH_EXEMPT = [/^!/, /^shellcheck\b/];
 
+// cm:why Docker requires these three above everything else, so they cannot be moved below a header
+//   comment and cannot be rewritten — the parser reads them, not a person
+const DOCKER_EXEMPT = [/^syntax=/, /^escape=/, /^check=/];
+
 /** A file whose head carries one of these is skipped entirely. */
 export const GENERATED_MARKERS = [
   /Code generated .*DO NOT EDIT/,
@@ -200,6 +204,21 @@ const P = {
     enforce: false,
     exempt: COMMON_EXEMPT,
   },
+  docker: {
+    // cm:why its own id rather than a reuse of yaml — the id is what `cm ls`, `cm help languages` and
+    //   every diagnostic print, so a Dockerfile reporting as yaml misnames the file in its own error,
+    //   and this is the only profile where Docker's parser directives can be exempt (ISS-25)
+    id: 'docker',
+    lineLeaders: ['#'],
+    docLineLeaders: [],
+    blockOpens: [],
+    docBlockOpens: [],
+    strDelims: ['"', "'"],
+    multiline: [],
+    docPolicy: 'allowed',
+    enforce: false,
+    exempt: [...COMMON_EXEMPT, ...DOCKER_EXEMPT],
+  },
 };
 
 const BY_EXT = {
@@ -215,12 +234,75 @@ const BY_EXT = {
   yaml: P.yaml, yml: P.yaml, toml: P.yaml,
 };
 
+const BY_BASENAME = {
+  dockerfile: P.docker,
+  containerfile: P.docker,
+};
+
+// cm:guard `<stem>.<variant>` takes an UNBOUNDED variant, so a stem here must be a word no
+//   documentation or leftover file is named after — `.go` as a stem would swallow every Go file
+const BASENAME_STEMS = Object.keys(BY_BASENAME);
+
+// cm:why a documentation file is the one place a FALSE annotation outranks a missed one (§6): its
+//   fenced examples are not declarations, and under a `#` leader a markdown heading is a comment,
+//   so an example `# cm:edge` becomes a real edge whose stale target fails a consumer's CI with
+//   CM102 in a repo that changed nothing. Ordering cannot spare it — `md` is in no profile either,
+//   so it misses BY_EXT and reaches the stem rules regardless (ISS-25)
+// cm:guard every spelling of a format already here must be here too — `adoc` and `asciidoc` denied
+//   while `asc` resolved is the same CM102 break wearing the third name for one format (ISS-25)
+const DOC_EXT_DENY = new Set([
+  'md', 'mdx', 'markdown', 'mkd', 'mdown', 'mdwn', 'mmd', 'mdtxt', 'markdn',
+  'qmd', 'rmd', 'txt', 'text', 'rst', 'adoc', 'asciidoc', 'asc', 'textile', 'html', 'htm',
+]);
+
+// cm:why junk is what a conflicted merge or `patch` writes, holding the PRE-merge annotations, so a
+//   variant whose last component is one is refused outright — `Dockerfile.orig` beside a fixed
+//   Dockerfile reported its stale edge as live. `example`/`sample`/`dist` are committed on purpose
+//   and keep scanning, which is why one list cannot serve both (ISS-25)
+const JUNK_WORDS = new Set(['bak', 'orig', 'rej', 'save', 'swp', 'tmp', 'old']);
+
 export const PROFILES = P;
 
+// cm:guard split on the dot and judged per component, never on the trailing extension alone:
+//   `Dockerfile.md.bak` and `Dockerfile.markdown.old` are documentation whose doc word is not last,
+//   and a trailing-only test read both as Dockerfiles (ISS-25)
+function variantWords(variant) {
+  return variant.replace(/~+$/, '').split('.').filter(Boolean);
+}
+
+function docDenied(variant) {
+  return variantWords(variant).some((w) => DOC_EXT_DENY.has(w));
+}
+
+/** A leftover an editor or a merge wrote — never the file the repository builds from. */
+function isLeftover(variant) {
+  if (/~$/.test(variant)) return true;
+  const words = variantWords(variant);
+  return words.length > 0 && JUNK_WORDS.has(words[words.length - 1]);
+}
+
+// cm:guard extension first, basename second — a hit in BY_EXT wins, or `x.yml` resolves by a stem
+//   rule and every YAML file in the tree changes profile
+// cm:guard this is the single authority on what is scannable; registry.mjs asks it rather than
+//   restating it, and the SCAN_EXT regex that used to be that second list is why Dockerfiles were
+//   indexed by `cm ls` and invisible to `cm verify` at the same time (ISS-25)
 export function profileFor(filePath) {
-  const m = /\.([a-z0-9]+)$/i.exec(filePath);
-  if (!m) return null;
-  return BY_EXT[m[1].toLowerCase()] ?? null;
+  const base = String(filePath).split(/[\\/]/).pop() ?? '';
+  const ext = /\.([a-z0-9]+)$/i.exec(base)?.[1]?.toLowerCase();
+  if (ext && BY_EXT[ext]) return BY_EXT[ext];
+
+  const lower = base.toLowerCase();
+  if (BY_BASENAME[lower]) return BY_BASENAME[lower];
+
+  for (const stem of BASENAME_STEMS) {
+    let variant = null;
+    if (lower.startsWith(`${stem}.`)) variant = lower.slice(stem.length + 1);
+    else if (lower.endsWith(`.${stem}`)) variant = lower.slice(0, -(stem.length + 1));
+    if (variant === null) continue;
+    if (docDenied(variant) || isLeftover(variant)) return null;
+    return BY_BASENAME[stem];
+  }
+  return null;
 }
 
 export function isGenerated(src) {

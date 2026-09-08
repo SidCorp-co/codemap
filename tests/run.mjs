@@ -20,6 +20,7 @@ import { notifyConsumersCases } from './notify-consumers.mjs';
 import { prCommentCases } from './prcomment.mjs';
 import { proposeCases } from './propose.mjs';
 import { massCases } from './mass.mjs';
+import { profileCases } from './profiles.mjs';
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -126,6 +127,7 @@ for (const t of graphCases) {
 }
 
 wiringCases(PLUGIN_ROOT, check);
+profileCases(PLUGIN_ROOT, check);
 cliCases(PLUGIN_ROOT, check);
 installCases(PLUGIN_ROOT, check);
 helpCases(PLUGIN_ROOT, check);

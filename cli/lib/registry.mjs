@@ -7,6 +7,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, statSy
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { profileFor } from './languages.mjs';
 
 export const SPEC_VERSION = 'codemap/1';
 
@@ -153,8 +154,6 @@ export function enforcementFor(reg, prof) {
   return { grammar, docPolicy: perLang.docPolicy ?? prof.docPolicy };
 }
 
-const SCAN_EXT = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|vue|svelte|go|php|py|pyi|rs|sql|sh|bash|zsh|ya?ml|toml)$/i;
-
 export function walk(root, reg) {
   const out = [];
   const exc = matcher(reg.enforce.exclude ?? DEFAULT_EXCLUDE);
@@ -168,7 +167,7 @@ export function walk(root, reg) {
         if (e.name === '.git' || e.name === 'node_modules') continue;
         if (exc(`${rel}/x`) || hardExcluded(`${rel}/x`)) continue;
         rec(abs);
-      } else if (SCAN_EXT.test(e.name) && !exc(rel) && !hardExcluded(rel)) {
+      } else if (profileFor(e.name) !== null && !exc(rel) && !hardExcluded(rel)) {
         out.push(rel);
       }
     }
@@ -191,7 +190,7 @@ function gitFiles(root, args, what) {
     const detail = String(e.stderr ?? e.message ?? '').split('\n')[0].replace(/^fatal:\s*/, '');
     throw new Error(`cannot resolve ${what}: ${detail || 'git failed'}`);
   }
-  return out.split('\n').map((s) => s.trim()).filter((s) => s && SCAN_EXT.test(s));
+  return out.split('\n').map((s) => s.trim()).filter((s) => s && profileFor(s) !== null);
 }
 
 export function changedSince(root, ref) {
