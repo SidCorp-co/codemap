@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Before opening an issue — read "what this will not do"
-    url: https://github.com/SidCorp-co/codemap/blob/main/plugins/forge-codemap/NORTH-STAR.md
+    url: https://github.com/SidCorp-co/codemap/blob/main/NORTH-STAR.md
     about: >-
       §7 lists what codemap deliberately does not do. The largest item: no merged
       layer with archmap (gatemap — rejected twice). A proposal that lands there is

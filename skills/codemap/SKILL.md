@@ -39,7 +39,7 @@ CM=""
 [ -z "$CM" ] && command -v cm >/dev/null 2>&1 && CM=cm
 # last resort: this session's plugin cache. A Forge runner sets CLAUDE_CONFIG_DIR to an isolated
 # directory, so globbing ~/.claude finds either nothing or a different install than the loaded one.
-[ -z "$CM" ] && CM="node $(ls -td "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/forge-codemap/*/scripts/cm.mjs 2>/dev/null | head -1)"
+[ -z "$CM" ] && CM="node $(ls -td "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/forge-codemap/*/cli/cm.mjs 2>/dev/null | head -1)"
 $CM verify
 ```
 

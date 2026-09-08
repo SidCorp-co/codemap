@@ -166,9 +166,6 @@ adapters/   ci/ · mcp/ — delivery        tests/     golden corpus, 369 cases
             beyond Claude Code
 ```
 
-`plugins/forge-codemap/scripts/cm.mjs` is a forwarding shim for repos whose upgrade workflow hardcodes
-the pre-0.17 path; it carries a `cm:hack` with its exit condition.
-
 ## History
 
 Previously `forge-pipeline-skills`, which also carried nine pipeline skills. Those are superseded by

@@ -141,8 +141,8 @@ export function installCases(pluginRoot, check) {
     const gen = spawnSync(process.execPath, [join(pluginRoot, 'cli', 'cm.mjs'), 'onboard', '--prompt'],
       { encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }).stdout;
     const onDisk = readFileSync(join(pluginRoot, 'adapters', 'ci', 'prompt.md'), 'utf8');
-    check('install: agent-setup/prompt.md matches `cm onboard --prompt`', gen === onDisk,
-      'regenerate it: node scripts/cm.mjs onboard --prompt > agent-setup/prompt.md');
+    check('install: adapters/ci/prompt.md matches `cm onboard --prompt`', gen === onDisk,
+      'regenerate it: node cli/cm.mjs onboard --prompt > adapters/ci/prompt.md');
   }
 
   // cm:guard the hook a TEAM is gated by must be COMMITTED — .git/hooks is per-clone, so a repo relying
