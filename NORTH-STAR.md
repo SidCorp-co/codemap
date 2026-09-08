@@ -347,16 +347,19 @@ The shim was kept because every repository that vendored a checker before 0.17.0
 hardcode the pre-0.17 checker path in its own upgrade workflow. Measured rather than assumed, that
 held for **one repository out of the thirteen that carry a committed checker** — and that one had
 already migrated to `cli/cm.mjs`. It is the only consumer with a codemap upgrade workflow at all:
-the other twelve have no such workflow, six of them running CI that never clones this repository.
-So no bot anywhere resolved the old path, the ISS-5 silent-bot-failure class was unreachable, and
-the `cm:hack` had no exit condition left to wait for.
+of the other twelve, ten run CI that never clones this repository and two have no CI configuration
+on any ref. So no bot anywhere resolved the old path, the ISS-5 silent-bot-failure class was
+unreachable, and the `cm:hack` had no exit condition left to wait for.
 
 Two facts made the deletion safe beyond that count. The residual old-path strings still sitting in
-consumers' vendored copies appear inside a snippet that **pins `codemap-v0.13.0`**, a tag in which
-that path exists — so following those instructions verbatim still works, and the only way to break
-it is to keep the old path while swapping in a post-0.17 tag, which fails loudly at authoring time
-rather than silently on a cron. And a sweep across every local and remote ref of all thirteen
-consumers found no workflow, Dockerfile, Makefile, package script or cron that resolves the path.
+consumers' vendored copies appear inside a snippet that **instructs pinning a tag** —
+`--branch codemap-v<x.y.z>`, annotated "pin a TAG, never a branch" — and every pre-0.17 tag still
+carries that path, so following those instructions works. Where a concrete tag is hardcoded rather
+than left as a placeholder it is a pre-0.17 one. Breaking it therefore takes keeping the old path
+*and* swapping in a post-0.17 tag, which fails loudly at authoring time rather than silently on a
+cron. And a sweep across the local and remote refs of all thirteen consumers found no workflow,
+Dockerfile, Makefile, package script or cron that resolves the path — with the caveat that two of
+the thirteen have never been re-fetched, so their remote refs are only as fresh as the original clone.
 
 **Note the denominator, because §10's own table is behind it.** The table above still reports the
 2026-09-02 split of 6 vendored / 9 plugins-tier; thirteen repositories carry a committed checker
