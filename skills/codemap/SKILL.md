@@ -42,7 +42,10 @@ CM=""
 # Both layouts are in the wild: cli/cm.mjs from 0.17.0 on, scripts/cm.mjs before it.
 if [ -z "$CM" ]; then
   CACHE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache
-  MJS=$(ls -td "$CACHE"/*/forge-codemap/*/cli/cm.mjs "$CACHE"/*/forge-codemap/*/scripts/cm.mjs 2>/dev/null | head -1)
+  # one layout at a time: `ls -td a b` sorts BOTH operands by mtime, so a stale pre-0.17
+  # cache touched more recently than a current one would win and gate you on the old ruleset
+  MJS=$(ls -td "$CACHE"/*/forge-codemap/*/cli/cm.mjs 2>/dev/null | head -1)
+  [ -z "$MJS" ] && MJS=$(ls -td "$CACHE"/*/forge-codemap/*/scripts/cm.mjs 2>/dev/null | head -1)
   [ -n "$MJS" ] && CM="node $MJS"
 fi
 [ -z "$CM" ] && echo "no codemap checker resolved" >&2   # never let an unresolved path run as `node verify`
