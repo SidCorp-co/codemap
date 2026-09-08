@@ -18,6 +18,7 @@ const TS_EXEMPT = [
   /^@ts-(expect-error|ignore|nocheck|check)\b/,
   /^eslint-(disable|enable)/,
   /^biome-ignore\b/,
+  /^i18n-allow\s*:/, // a consumer's own language gate requires this directive on non-English literals
   /^(prettier|dprint|deno-lint)-ignore\b/,
   /^(istanbul|c8|v8) ignore\b/,
   /^#(region|endregion)\b/,

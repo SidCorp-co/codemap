@@ -146,6 +146,16 @@ export const analyzeCases = [
     annotations: ['guard'],
   },
   {
+    name: 'ts: i18n-allow with a reason is exempt, the same directive with no reason is not (ISS-22)',
+    file: 'i18n.ts',
+    src: [
+      "const a = 'điều kiện'; // i18n-allow: Vietnamese fixture",
+      "const b = 'điều kiện'; // i18n-allow",
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: [],
+  },
+  {
     name: 'ts: comment leader inside a string literal is not a comment',
     file: 'b.ts',
     src: ['const url = "https://example.com/a#b";', "const p = 'a // b';", 'const t = `x // y`;'].join('\n'),
