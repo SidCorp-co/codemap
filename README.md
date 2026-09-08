@@ -162,12 +162,9 @@ The repository root **is** the plugin: what Claude Code installs is this tree.
 spec/       codemap/1 + JSON schema      cli/       the engine, zero dependencies
 patterns/   the pattern book             bin/cm     stable entrypoint — symlink this
 skills/     the skill an agent loads     hooks/     what fires before and after an edit
-adapters/   ci/ · mcp/ — delivery        tests/     golden corpus, 369 cases
+adapters/   ci/ · mcp/ — delivery        tests/     golden corpus, 465 cases
             beyond Claude Code
 ```
-
-`plugins/forge-codemap/scripts/cm.mjs` is a forwarding shim for repos whose upgrade workflow hardcodes
-the pre-0.17 path; it carries a `cm:hack` with its exit condition.
 
 ## History
 

@@ -39,8 +39,14 @@ CM=""
 [ -z "$CM" ] && command -v cm >/dev/null 2>&1 && CM=cm
 # last resort: this session's plugin cache. A Forge runner sets CLAUDE_CONFIG_DIR to an isolated
 # directory, so globbing ~/.claude finds either nothing or a different install than the loaded one.
-[ -z "$CM" ] && CM="node $(ls -td "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/forge-codemap/*/scripts/cm.mjs 2>/dev/null | head -1)"
-$CM verify
+# Both layouts are in the wild: cli/cm.mjs from 0.17.0 on, scripts/cm.mjs before it.
+if [ -z "$CM" ]; then
+  CACHE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache
+  MJS=$(ls -td "$CACHE"/*/forge-codemap/*/cli/cm.mjs "$CACHE"/*/forge-codemap/*/scripts/cm.mjs 2>/dev/null | head -1)
+  [ -n "$MJS" ] && CM="node $MJS"
+fi
+[ -z "$CM" ] && echo "no codemap checker resolved" >&2   # never let an unresolved path run as `node verify`
+[ -n "$CM" ] && $CM verify
 ```
 
 If that resolves to nothing, the plugin is not installed for this user — say so rather than

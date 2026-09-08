@@ -1,5 +1,5 @@
 // cm:why every consumer repo's weekly upgrade bot resolves "latest" via `git tag -l codemap-v* |
-//   sort -V | tail -1` (agent-setup/codemap-upgrade.yml), never plugin.json
+//   sort -V | tail -1` (adapters/ci/codemap-upgrade.yml), never plugin.json
 // cm:guard a version bump landed on main without its tag is INVISIBLE to that bot, and reads to
 //   every consumer as "already up to date" rather than "stale" (ISS-5)
 import { execFileSync } from 'node:child_process';

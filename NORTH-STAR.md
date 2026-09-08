@@ -342,10 +342,30 @@ exactly as "measure first, install second" intends: nothing is unlocked before i
 is a designed gap with issues against it, not a hidden one. And the count itself is **reach, not
 effect** — §5 measures effect separately, by annotations that people outside this project write.
 
-**ISS-6 status (picked up 2026-09-06, not closed).** The 0.17.0 path move landed the same day the
-issue was picked up, so none of the six vendored-tier repositories could have migrated their upgrade
-workflow to `cli/cm.mjs` yet, and deleting the forwarding shim now would strand all six on a
-hardcoded path with nothing behind it — the ISS-5 failure class exactly. One tracking issue was
-opened in each of the six instead; they are listed, by repository, in the same knowledge entry as the
-rest of the detail. The shim at `plugins/forge-codemap/scripts/cm.mjs` and its `cm:hack` stay until
-all six land. Before re-opening this work, read those six issues' status — do not file duplicates.
+**ISS-6 (2026-09-08): the forwarding shim is deleted, and the premise it rested on was false.**
+The shim was kept because every repository that vendored a checker before 0.17.0 was believed to
+hardcode the pre-0.17 checker path in its own upgrade workflow. Measured rather than assumed, that
+held for **one repository out of the thirteen that carry a committed checker** — and that one had
+already migrated to `cli/cm.mjs`. It is the only consumer with a codemap upgrade workflow at all:
+the other twelve have no such workflow, six of them running CI that never clones this repository.
+So no bot anywhere resolved the old path, the ISS-5 silent-bot-failure class was unreachable, and
+the `cm:hack` had no exit condition left to wait for.
+
+Two facts made the deletion safe beyond that count. The residual old-path strings still sitting in
+consumers' vendored copies appear inside a snippet that **pins `codemap-v0.13.0`**, a tag in which
+that path exists — so following those instructions verbatim still works, and the only way to break
+it is to keep the old path while swapping in a post-0.17 tag, which fails loudly at authoring time
+rather than silently on a cron. And a sweep across every local and remote ref of all thirteen
+consumers found no workflow, Dockerfile, Makefile, package script or cron that resolves the path.
+
+**Note the denominator, because §10's own table is behind it.** The table above still reports the
+2026-09-02 split of 6 vendored / 9 plugins-tier; thirteen repositories carry a committed checker
+today, so the vendored count is under-reported and the reach figure in §5 is a floor, not a
+measurement. Re-measuring the rollout is ISS-4's axis, not this issue's, and it has its own tracking
+issue. The per-repository detail and the tracking issues' outcomes are in the knowledge entry —
+read it before re-filing anything against this.
+
+The lesson §10 keeps from this: a `cm:hack` whose `until:` names a condition in *other* repositories
+has to be measured there, not inferred from the change that created it. Written as "until every repo
+runs an upgrade workflow that resolves the new path", the condition could never become true for a
+repository that runs no upgrade workflow — the wording would have kept a temporary shim forever.

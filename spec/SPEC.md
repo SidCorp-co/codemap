@@ -535,7 +535,7 @@ booleans only — never an annotation's own text, never an author's name in the 
 be sent (only the count of distinct authors).
 
 **Held vs circumvented — counted separately, never merged into one "resolved" bucket.** The
-PostToolUse hook already decides what blocks (`scripts/lib/blocking.mjs`, the same predicate on both
+PostToolUse hook already decides what blocks (`cli/lib/blocking.mjs`, the same predicate on both
 sides of this line so the two can never disagree); every block appends a `block` event and opens a
 pending entry keyed by `(file, code, line)` — line-level, not code-level, because a repo can carry
 more than one instance of the same code in one file (frozen legacy prose is the common case), and a

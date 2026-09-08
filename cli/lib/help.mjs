@@ -290,7 +290,7 @@ function config() {
   return `CONFIG — .forge/codemap.json
 
 JSON so the whole framework runs on a bare node with zero dependencies. Validates against
-schema/codemap.schema.json. No registry ⇒ prose enforcement is OFF: the plugin can be installed once
+spec/schema/codemap.schema.json. No registry ⇒ prose enforcement is OFF: the plugin can be installed once
 machine-wide and no un-onboarded tree is ever blocked. Onboarding is a per-repo decision.
 
 {
