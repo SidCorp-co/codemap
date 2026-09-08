@@ -90,7 +90,7 @@ const pendingKey = (code, line) => `${code}@${line}`;
  * @param {string} root
  * @param {string} relPath
  * @param {Array<{code: string, line: number}>} current — the diagnostics blocking THIS run, from the
- *   same predicate that decided the hook's own decision (scripts/lib/blocking.mjs) — never recomputed
+ *   same predicate that decided the hook's own decision (cli/lib/blocking.mjs) — never recomputed
  *   here. Keyed by (code, line), not code alone — a repo can carry more than one instance of the same
  *   code in one file (frozen legacy prose is the common case), and treating them as one identity let a
  *   genuine fix of ONE instance hide forever behind an unrelated, never-blocked other one.
