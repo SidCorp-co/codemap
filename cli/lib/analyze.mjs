@@ -22,7 +22,8 @@ const SITEABLE = new Set(['CM001', 'CM010']);
 export function analyzeFile({ relPath, src, reg, frozen }) {
   const prof = profileFor(relPath);
   if (!prof) return { skipped: 'no-profile', annotations: [], diags: [], proseKeys: [] };
-  if (isGenerated(src)) return { skipped: 'generated', annotations: [], diags: [], proseKeys: [] };
+
+  if (isGenerated(src, prof)) return { skipped: 'generated', annotations: [], diags: [], proseKeys: [] };
 
   const { grammar, docPolicy } = enforcementFor(reg, prof);
   const lines = src.split('\n');

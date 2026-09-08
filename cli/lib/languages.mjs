@@ -8,6 +8,8 @@
 //   allowed               -> prose comments are accepted; only cm: grammar is enforced
 //   required-on-exported  -> a comment block directly above an exported declaration is exempt
 
+import { scanComments } from './scan.mjs';
+
 const COMMON_EXEMPT = [
   /^cm:ignore\b/,
   /^(Copyright|SPDX-License-Identifier)\b/i,
@@ -77,6 +79,9 @@ const SH_EXEMPT = [/^!/, /^shellcheck\b/];
 // cm:why Docker requires these three above everything else, so they cannot be moved below a header
 //   comment and cannot be rewritten — the parser reads them, not a person
 const DOCKER_EXEMPT = [/^syntax=/, /^escape=/, /^check=/];
+
+/** How far into a file a generated-marker comment is still the file's own header. */
+const GENERATED_HEAD_LINES = 40;
 
 /** A file whose head carries one of these is skipped entirely. */
 export const GENERATED_MARKERS = [
@@ -305,7 +310,26 @@ export function profileFor(filePath) {
   return null;
 }
 
-export function isGenerated(src) {
-  const head = src.split('\n', 40).join('\n');
-  return GENERATED_MARKERS.some((re) => re.test(head));
+// cm:guard a marker counts only in COMMENT text. A file that quotes one in a regex or a string
+//   literal is ordinary code, and testing raw source skipped this file and registry.mjs whole,
+//   hiding every cm: annotation in both from every consumer (ISS-26). Do not name a marker
+//   verbatim in a comment inside the first GENERATED_HEAD_LINES lines of any file: that comment
+//   IS a header marker and the file skips itself.
+// cm:guard the head SLICE is the whole of the window, and the window must never be bounded by a
+//   comment's start line instead: a block carries one start line and text joined from all of them,
+//   so bounding the start made a block opened on line 1 a header for its whole length and a marker
+//   400 lines down skipped the file again — reachable by commenting out code that quotes a marker.
+//   The golden cases are `late.ts` (a marker below the window) and `commented-out.ts` (a block
+//   opened inside it); drop the slice and both fail.
+// cm:why the marker is tested against the scanner's own joined text rather than a local re-join,
+//   because a two-word marker legitimately spans two lines of one block header and `.*` never
+//   crosses a newline — scan.mjs is the single authority on that normalisation
+// cm:why the slice is scanned rather than the whole file: this rule exists for protobuf and bundler
+//   output, and asking the question of the whole file cost 407 ms on a 3.89 MB generated file
+//   where the slice costs 2 ms
+export function isGenerated(src, prof) {
+  const head = src.split('\n', GENERATED_HEAD_LINES).join('\n');
+  const { comments } = scanComments(head, prof, { flushOpen: true });
+  return comments.some((c) => c.text !== ''
+    && GENERATED_MARKERS.some((re) => re.test(c.text)));
 }

@@ -59,7 +59,11 @@ function findUnescaped(line, delim, from) {
  *   codeLines: 1-based line numbers that contain code outside comments (used by Go's
  *              required-on-exported policy to find the declaration a comment block documents)
  */
-export function scanComments(src, prof) {
+// cm:guard flushOpen exists for isGenerated alone, which hands in a truncated head and needs the
+//   block still open at the cut. Every other caller must leave it false — flushing an unterminated
+//   block into the general comment list would turn one missing close delimiter into prose
+//   diagnostics down the rest of the file (ISS-26)
+export function scanComments(src, prof, { flushOpen = false } = {}) {
   const comments = [];
   const codeLines = new Set();
   const lines = src.split('\n');
@@ -168,6 +172,18 @@ export function scanComments(src, prof) {
       codeLines.add(lineNo);
       j++;
     }
+  }
+
+  if (block && flushOpen) {
+    comments.push({
+      kind: block.isDoc ? 'doc' : 'block',
+      line: block.startLine,
+      endLine: lines.length,
+      leader: block.open,
+      text: block.lines.map((l) => l.text).filter(Boolean).join(' '),
+      lines: block.lines,
+      firstOnLine: block.firstOnLine,
+    });
   }
 
   return { comments, codeLines };

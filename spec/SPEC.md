@@ -206,7 +206,12 @@ silence and has no knob at all — `languages` is keyed by profile id, and `enfo
 a profile.
 
 A file whose first lines mark it generated (`Code generated ... DO NOT EDIT`, `@generated`,
-drizzle/`_ide_helper` markers) is skipped entirely.
+drizzle/`_ide_helper` markers) is skipped entirely. The marker counts only where it is
+**load-bearing — in comment text on one of the file's first 40 lines**; a file that merely quotes one
+in a string or a regex literal, as a tool listing the markers it recognises does, is ordinary code and
+is analyzed normally. The window is counted per line, not per comment, so a block comment that opens
+inside it does not carry header status for its whole length; the lines of one header that fall inside
+the window are read together, so a marker may span them.
 
 The scanner keeps comment leaders inside string literals from being read as comments, and does the
 same for a **bare URL** outside one — the `//` in JSX text (`<a>https://x.dev</a>`) or a `#fragment`
