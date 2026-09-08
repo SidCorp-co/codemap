@@ -51,7 +51,7 @@
     },
     "languages": {
       "type": "object",
-      "description": "Per-language overrides, keyed by profile id: ts, go, php, py, rust, sql, sh, yaml.",
+      "description": "Per-language overrides, keyed by profile id: ts, go, php, py, rust, sql, sh, yaml, docker.",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,

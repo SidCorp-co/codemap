@@ -165,6 +165,7 @@ survive contact with ecosystems whose convention is the opposite of "few comment
 | Rust | `//` | `allowed` for `///`/`//!` | `// SAFETY:` is exempt (clippy requires it) |
 | SQL | `--` | `allowed`, enforcement off | annotations still parsed, so `sideeffect` edges can live next to a trigger |
 | Shell/YAML/TOML | `#` | `allowed`, enforcement off | annotations parsed for CI/compose edges |
+| Docker | `#` | `allowed`, enforcement off | resolved by BASENAME, not extension; `# syntax=`, `# escape=` and `# check=` are exempt because Docker's own parser requires them |
 
 A member is judged by the nearest line at column ZERO above it: `type X struct`/`interface`, or a
 `type`/`const`/`var` group opener, means the capitalised name below it is a documented member. `func`
@@ -178,6 +179,31 @@ covers exported names only, so documenting an unexported one is a choice its aut
 convention the ecosystem imposes — and `docPolicy: required-on-exported` exists to exempt the second,
 not the first. This is the largest bucket left in a Go repo after the member rule (4 347 lines measured);
 a repo that wants those spared should set `docPolicy: allowed` for Go rather than widen the exemption.
+
+Every profile above is keyed by file extension. Docker is the one keyed by **basename**:
+`Dockerfile`, `Containerfile` and either name's `.<variant>` and `<variant>.` forms resolve to it. An
+extension that names a profile still wins, so `Dockerfile.yml` is YAML and `dockerfile.go` is Go.
+
+Two kinds of name are refused. A variant is split on the dot, and if **any** component is a
+documentation format the name resolves to no profile — `Dockerfile.md`, `Dockerfile.mdx`,
+`Dockerfile.asc`, and `Dockerfile.md.j2`, where the doc word is not the last component. Separately, a
+variant whose **last** component is an editor or merge leftover (`~`,
+`.bak`, `.orig`, `.rej`, `.save`, `.swp`, `.tmp`, `.old`) is refused, because what a conflicted
+merge writes holds the pre-merge annotations; `Dockerfile.example`, `Dockerfile.sample` and
+`Dockerfile.dist` are committed deliberately and still resolve.
+
+A documentation file is the one place where a **false** annotation outranks a missed one: its fenced
+examples are illustrations rather than declarations, and under a `#` leader a markdown heading is
+itself a comment, so an example `cm:edge` would enter the graph as a real edge and a target that has
+since moved would fail an untouched repository's CI with `CM102`. This is the only exception to the
+priority the scheme vocabulary below states, and it is narrow on purpose: it applies to the file's
+name, never to its contents. The deny set is not every documentation format: it is those whose names
+are **not also plausible image names**, so `Dockerfile.wiki`, `Dockerfile.tex`, `Dockerfile.pod` and
+`Dockerfile.org` resolve although each names a real doc format. The two directions are not equally
+recoverable, which is what decides the boundary: a doc file read as a Dockerfile fails loudly and can
+be silenced with `enforce.exclude`, whereas an image variant refused as a doc file is missed in
+silence and has no knob at all — `languages` is keyed by profile id, and `enforce.include` cannot add
+a profile.
 
 A file whose first lines mark it generated (`Code generated ... DO NOT EDIT`, `@generated`,
 drizzle/`_ide_helper` markers) is skipped entirely.
