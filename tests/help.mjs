@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CODE_TABLE, TAGS, EDGE_KINDS } from '../cli/lib/parse.mjs';
 import { PROFILES } from '../cli/lib/languages.mjs';
-import { HELP_TOPICS, VERBS, renderHelp } from '../cli/lib/help.mjs';
+import { HELP_TOPICS, VERBS, renderHelp, tagHelpGaps } from '../cli/lib/help.mjs';
 import { stripGitEnv } from './git-env.mjs';
 
 function run(cmd, cwd, ...args) {
@@ -65,6 +65,42 @@ export function helpCases(pluginRoot, check) {
       `tags missing: ${missingTag.join(', ')} · kinds missing: ${missingKind.join(', ')}`);
     check('help: the tag count it claims is the real one',
       ann.includes(`Exactly ${TAGS.length} tags`), 'a hand-typed count is a second source of truth');
+
+    // cm:why the check above is satisfied by the broken row `  cm:sixth  undefined`, which is how a
+    //   sixth tag reached a user as "undefined" with the whole suite green (ISS-53)
+    const gaps = tagHelpGaps();
+    check('help: the per-tag help table is total over TAGS',
+      gaps.missing.length === 0 && gaps.extra.length === 0,
+      `no help row for: [${gaps.missing.join(', ')}] · row for a non-tag: [${gaps.extra.join(', ')}]`);
+    check('help: a row whose tag has left TAGS is reported too, not only a missing one',
+      tagHelpGaps(TAGS.filter((t) => t !== 'why')).extra.includes('why'),
+      'a table that is total in one direction still renders a row for a tag nothing accepts');
+
+    TAGS.push('sixth');
+    let rendered = null;
+    let threw = null;
+    try {
+      rendered = renderHelp('annotations').text;
+    } catch (e) {
+      threw = e;
+    } finally {
+      TAGS.pop();
+    }
+    check('help: a TAGS member with no help row fails the render, naming the member',
+      threw !== null && threw.message.includes('sixth'),
+      threw === null
+        ? `a sixth tag rendered with no error, so a user reads it:\n${rendered?.split('\n').filter((l) => l.includes('undefined')).join('\n')}`
+        : `it failed without naming the member: ${threw.message}`);
+
+    const whichOne = ann.slice(ann.indexOf('WHICH ONE'), ann.indexOf('Multi-line rationale'))
+      .split('\n').filter((l) => /\bcm:[a-z]+\s*$/.test(l));
+    check('help: WHICH ONE carries a row for every tag, so a new one cannot go missing from it silently',
+      whichOne.length === TAGS.length,
+      `${whichOne.length} rows for ${TAGS.length} tags — the pick list used to omit a new tag with no diagnostic`);
+
+    const undefTopics = HELP_TOPICS.filter((t) => renderHelp(t).text.includes('undefined'));
+    check('help: no topic renders the word "undefined"',
+      undefTopics.length === 0, `topics rendering it: ${undefTopics.join(', ')}`);
 
     const langs = renderHelp('languages').text;
     const missingLang = Object.keys(PROFILES).filter((id) => !langs.includes(id));

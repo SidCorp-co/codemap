@@ -107,39 +107,67 @@ const TOPIC_BLURBS = {
   verbs: 'the verb table on its own',
 };
 
+// cm:guard the key set is exactly TAGS — annotations() refuses to render otherwise, so a member
+//   with no row here fails by name instead of reaching a user as "undefined" (ISS-53)
+// cm:edge lockstep -> cli/lib/parse.mjs — a new TAGS member needs a row here; key order is the
+//   teaching order WHICH ONE renders, which is not TAGS order
+const TAG_HELP = {
+  guard: {
+    consumer: 'PreToolUse -> injected before an edit',
+    syntax: '<text>',
+    pick: 'whoever edits this must obey a condition',
+  },
+  edge: {
+    consumer: 'cm impact -> blast radius',
+    syntax: '<kind> -> <target> [— <text>]',
+    pick: 'a coupling nothing links',
+  },
+  flow: {
+    consumer: 'cm flow -> ordered trace + mermaid',
+    syntax: '<flow>/<step> [after:<step>] [— <text>]',
+    pick: 'this code is a step of a named runtime flow',
+  },
+  hack: {
+    consumer: 'cm verify -> stale-workaround check',
+    syntax: 'ISS-<n> until:<condition> — <text>',
+    pick: 'a live workaround with an exit condition',
+  },
+  why: {
+    consumer: 'none — read in place',
+    syntax: '<text>',
+    pick: 'non-obvious rationale, no tool consumes it',
+  },
+};
+
+export function tagHelpGaps(tags = TAGS) {
+  const rows = Object.keys(TAG_HELP);
+  return {
+    missing: tags.filter((t) => !rows.includes(t)),
+    extra: rows.filter((t) => !tags.includes(t)),
+  };
+}
+
 function annotations() {
-  const consumers = {
-    flow: 'cm flow -> ordered trace + mermaid',
-    edge: 'cm impact -> blast radius',
-    guard: 'PreToolUse -> injected before an edit',
-    hack: 'cm verify -> stale-workaround check',
-    why: 'none — read in place',
-  };
-  const forms = {
-    flow: '<leader> cm:flow  <flow>/<step> [after:<step>] [— <text>]',
-    edge: '<leader> cm:edge  <kind> -> <target> [— <text>]',
-    guard: '<leader> cm:guard <text>',
-    hack: '<leader> cm:hack  ISS-<n> until:<condition> — <text>',
-    why: '<leader> cm:why   <text>',
-  };
-  const pick = [
-    ['  whoever edits this must obey a condition', 'cm:guard'],
-    ['  a coupling nothing links', 'cm:edge'],
-    ['  this code is a step of a named runtime flow', 'cm:flow'],
-    ['  a live workaround with an exit condition', 'cm:hack'],
-    ['  non-obvious rationale, no tool consumes it', 'cm:why'],
-  ];
+  const { missing, extra } = tagHelpGaps();
+  if (missing.length || extra.length) {
+    throw new Error([
+      'TAG_HELP in cli/lib/help.mjs is not total over TAGS',
+      missing.length ? `no help row for: ${missing.join(', ')}` : '',
+      extra.length ? `help row for a tag TAGS does not carry: ${extra.join(', ')}` : '',
+    ].filter(Boolean).join(' — '));
+  }
+  const tagWidth = Math.max(...TAGS.map((t) => `cm:${t}`.length));
 
   return `ANNOTATIONS
 
 Exactly ${TAGS.length} tags. The set is the size of the set of distinct consumers — a tag exists only if
 something consumes it and the payoff lands in the same session.
 
-${table(TAGS.map((t) => [`  cm:${t}`, consumers[t]])).join('\n')}
+${table(TAGS.map((t) => [`  cm:${t}`, TAG_HELP[t].consumer])).join('\n')}
 
 FORM
 
-${TAGS.map((t) => `  ${forms[t]}`).join('\n')}
+${TAGS.map((t) => `  <leader> ${pad(`cm:${t}`, tagWidth)} ${TAG_HELP[t].syntax}`).join('\n')}
 
   <leader>  the language's line-comment leader: // , # or --  (line comments ONLY — inside a
             /* */, /** */ or <!-- --> block it is CM003, so no other toolchain ever parses a
@@ -162,7 +190,7 @@ ${TAGS.map((t) => `  ${forms[t]}`).join('\n')}
 
 WHICH ONE
 
-${table(pick).join('\n')}
+${table(Object.entries(TAG_HELP).map(([t, v]) => [`  ${v.pick}`, `cm:${t}`])).join('\n')}
 
   Multi-line rationale goes in the MODULE HEADER (first comment run, followed by a blank line,
   before any code — a shebang and a "use client"/"use server"/"use strict" directive may precede it).
