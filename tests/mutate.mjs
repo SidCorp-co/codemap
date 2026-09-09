@@ -38,8 +38,6 @@ function listFiles(...selectors) {
 
 // cm:why the snapshot comes from the WORKING TREE, not `git archive HEAD`: the mechanism this is
 //   pointed at is usually uncommitted, so the banner names the tree state instead (ISS-30)
-// cm:guard modified tracked files and merely untracked ones are reported SEPARATELY: only the first
-//   makes the table irreproducible from the named commit, so only it warns (ISS-30)
 // cm:guard taken ONCE, before the control, and every row copies from it: re-reading per row let a
 //   save mid-run give a later row a false `pinned` the control could not catch (ISS-30)
 function snapshot() {
@@ -191,6 +189,8 @@ function main(argv) {
   const head = git(ROOT, ['rev-parse', '--short', 'HEAD']);
   // cm:guard `--no-optional-locks` so reading the tree state writes NOTHING here: a plain `git
   //   status` rewrites .git/index with a stat-cache refresh, the one write this would make (ISS-30)
+  // cm:guard modified tracked files and merely untracked ones are reported SEPARATELY: only the
+  //   first makes the table irreproducible from the named commit, so only it warns (ISS-30)
   const modified = git(ROOT, ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=no']) !== '';
   const untracked = listFiles('--others', '--exclude-standard').length > 0;
   const state = [modified ? 'modified tracked files' : '', untracked ? 'untracked files' : '']

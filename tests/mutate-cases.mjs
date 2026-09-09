@@ -226,8 +226,17 @@ function gitEnvCases(check) {
 
 // cm:guard the CLI half is read as TEXT here, and only for what running it cannot show; a regex over
 //   the call site is gameable, since spawnSync or hoisted options walk past it (ISS-30)
+// cm:guard every text check below reads CODE ONLY, block comments included: with comments left in, a
+//   rule written beside a call site satisfies the check that the call site itself is missing (ISS-30)
+function codeOnly(src) {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n').filter((l) => !/^\s*\/\//.test(l))
+    .map((l) => l.replace(/\s+\/\/.*$/, ''))
+    .join('\n');
+}
+
 function wiringCases(pluginRoot, check) {
-  const cli = readFileSync(join(pluginRoot, 'tests', 'mutate.mjs'), 'utf8');
+  const cli = codeOnly(readFileSync(join(pluginRoot, 'tests', 'mutate.mjs'), 'utf8'));
 
   const execGit = (cli.match(/execFileSync\(\s*['"]git['"]/g) ?? []).length;
   const spawnGit = (cli.match(/spawnSync\(\s*['"]git['"]/g) ?? []).length;
@@ -240,6 +249,8 @@ function wiringCases(pluginRoot, check) {
   //   every one of them on the ambient environment, and nothing else here would notice (ISS-30)
   // cm:guard both children are read, the git wrapper and the corpus spawn: the second inherits this
   //   process's environment for a whole corpus run inside the copy (ISS-30)
+  // cm:guard matched against codeOnly, never raw source: commenting the assignment out rather than
+  //   deleting it left both of these checks green (ISS-30)
   const gitOptions = /execFileSync\(\s*['"]git['"][\s\S]{0,300}?\{([^}]*)\}/.exec(cli);
   const spawnOptions = /spawnSync\(\s*process\.execPath[\s\S]{0,300}?\{([^}]*)\}/.exec(cli);
   check('mutate: the git wrapper passes the scrubbed environment',
@@ -259,10 +270,7 @@ function wiringCases(pluginRoot, check) {
   const importers = readdirSync(dir)
     .filter((f) => f.endsWith('.mjs') && f !== 'mutate.mjs')
     .filter((f) => {
-      // cm:guard line comments are dropped before matching, because the guard above spells the
-      //   bypass out and the check matched its own documentation (ISS-30)
-      const src = readFileSync(join(dir, f), 'utf8')
-        .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+      const src = codeOnly(readFileSync(join(dir, f), 'utf8'));
       return /(?:from|import)\s*\(?\s*['"`][^'"`]*mutate\.mjs['"`]/.test(src)
         || /import\s*\(\s*['"`][^'"`]*mutate['"`]\s*\+/.test(src);
     });
