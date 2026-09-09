@@ -90,7 +90,13 @@ export function parseAnnotation(text, file, line) {
   const m = CM_TEXT_RE.exec(text);
   // cm:edge contract -> cli/lib/analyze.mjs — this /^cm:/ is the same test the caller routes the
   //   annotation branch on; widen one without the other and prose gets CM002 or the line vanishes (ISS-38)
-  if (!m) return /^cm:/.test(text) ? { diags: [diag('CM002', file, line, text.slice(0, 60))] } : null;
+  if (!m) {
+    if (!/^cm:/.test(text)) return null;
+    // cm:why the tag-selection fix alone answers `cm:` but not prose that wrapped onto a cm: line, and
+    //   §9.1 requires a diagnostic be fixable by its own fix line — this is the commoner half (ISS-38)
+    const d = diag('CM002', file, line, text.split(/\s+/)[0]);
+    return { diags: [{ ...d, fix: `${d.fix}; or, where this is prose that wrapped onto a line beginning "cm:", reword the line so it does not start with the prefix — do not escape it (§4)` }] };
+  }
   const [, tag, bodyRaw] = m;
   const body = bodyRaw.trim();
 

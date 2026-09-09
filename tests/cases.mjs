@@ -446,6 +446,8 @@ export const analyzeCases = [
     codes: ['CM002', 'CM008'],
     annotations: [],
   },
+  // cm:why the guard's text stays truncated on purpose: a cm: line is itself an annotation attempt, so
+  //   it cannot be the wrap, and the remedy is the CM002 raised on it rather than a wrap (§4, ISS-38)
   {
     name: 'a cm: prefix with no parseable tag is a malformed annotation, never a dropped line (§4)',
     file: 'untagged.ts',
@@ -456,8 +458,12 @@ export const analyzeCases = [
       '// cm:Guard an upper-case tag never matched the recognizer',
       '// cm:123 a digit never matched it either',
       '// cm:',
+      'const a = 1;',
+      '// cm: a wrapped line with ordinary narration under it',
+      '// an ordinary narration line right below it',
+      'const b = 2;',
     ].join('\n'),
-    codes: ['CM002', 'CM002', 'CM002', 'CM002', 'CM002'],
+    codes: ['CM002', 'CM002', 'CM002', 'CM002', 'CM002', 'CM002'],
     annotations: ['guard'],
     texts: ['callers must hold the run lock before'],
     proseKeyCount: 0,

@@ -103,8 +103,10 @@ for (const t of parseCases) {
     const got = sortedCodes(r?.diags ?? []);
     const want = [...t.codes].sort();
     check(t.name, JSON.stringify(got) === JSON.stringify(want), `codes: expected [${want}] got [${got}]`);
-  } else {
+  } else if (t.tag) {
     check(t.name, r?.ann?.tag === t.tag, `tag: expected ${t.tag}, got ${r?.ann?.tag}`);
+  } else {
+    check(t.name, false, 'the case declares no expectation — result, codes or tag');
   }
 }
 
