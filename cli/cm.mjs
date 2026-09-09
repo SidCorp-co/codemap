@@ -180,7 +180,7 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
  */
 function fixCanonical(perFile) {
   // cm:why the spread here and in migrateTargets is the one shape pushAll does NOT cover: `applied`
-  //   is CM009 fixes, so it counts cm: LINES in one file, never the prose lines CM001 bills (ISS-45)
+  //   counts cm: LINES in one file (CM009 here, CM005 there), never the prose lines CM001 bills (ISS-45)
   const done = [];
   for (const f of perFile) {
     const fixes = f.diags.filter((d) => d.code === 'CM009' && d.canonical);
