@@ -4,8 +4,8 @@
 //   below before this list is ever consulted, and TAGS is the tag vocabulary (ISS-50)
 // cm:edge lockstep -> cli/lib/help.mjs — a new member needs a COMPLETE TAG_HELP row there too; a
 //   row absent, or short of a field, drops from the guide and makes `cm help annotations` exit 2 (ISS-53)
-// cm:guard the CLI derives this size but prose hand-types it, spec/SPEC.md's copy being PRINTED by
-//   `cm help spec` — a member here sweeps `grep -rniE '(five|six)[ -](tags?|annotations?|places)'` (ISS-55)
+// cm:guard the CLI derives this size but prose hand-types it, and `cm help spec` PRINTS SPEC.md's
+//   copy — sweep a member in with `grep -rniE '\b(five|six|seven|eight)\b'`, broad because SPEC.md:139 wraps the count off its noun (ISS-55)
 export const TAGS = ['flow', 'edge', 'guard', 'hack', 'why'];
 
 // cm:why the whole prose family is baselined together, so `cm init` leaves a legacy repo green (§8)
