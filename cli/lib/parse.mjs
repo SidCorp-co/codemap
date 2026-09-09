@@ -26,8 +26,9 @@ export function baselineKey(text) {
 }
 export const EDGE_KINDS = ['contract', 'ordering', 'lockstep', 'sideeffect', 'naming', 'protocol'];
 
-/** codemap/1 §4 — the single recognizer. */
-export const CM_LINE_RE = /^\s*(\/\/|#|--)\s*cm:([a-z][a-z-]*)\b/;
+// cm:guard §4's recognition step in the form the code asks it in — scan.mjs has already cut the
+//   leader, so never widen this to the full-line `^\s*(//|#|--)\s*cm:` §4 prints: no site could call it
+export const CM_PREFIX_RE = /^cm:/;
 const CM_TEXT_RE = /^cm:([a-z][a-z-]*)\b\s*(.*)$/s;
 const IGNORE_RE = /^cm:ignore\s+(CM\d{3})\s*(?:—|--|-)\s*(\S.*)$/;
 // cm:why marker-shaped only — a bare \bXXX\b matched "TC-XXX" in real repos, and a validator that cries wolf gets switched off
@@ -88,10 +89,8 @@ export function parseAnnotation(text, file, line) {
   }
 
   const m = CM_TEXT_RE.exec(text);
-  // cm:edge contract -> cli/lib/analyze.mjs — this /^cm:/ is the same test the caller routes the
-  //   annotation branch on; widen one without the other and prose gets CM002 or the line vanishes (ISS-38)
   if (!m) {
-    if (!/^cm:/.test(text)) return null;
+    if (!CM_PREFIX_RE.test(text)) return null;
     // cm:why the tag-selection fix alone answers `cm:` but not prose that wrapped onto a cm: line, and
     //   §9.1 requires a diagnostic be fixable by its own fix line — this is the commoner half (ISS-38)
     const d = diag('CM002', file, line, text.split(/\s+/)[0]);
@@ -176,5 +175,5 @@ export function canonical(ann) {
 }
 
 export function hasTodo(text) {
-  return TODO_RE.test(text) && !/^cm:/.test(text);
+  return TODO_RE.test(text) && !CM_PREFIX_RE.test(text);
 }

@@ -10,7 +10,7 @@
 
 import { profileFor, isGenerated } from './languages.mjs';
 import { scanComments, nextCodeLine } from './scan.mjs';
-import { parseAnnotation, canonical, hasTodo, diag, PROSE_CODES, baselineKey } from './parse.mjs';
+import { parseAnnotation, canonical, hasTodo, diag, PROSE_CODES, baselineKey, CM_PREFIX_RE } from './parse.mjs';
 import { enforcementFor } from './registry.mjs';
 
 // cm:why a docblock carrying structured tags is machine-consumed, not narration, so it is exempt
@@ -56,7 +56,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     if (c.kind !== 'line') {
       let misplaced = false;
       for (const l of c.lines) {
-        if (/^cm:/.test(l.text)) {
+        if (CM_PREFIX_RE.test(l.text)) {
           raw.push(diag('CM003', relPath, l.line, l.text.slice(0, 60)));
           misplaced = true;
         }
@@ -77,7 +77,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     const text = c.text;
     if (!text) continue;
 
-    if (/^cm:/.test(text)) {
+    if (CM_PREFIX_RE.test(text)) {
       const parsed = parseAnnotation(text, relPath, c.line);
       if (!parsed) continue;
       if (parsed.ignore) {
