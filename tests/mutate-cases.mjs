@@ -226,75 +226,121 @@ function gitEnvCases(check) {
 
 // cm:guard every text check below reads CODE ONLY: with comments left in, a rule written beside a
 //   call site satisfies the check that the call site itself is missing (ISS-30)
-// cm:guard scanned character by character, never by regex: this repository's own corpus holds comment
+// cm:guard scanned character by character, never by regex: this repository's corpus holds comment
 //   delimiters inside STRING fixtures, which a block-comment regex reads as a comment start (ISS-30)
-// cm:why the span such a regex swallows reaches from one string-borne delimiter to the next closing
-//   pair anywhere in the file, so the code between them leaves the check entirely (ISS-30)
 // cm:guard a trailing comment counts with no space before it: `,//env: GIT_ENV` slips past a leader
 //   requiring whitespace, one space away from the assignment being pinned (ISS-30)
 // cm:guard cli/lib/scan.mjs is NOT reused for this, though it scans comments for a living: the
 //   declared point `flushopen-block` mutates it, so these checks would judge mutated code (ISS-30)
+// cm:guard newlines inside a stripped comment are kept, so the output has the same line count as the
+//   input: dropping them joins two statements and changes what parses (ISS-30)
+const REGEX_KEYWORDS = ['return', 'typeof', 'case', 'in', 'of', 'void', 'new', 'delete', 'await',
+  'yield', 'throw', 'instanceof', 'do', 'else'];
+
+// cm:guard a keyword position starts a regex just as an operator does: with only the last character
+//   considered, `return /[/*]/` reads as division and its `/*` swallows the rest of the file (ISS-30)
+function startsRegex(out) {
+  const t = out.replace(/\s+$/, '');
+  if (t === '') return true;
+  if ('(,=:[!&|?{};+-*%~^<>'.includes(t[t.length - 1])) return true;
+  return REGEX_KEYWORDS.some((k) => new RegExp(`(^|[^\\w$])${k}$`).test(t));
+}
+
 function codeOnly(src) {
-  const startsRegex = (prev) => prev === '' || '(,=:[!&|?{};+-*%~^<>'.includes(prev);
   let out = '';
-  let prev = '';
   let i = 0;
+  let state = 'code';
+  let inClass = false;
+  const frames = [];
+  const keepNewlines = (from, to) => {
+    for (let j = from; j < to && j < src.length; j++) if (src[j] === '\n') out += '\n';
+  };
   while (i < src.length) {
     const c = src[i];
-    const next = src[i + 1];
-    if (c === '/' && next === '/') {
-      while (i < src.length && src[i] !== '\n') i++;
-      continue;
-    }
-    if (c === '/' && next === '*') {
-      i += 2;
-      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++;
-      i += 2;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === '`') {
-      out += c;
-      i++;
-      while (i < src.length) {
-        if (src[i] === '\\') { out += src.slice(i, i + 2); i += 2; continue; }
-        out += src[i];
-        i++;
-        if (src[i - 1] === c) break;
+    const d = src[i + 1];
+    if (state === 'code') {
+      if (c === '/' && d === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+      if (c === '/' && d === '*') {
+        const from = i;
+        i += 2;
+        while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++;
+        i += 2;
+        keepNewlines(from, i);
+        continue;
       }
-      prev = c;
-      continue;
-    }
-    if (c === '/' && startsRegex(prev)) {
-      out += c;
-      i++;
-      let inClass = false;
-      while (i < src.length && src[i] !== '\n') {
-        if (src[i] === '\\') { out += src.slice(i, i + 2); i += 2; continue; }
-        if (src[i] === '[') inClass = true;
-        else if (src[i] === ']') inClass = false;
-        out += src[i];
-        i++;
-        if (src[i - 1] === '/' && !inClass) break;
+      if (c === "'" || c === '"') { state = c === "'" ? 'squote' : 'dquote'; out += c; i++; continue; }
+      if (c === '`') { state = 'template'; out += c; i++; continue; }
+      if (c === '/' && startsRegex(out)) { state = 'regex'; inClass = false; out += c; i++; continue; }
+      // cm:guard the interpolation's own braces are counted, so a `}` inside `${}` does not close it
+      //   early and drop the template's tail into code (ISS-30)
+      if (c === '{' && frames.length) { frames[frames.length - 1].braces++; out += c; i++; continue; }
+      if (c === '}' && frames.length) {
+        if (frames[frames.length - 1].braces === 0) { frames.pop(); state = 'template'; }
+        else frames[frames.length - 1].braces--;
+        out += c; i++; continue;
       }
-      prev = '/';
+      out += c; i++; continue;
+    }
+    if (state === 'squote' || state === 'dquote') {
+      const q = state === 'squote' ? "'" : '"';
+      if (c === '\\') { out += src.slice(i, i + 2); i += 2; continue; }
+      out += c; i++;
+      // cm:guard an unterminated string recovers at the newline instead of running to EOF, so one
+      //   stray quote cannot hide the rest of the file from every check here (ISS-30)
+      if (c === q || c === '\n') state = 'code';
       continue;
     }
-    out += c;
-    if (!/\s/.test(c)) prev = c;
-    i++;
+    if (state === 'template') {
+      if (c === '\\') { out += src.slice(i, i + 2); i += 2; continue; }
+      if (c === '$' && d === '{') { out += '${'; i += 2; frames.push({ braces: 0 }); state = 'code'; continue; }
+      out += c; i++;
+      if (c === '`') state = frames.length ? 'template' : 'code';
+      continue;
+    }
+    if (state === 'regex') {
+      if (c === '\\') { out += src.slice(i, i + 2); i += 2; continue; }
+      if (c === '[') inClass = true;
+      else if (c === ']') inClass = false;
+      out += c; i++;
+      // cm:guard a `/` inside a character class is not the terminator, and a regex never spans a line
+      if (c === '\n' || (c === '/' && !inClass)) state = 'code';
+      continue;
+    }
   }
   return out;
 }
 
-// cm:guard every fixture below BUILDS the specifier it names, so this file never holds the literal
-//   the importer sweep looks for: test data naming it reads as a real import (ISS-30)
+// cm:guard the scanner is checked by PARSING its own output, not only by cases naming known gaps: a
+//   gap that drops code leaves the rest unparseable, so this is loud where a case is silent (ISS-30)
+function codeOnlyParsesCases(pluginRoot, check) {
+  const dir = join(pluginRoot, 'tests');
+  const probe = mkdtempSync(join(tmpdir(), 'cm-mutate-parse-'));
+  try {
+    const broken = [];
+    for (const f of readdirSync(dir).filter((x) => x.endsWith('.mjs'))) {
+      const out = join(probe, f);
+      writeFileSync(out, codeOnly(readFileSync(join(dir, f), 'utf8')));
+      const res = spawnSync(process.execPath, ['--check', out],
+        { encoding: 'utf8', timeout: 30000, env: stripGitEnv(process.env) });
+      if (res.status !== 0) broken.push(`${f}: ${(res.stderr ?? '').split('\n').slice(1, 3).join(' ').trim()}`);
+    }
+    check('mutate: stripping comments leaves every tests/ file still parseable',
+      broken.length === 0,
+      `codeOnly dropped code from these, so every text check reading them is blind to part of the `
+      + `file: ${broken.join(' | ')}`);
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+}
+
+// cm:guard no fixture here names the module or the word import: test data spelling either is
+//   indistinguishable from a real import to the sweep below, which reported exactly that (ISS-30)
 function codeOnlyCases(check) {
   const strip = (src) => codeOnly(src).replace(/\s+/g, ' ').trim();
-  const spec = `./${'mut'}${'ate'}.mjs`;
 
   check('mutate: codeOnly drops a whole-line comment',
-    strip(`  // import("${spec}")\nconst a = 1;`) === 'const a = 1;',
-    `got ${JSON.stringify(strip(`  // import("${spec}")\nconst a = 1;`))}`);
+    strip('  // dropped\nconst a = 1;') === 'const a = 1;',
+    `got ${JSON.stringify(strip('  // dropped\nconst a = 1;'))}`);
 
   check('mutate: codeOnly drops a trailing comment with no space before it',
     !codeOnly('x: 1,//env: GIT_ENV').includes('GIT_ENV'),
@@ -305,23 +351,47 @@ function codeOnlyCases(check) {
     `got ${JSON.stringify(codeOnly('a, /* env: GIT_ENV */ b'))}`);
 
   // cm:guard the case this helper exists for: an unclosed block delimiter inside a STRING must not
-  //   swallow the code after it, or a real import there leaves the sweep unseen (ISS-30)
-  const fixture = `const a = '/* oops unterminated';\nimport('${spec}');\nconst b = '/* closed */';`;
+  //   swallow the code after it, or code there leaves every check reading the file (ISS-30)
+  const stringBorne = "const a = '/* oops unterminated';\nconst keep = 1;\nconst b = '/* closed */';";
   check('mutate: a comment delimiter inside a string does not blind the code after it',
-    codeOnly(fixture).includes(`import('${spec}')`),
-    `the code after a string-borne "/*" must survive: ${JSON.stringify(codeOnly(fixture))}`);
+    codeOnly(stringBorne).includes('const keep = 1'),
+    `the code after a string-borne "/*" must survive: ${JSON.stringify(codeOnly(stringBorne))}`);
 
   check('mutate: codeOnly keeps a URL inside a string intact',
     codeOnly('const u = "https://example.com/a//b";').includes('https://example.com/a//b'),
     `a // inside a string is not a comment: ${JSON.stringify(codeOnly('const u = "https://example.com/a//b";'))}`);
 
-  check('mutate: codeOnly keeps a regex literal containing slashes intact',
-    codeOnly('const re = /a\\/\\/b/g; const k = 1;').includes('const k = 1'),
-    `a // inside a regex must not comment out the rest of the line: ${JSON.stringify(codeOnly('const re = /a\\/\\/b/g; const k = 1;'))}`);
+  // cm:guard the terminator must not pair with an ESCAPED slash: `/a\//g` ends at the third slash,
+  //   and treating the escaped one as the end leaves `/g; …` read as a comment (ISS-30)
+  check('mutate: a regex ending in an escaped slash does not comment out its line',
+    codeOnly('const re = /a\\//g; const k = 1;').includes('const k = 1'),
+    `got ${JSON.stringify(codeOnly('const re = /a\\//g; const k = 1;'))}`);
 
-  check('mutate: codeOnly keeps an escaped quote from ending a string',
-    codeOnly("const s = 'it\\'s'; const k = 2;").includes('const k = 2'),
-    `got ${JSON.stringify(codeOnly("const s = 'it\\'s'; const k = 2;"))}`);
+  // cm:guard a `/` inside a character class is not the terminator, so `/[/*]/` must not open a block
+  //   comment and swallow the rest of the file (ISS-30)
+  check('mutate: a slash in a regex character class does not open a comment',
+    codeOnly('function f(u){ return /[/*]/.test(u); }\nconst k = 1;').includes('const k = 1'),
+    `got ${JSON.stringify(codeOnly('function f(u){ return /[/*]/.test(u); }\nconst k = 1;'))}`);
+
+  check('mutate: a regex in a keyword position is read as a regex, not as division',
+    codeOnly('function f(u){ return /x\\//.test(u); }\nconst k = 1;').includes('.test(u)'),
+    `a slash after the return keyword starts a regex: ${JSON.stringify(codeOnly('function f(u){ return /x\\//.test(u); }\nconst k = 1;'))}`);
+
+  // cm:guard a nested template inside `${}` must not close the outer one, or the tail of the line is
+  //   read as code and its comment leader drops it (ISS-30)
+  check('mutate: a nested template literal does not end the outer template',
+    codeOnly('const h = `a ${`b //`} c`; const k = 1;').includes('const k = 1'),
+    `got ${JSON.stringify(codeOnly('const h = `a ${`b //`} c`; const k = 1;'))}`);
+
+  // cm:guard asserts a DROP, not a survival: when the escape is mishandled the string reopens and
+  //   copies its tail verbatim, so asserting the tail survives passes either way (ISS-30)
+  check('mutate: an escaped quote does not end its string',
+    !codeOnly("const s = 'it\\'s a test'; // env: GIT_ENV\nconst k = 2;").includes('GIT_ENV'),
+    `got ${JSON.stringify(codeOnly("const s = 'it\\'s a test'; // env: GIT_ENV\nconst k = 2;"))}`);
+
+  check('mutate: codeOnly keeps the line count of its input',
+    codeOnly('a;\n/* one\ntwo\nthree */\nb;').split('\n').length === 5,
+    `stripping must not join statements: ${JSON.stringify(codeOnly('a;\n/* one\ntwo\nthree */\nb;'))}`);
 }
 
 // cm:guard the CLI half is read as TEXT here, and only for what running it cannot show; a regex over
@@ -355,15 +425,18 @@ function wiringCases(pluginRoot, check) {
 
   // cm:guard EVERY .mjs under tests/ is read, not a named few: a new tier importing the CLI half is
   //   otherwise unnoticed (ISS-30)
-  // cm:guard the second pattern is for a CONCATENATED specifier, `import('./mutate' + '.mjs')`, which
-  //   a static-only match walks past; it is not dead code (ISS-30)
+  // cm:guard the second pattern is for a CONCATENATED specifier, which a static-only match walks
+  //   past; it is not dead code (ISS-30)
+  // cm:guard the third rejects any dynamic import whose specifier is INTERPOLATED, because such a
+  //   specifier cannot be read from the text at all — this file's own fixtures used that form (ISS-30)
   const dir = join(pluginRoot, 'tests');
   const importers = readdirSync(dir)
     .filter((f) => f.endsWith('.mjs') && f !== 'mutate.mjs')
     .filter((f) => {
       const src = codeOnly(readFileSync(join(dir, f), 'utf8'));
       return /(?:from|import)\s*\(?\s*['"`][^'"`]*mutate\.mjs['"`]/.test(src)
-        || /import\s*\(\s*['"`][^'"`]*mutate['"`]\s*\+/.test(src);
+        || /import\s*\(\s*['"`][^'"`]*mutate['"`]\s*\+/.test(src)
+        || /import\s*\(\s*[^)]*\$\{/.test(src);
     });
   check('mutate: nothing else under tests/ imports the half that spawns',
     importers.length === 0,
@@ -433,6 +506,7 @@ function declaredListCases(check) {
 
 export function mutateCases(pluginRoot, check) {
   codeOnlyCases(check);
+  codeOnlyParsesCases(pluginRoot, check);
   classifyCases(check);
   parseCases(check);
   anchorCases(check);
