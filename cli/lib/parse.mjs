@@ -3,7 +3,7 @@
 // cm:guard cm:ignore is NOT a member — it is the ignore directive, answered by parseAnnotation
 //   below before this list is ever consulted, and TAGS is the tag vocabulary (ISS-50)
 // cm:edge lockstep -> cli/lib/help.mjs — a new member needs a COMPLETE TAG_HELP row there too; a
-//   row absent, or short of a field, drops from the guide and makes `cm help` exit 2 (ISS-53)
+//   row absent, or short of a field, drops from the guide and makes `cm help annotations` exit 2 (ISS-53)
 export const TAGS = ['flow', 'edge', 'guard', 'hack', 'why'];
 
 // cm:why the whole prose family is baselined together, so `cm init` leaves a legacy repo green (§8)
