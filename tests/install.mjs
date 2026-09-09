@@ -255,10 +255,17 @@ export function installCases(pluginRoot, check) {
   {
     const root = makeRepo();
     run(pluginCm, root, 'install');
-    const committed = readFileSync(join(root, '.forge', 'codemap', 'hooks', 'pre-commit'), 'utf8');
+    git(root, 'config', 'core.hooksPath', '.forge/codemap/hooks');
+    writeFileSync(join(root, 'iss35-team.ts'),
+      '/* never closed\nexport const a = 1;\n// cm:why a why nothing will read\n');
+    git(root, 'add', 'iss35-team.ts');
+    const teamHook = spawnSync('sh', [join(root, '.forge', 'codemap', 'hooks', 'pre-commit')], {
+      cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
+    });
+    const teamOut = `${teamHook.stdout}${teamHook.stderr}`;
     check('install: the committed hook reports CM203 too, not just the per-clone one',
-      /--tier structural/.test(committed) && /--tier grammar/.test(committed),
-      `the hook that gates a team must carry the same two passes:\n${committed}`);
+      /CM203/.test(teamOut) && teamHook.status === 0,
+      `the hook that gates a team must report what the per-clone one reports:\n${teamOut}`);
     rmSync(root, { recursive: true, force: true });
   }
 }

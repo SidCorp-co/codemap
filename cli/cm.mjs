@@ -945,7 +945,7 @@ switch (cmd) {
     if (had && had !== version) {
       console.log(yellow('  re-run the gate before merging: the committed checker changed, so its verdict may too'));
     }
-    if (r.hook) console.log(`  ${r.hook} ${dim('runs: cm verify --staged — grammar tier gates, structural tier reports')}`);
+    if (r.hook) console.log(`  ${r.hook} ${dim('runs: verify --staged --tier structural (reports), then --tier grammar (gates)')}`);
     for (const n of r.notes) console.log(dim(`  note: ${n}`));
     console.log('');
     // cm:why a gate nobody wires is not a gate, and asking every contributor to run a setup command is the

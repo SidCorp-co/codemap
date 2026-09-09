@@ -81,7 +81,8 @@ WHERE IT RUNS
   before an edit   PreToolUse hook  -> cm impact <file>            injects guards/edges/flow steps
   after an edit    PostToolUse hook -> cm verify --fix <file>      normalizes, then blocks on violations
   in CI            cm verify --since <ref>                         all three tiers
-  on commit        cm verify --staged                              grammar tier gates; structural reports
+  on commit        cm verify --staged --tier structural           reports CM203; cannot block
+                   cm verify --staged --tier grammar               the gate
 
   All four run the SAME checker. A repo that ran \`cm install\` owns it: .forge/codemap/cm wins over a
   cm on PATH, which wins over the plugin's bundled copy. The plugin is a convenience, never authority.

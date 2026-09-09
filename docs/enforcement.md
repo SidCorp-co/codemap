@@ -40,8 +40,8 @@ Both hooks run two passes over the staged tree, and the split is deliberate:
 
 | Pass | Tier | What it does |
 |---|---|---|
-| first | `structural` | reports `CM203` — a file whose block comment is never closed, so every `cm:` annotation below it has stopped being read. It cannot change the exit code, so it never blocks a commit. |
-| second | `grammar` | the gate: malformed annotations (`CM001`-`CM0xx`) fail the commit. |
+| first | `structural` | reports `CM201`-`CM203`, of which `CM203` is the one this pass exists for: a file whose block comment is never closed, so every `cm:` annotation below it has stopped being read. No structural code can change the exit code, so this pass never blocks a commit. |
+| second | `grammar` | the gate: `CM001`-`CM013` fail the commit — a malformed annotation, but also a new TODO/FIXME (`CM010`), an over-long module header (`CM011`) and unpaid prose debt (`CM013`). |
 
 The **referential** tier (`CM101`-`CM107` — an edge pointing at a path that is not there) is
 deliberately *not* run at commit time. Those diagnostics go red on a file the commit never touched,

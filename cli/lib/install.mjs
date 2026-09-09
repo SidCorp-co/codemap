@@ -27,9 +27,11 @@ d=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 exec node "$d/cm.mjs" "$@"
 `;
 
-// cm:guard the structural pass must stay ahead of the grammar exec and keep its `|| true` — it reports
-//   CM203, whose tier cannot set an exit code (cm.mjs:503), and a commit gate that started refusing a
-//   warning would be a different decision about what may block a commit (ISS-35)
+// cm:guard the structural pass must never decide this hook's exit status: a commit gate that began
+//   refusing a warning would be a different decision about what may block a commit (ISS-35). Today two
+//   things already ensure that — cm.mjs:503 keeps structural out of the exit code, and there is no
+//   `set -e` here — so the `|| true` is belt-and-braces, not the mechanism. Keep it anyway: a `set -e`
+//   added later would silently promote this pass to a gate, and then it IS the mechanism.
 const PRE_COMMIT = `#!/bin/sh
 # codemap/1 — installed by: cm install --git-hook
 # Gates the staged tree only, so an unrelated legacy file can never block a commit.
