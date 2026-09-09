@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { profileFor } from '../cli/lib/languages.mjs';
+import { profileFor, PROFILES, ecosystemOf, advisoryEcosystemOf } from '../cli/lib/languages.mjs';
 import { walk, changedStaged, DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
 
 const GUARD_TEXT = 'the build stage and the runtime stage must install the same lockfile';
@@ -110,6 +110,51 @@ export function profileCases(pluginRoot, check) {
   check('profiles: registry.mjs decides scannability by asking profileFor',
     (src.match(/profileFor\(/g) ?? []).length >= 2,
     'walk() and gitFiles() must each ask profileFor');
+
+  const graphSrc = readFileSync(join(pluginRoot, 'cli', 'lib', 'graph.mjs'), 'utf8');
+  check('profiles: graph.mjs keeps no second language table',
+    !/\bFAMILY\b/.test(graphSrc),
+    'FAMILY is back — a second answer to "same ecosystem", which disagreed with the profile table '
+    + 'about .vue, .svelte, .mts, .cts and .pyi the last time it existed (ISS-32)');
+  check('profiles: graph.mjs asks the profile table for the ecosystem',
+    graphSrc.includes('advisoryEcosystemOf'),
+    'the advisory tier must derive its language guard from languages.mjs, not restate it');
+
+  // cm:guard the advisory tier is derived from the PROFILE, so every extension reaching a covered
+  //   profile is covered — this is the assertion that makes a new BY_EXT entry impossible to leave
+  //   behind, which is the whole of ISS-32
+  const covered = [['a.ts', 'ts'], ['a.tsx', 'ts'], ['a.mts', 'ts'], ['a.cts', 'ts'],
+    ['a.js', 'ts'], ['a.jsx', 'ts'], ['a.mjs', 'ts'], ['a.cjs', 'ts'],
+    ['a.go', 'go'], ['a.php', 'php'], ['a.py', 'py'], ['a.pyi', 'py'], ['a.rs', 'rust']];
+  for (const [path, eco] of covered) {
+    check(`profiles: ${path} is in the advisory tier as ${eco}`,
+      advisoryEcosystemOf(path) === eco,
+      `expected ${eco}, got ${advisoryEcosystemOf(path)}`);
+  }
+
+  // cm:guard an SFC shares TS's ecosystem and is still OUT of the advisory tier — the two answers are
+  //   different questions, and collapsing them turns CM301 on in every consumer Vue repo (ISS-15)
+  for (const path of ['Widget.vue', 'Widget.svelte']) {
+    check(`profiles: ${path} shares the ts ecosystem`, ecosystemOf(path) === 'ts',
+      `expected ts, got ${ecosystemOf(path)}`);
+    check(`profiles: ${path} is out of the advisory tier`, advisoryEcosystemOf(path) === null,
+      `expected null, got ${advisoryEcosystemOf(path)} — CM301 would newly fire on SFC edges`);
+  }
+
+  for (const path of ['a.sql', 'a.sh', 'a.yml', 'Dockerfile']) {
+    check(`profiles: ${path} is out of the advisory tier`, advisoryEcosystemOf(path) === null,
+      `expected null, got ${advisoryEcosystemOf(path)}`);
+  }
+
+  for (const path of ['README.md', 'Dockerfile.md']) {
+    check(`profiles: ${path} has no ecosystem at all`,
+      ecosystemOf(path) === null && advisoryEcosystemOf(path) === null,
+      `expected null/null, got ${ecosystemOf(path)}/${advisoryEcosystemOf(path)}`);
+  }
+
+  check('profiles: every profile answers the ecosystem question',
+    Object.values(PROFILES).every((prof) => typeof (prof.ecosystem ?? prof.id) === 'string'),
+    'a profile with no ecosystem and no id cannot be compared to any other');
 
   const roots = [];
   try {

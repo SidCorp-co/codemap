@@ -132,6 +132,11 @@ const P = {
   sfc: {
     ...TS,
     id: 'sfc',
+    // cm:why out of the advisory tier while sharing TS's ecosystem: an SFC imports .ts freely, so
+    //   `same ecosystem` is yes, but whether CM301 may FIRE on an SFC edge is a tier promotion
+    //   measured on false positives (ISS-15) — enabling it here would warn in every consumer Vue
+    //   repo as a side effect of a refactor
+    advisory: false,
     blockOpens: [...TS.blockOpens, ['<!--', '-->']],
     proseExemptBlockOpens: ['<!--'],
   },
@@ -325,6 +330,29 @@ export function profileFor(filePath) {
     return BY_BASENAME[stem];
   }
   return null;
+}
+
+// cm:guard the SINGLE authority on "can these two files import each other" — graph.mjs kept a second
+//   extension-keyed table beside this one and the two disagreed about single-file components, which
+//   is how .mts, .cts, .pyi, .vue and .svelte were resolvable by BY_EXT and invisible to CM301 at the
+//   same time (ISS-32). Ask this; never restate it from a literal.
+export function ecosystemOf(filePath) {
+  const prof = profileFor(filePath);
+  return prof ? (prof.ecosystem ?? prof.id) : null;
+}
+
+// cm:guard a pair of files in different languages CANNOT reference each other — measured, that was 26 of
+//   36 hits in one repo, so firing there is a bug in the check and not a threshold to tune (§7.1)
+// cm:why narrowed on the PROFILE, not on the extension: an opt-out that lives on the profile is
+//   inherited by every extension pointing at it, so a new BY_EXT entry joins the advisory tier
+//   instead of being silently left out of it. Eligible is the default for the same reason (ISS-32).
+// cm:why `enforce: false` profiles are out because CM301 has never fired on them — those files carry
+//   annotations without their ordinary comments being policed, and admitting them would be the same
+//   unmeasured tier promotion the sfc opt-out refuses
+export function advisoryEcosystemOf(filePath) {
+  const prof = profileFor(filePath);
+  if (!prof || prof.enforce === false || prof.advisory === false) return null;
+  return prof.ecosystem ?? prof.id;
 }
 
 // cm:guard a marker counts only in COMMENT text. A file that quotes one in a regex or a string
