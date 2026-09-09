@@ -100,7 +100,7 @@ export const GENERATED_MARKERS = [
 const TS = {
   id: 'ts',
   // cm:why the RUNTIME, not the profile — §7.1 reads "different languages" as "cannot import each
-  //   other", and an SFC imports .ts freely, so the sfc profile inherits this id and CM301 stays out
+  //   other", and an SFC imports .ts freely, so sfc inherits this and a literal they share is not a contract
   ecosystem: 'ts',
   lineLeaders: ['//'],
   docLineLeaders: [],
@@ -132,6 +132,9 @@ const P = {
   sfc: {
     ...TS,
     id: 'sfc',
+    // cm:why shares TS's ecosystem and is still out of CM301: no measurement has ever covered an SFC,
+    //   and admitting one would warn in every consumer Vue repo as a side effect of a refactor (ISS-32)
+    advisoryTier: false,
     blockOpens: [...TS.blockOpens, ['<!--', '-->']],
     proseExemptBlockOpens: ['<!--'],
   },
@@ -200,6 +203,9 @@ const P = {
     multiline: [],
     docPolicy: 'allowed',
     enforce: false, // annotations still parsed, so sideeffect edges can sit next to a trigger
+    // cm:why these four carry annotations without their prose being policed, and no CM301 measurement
+    //   covers them; `enforce` is NOT the knob for it — that is prose grammar, overridable per repo
+    advisoryTier: false,
     exempt: [...COMMON_EXEMPT, ...SQL_EXEMPT],
   },
   sh: {
@@ -212,6 +218,9 @@ const P = {
     multiline: [],
     docPolicy: 'allowed',
     enforce: false,
+    // cm:why annotations are parsed here but prose is not policed, and no CM301 measurement
+    //   covers this format — the same reason as sql's, stated where the flag is read
+    advisoryTier: false,
     exempt: [...COMMON_EXEMPT, ...SH_EXEMPT],
   },
   yaml: {
@@ -224,6 +233,9 @@ const P = {
     multiline: [],
     docPolicy: 'allowed',
     enforce: false,
+    // cm:why annotations are parsed here but prose is not policed, and no CM301 measurement
+    //   covers this format — the same reason as sql's, stated where the flag is read
+    advisoryTier: false,
     exempt: COMMON_EXEMPT,
   },
   docker: {
@@ -239,6 +251,9 @@ const P = {
     multiline: [],
     docPolicy: 'allowed',
     enforce: false,
+    // cm:why annotations are parsed here but prose is not policed, and no CM301 measurement
+    //   covers this format — the same reason as sql's, stated where the flag is read
+    advisoryTier: false,
     exempt: [...COMMON_EXEMPT, ...DOCKER_EXEMPT],
   },
 };
@@ -325,6 +340,23 @@ export function profileFor(filePath) {
     return BY_BASENAME[stem];
   }
   return null;
+}
+
+// cm:guard the SINGLE authority on "can these two files import each other" — ask it, never restate it
+//   from a literal; a second extension-keyed table in graph.mjs silently lost 5 extensions (ISS-32)
+export function ecosystemOf(filePath) {
+  const prof = profileFor(filePath);
+  return prof ? (prof.ecosystem ?? prof.id) : null;
+}
+
+// cm:guard a pair of files in different languages CANNOT reference each other — measured, that was 26 of
+//   36 hits in one repo, so firing there is a bug in the check and not a threshold to tune (§7.1)
+// cm:guard opt out on the PROFILE and never on the extension — a new BY_EXT entry must inherit its
+//   profile's answer, and eligible is the default so a new language cannot be left behind (ISS-32)
+export function advisoryEcosystemOf(filePath) {
+  const prof = profileFor(filePath);
+  if (!prof || prof.advisoryTier === false) return null;
+  return prof.ecosystem ?? prof.id;
 }
 
 // cm:guard a marker counts only in COMMENT text. A file that quotes one in a regex or a string

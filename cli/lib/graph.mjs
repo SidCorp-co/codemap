@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { diag, baselineKey } from './parse.mjs';
 import { retells } from './mass.mjs';
 import { connected } from './archmap.mjs';
+import { advisoryEcosystemOf } from './languages.mjs';
 
 const trim = (t) => (t.length > 60 ? `${t.slice(0, 57)}...` : t);
 
@@ -110,11 +111,6 @@ export function referentialDiags(g, { root, reg }) {
  * `types`) matches easily and the check stays quiet. A false negative costs nothing; a false positive is
  * what gets a warning tier switched off.
  */
-// cm:guard a pair of files in different languages CANNOT reference each other — measured, that was 26 of
-//   36 hits in one repo, so firing there is a bug in the check and not a threshold to tune (§7.1)
-const FAMILY = { ts: 'js', tsx: 'js', js: 'js', jsx: 'js', mjs: 'js', cjs: 'js', go: 'go', php: 'php', py: 'py', rs: 'rs' };
-const family = (p) => FAMILY[p.split('.').pop()] ?? null;
-
 export function advisoryDiags(g, { root, baseline = {}, importGraph } = {}) {
   const out = [];
   const cache = new Map();
@@ -148,11 +144,11 @@ export function advisoryDiags(g, { root, baseline = {}, importGraph } = {}) {
     if (e.external || !['contract', 'lockstep'].includes(e.kind)) continue;
     const [path, anchor] = e.target.split('#');
     if (!anchor || path === e.file) continue;
-    // cm:why checked BEFORE the language-family guard — archmap only ever emits same-language
+    // cm:why checked BEFORE the ecosystem guard — archmap only ever emits same-language
     //   edges, so a hit here is stronger evidence than a name match and short-circuits the guess
     if (importGraph && connected(importGraph, e.file, path)) continue;
-    const fam = family(e.file);
-    if (!fam || fam !== family(path)) continue;
+    const eco = advisoryEcosystemOf(e.file);
+    if (!eco || eco !== advisoryEcosystemOf(path)) continue;
     const target = readTarget(root, path, cache);
     const source = readTarget(root, e.file, cache);
     if (target.src === undefined || source.src === undefined) continue;

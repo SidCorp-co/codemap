@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { PROSE_CODES } from './parse.mjs';
-import { profileFor } from './languages.mjs';
+import { profileFor, ecosystemOf } from './languages.mjs';
 import { connected } from './archmap.mjs';
 
 const PATH_RE = /[\w./-]+\.(?:ts|tsx|js|jsx|mjs|cjs|go|php|py|rs|sql|prisma|graphql)\b/g;
@@ -164,6 +164,7 @@ export function contractCandidates(root, files) {
   for (const rel of files) {
     const prof = profileFor(rel);
     if (!prof) continue;
+    const eco = ecosystemOf(rel);
     let raw;
     try { raw = readFileSync(join(root, rel), 'utf8'); } catch { continue; }
     const src = codeOnly(raw);
@@ -179,7 +180,7 @@ export function contractCandidates(root, files) {
         if (!TOKEN_RE.test(lit) || RESERVED.test(lit) || seenInFile.has(lit)) continue;
         seenInFile.add(lit);
         const entry = byLiteral.get(lit) ?? new Map();
-        if (!entry.has(rel)) entry.set(rel, { file: rel, line: i + 1, lang: prof.id, eco: prof.ecosystem ?? prof.id });
+        if (!entry.has(rel)) entry.set(rel, { file: rel, line: i + 1, lang: prof.id, eco });
         byLiteral.set(lit, entry);
       }
     }

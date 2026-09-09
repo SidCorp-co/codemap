@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { profileFor } from '../cli/lib/languages.mjs';
+import { profileFor, PROFILES, ecosystemOf, advisoryEcosystemOf } from '../cli/lib/languages.mjs';
 import { walk, changedStaged, DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
 
 const GUARD_TEXT = 'the build stage and the runtime stage must install the same lockfile';
@@ -110,6 +110,65 @@ export function profileCases(pluginRoot, check) {
   check('profiles: registry.mjs decides scannability by asking profileFor',
     (src.match(/profileFor\(/g) ?? []).length >= 2,
     'walk() and gitFiles() must each ask profileFor');
+
+  const graphSrc = readFileSync(join(pluginRoot, 'cli', 'lib', 'graph.mjs'), 'utf8');
+  check('profiles: graph.mjs asks the profile table, and decides nothing itself',
+    /advisoryEcosystemOf\(/.test(graphSrc.replace(/^import .*$/m, '')),
+    'the advisory tier must CALL languages.mjs, not merely import it');
+
+  // cm:guard derived from the PROFILE, so every extension reaching a covered one is covered — this is
+  //   what makes a new BY_EXT entry impossible to leave behind, which is the whole of ISS-32
+  const covered = [['a.ts', 'ts'], ['a.tsx', 'ts'], ['a.mts', 'ts'], ['a.cts', 'ts'],
+    ['a.js', 'ts'], ['a.jsx', 'ts'], ['a.mjs', 'ts'], ['a.cjs', 'ts'],
+    ['a.go', 'go'], ['a.php', 'php'], ['a.py', 'py'], ['a.pyi', 'py'], ['a.rs', 'rust']];
+  for (const [path, eco] of covered) {
+    check(`profiles: ${path} is in the advisory tier as ${eco}`,
+      advisoryEcosystemOf(path) === eco,
+      `expected ${eco}, got ${advisoryEcosystemOf(path)}`);
+  }
+
+  // cm:guard an SFC shares TS's ecosystem and is still OUT of the advisory tier — no measurement
+  //   covers that file format, and collapsing the two turns CM301 on in every consumer Vue repo
+  for (const path of ['Widget.vue', 'Widget.svelte']) {
+    check(`profiles: ${path} shares the ts ecosystem`, ecosystemOf(path) === 'ts',
+      `expected ts, got ${ecosystemOf(path)}`);
+    check(`profiles: ${path} is out of the advisory tier`, advisoryEcosystemOf(path) === null,
+      `expected null, got ${advisoryEcosystemOf(path)} — CM301 would newly fire on SFC edges`);
+  }
+
+  for (const path of ['a.sql', 'a.sh', 'a.yml', 'Dockerfile']) {
+    check(`profiles: ${path} is out of the advisory tier`, advisoryEcosystemOf(path) === null,
+      `expected null, got ${advisoryEcosystemOf(path)}`);
+  }
+
+  for (const path of ['README.md', 'Dockerfile.md']) {
+    check(`profiles: ${path} has no ecosystem at all`,
+      ecosystemOf(path) === null && advisoryEcosystemOf(path) === null,
+      `expected null/null, got ${ecosystemOf(path)}/${advisoryEcosystemOf(path)}`);
+  }
+
+  // cm:guard the opt-out is spelled `advisoryTier`, never `advisory` — the registry already defines
+  //   `enforce.advisory` with the OPPOSITE polarity, and `enforce` itself is the prose knob (ISS-32)
+  check('profiles: no profile opts out through enforce or a colliding key',
+    Object.values(PROFILES).every((prof) => prof.advisory === undefined),
+    'a profile uses `advisory`, which collides with the registry\'s enforce.advisory');
+  // cm:guard asserted on the SOURCE because no profile sets the two independently — restoring the
+  //   enforce clause is invisible through the table and passed the whole suite green (ISS-32)
+  const advisoryBody = /export function advisoryEcosystemOf[\s\S]*?\n}/.exec(
+    readFileSync(join(pluginRoot, 'cli', 'lib', 'languages.mjs'), 'utf8'))?.[0] ?? '';
+  check('profiles: the advisory tier does not read enforce',
+    advisoryBody !== '' && !/\benforce\b/.test(advisoryBody),
+    'enforce is the PROSE-grammar switch and is overridable per repo (enforcementFor reads '
+    + 'perLang.enforce first), while advisoryEcosystemOf takes a path and no registry — so reading '
+    + 'it silently ignores the override and conflates two unrelated settings');
+
+  // cm:guard profileFor lowercases the extension and the deleted FAMILY did not, so .PY and .TS are
+  //   newly in the tier — pinned because it is part of ISS-32's accounting, not an accident
+  for (const [path, eco] of [['A.TS', 'ts'], ['A.PY', 'py'], ['A.MTS', 'ts']]) {
+    check(`profiles: ${path} resolves case-insensitively into the advisory tier`,
+      advisoryEcosystemOf(path) === eco,
+      `expected ${eco}, got ${advisoryEcosystemOf(path)}`);
+  }
 
   const roots = [];
   try {

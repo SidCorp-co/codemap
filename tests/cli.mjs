@@ -649,6 +649,40 @@ function advisoryCases(pluginRoot, check, roots) {
   check('cli: an imported package DIRECTORY counts as evidence, which is all Go ever names',
     !/repo\.go/.test(goDir.out),
     `Go's import model must not read as missing evidence:\n${goDir.out}`);
+
+  coverageCases(pluginRoot, check, roots);
+}
+
+// cm:guard these drive the CHECKER, not the resolver — a second narrowing applied downstream of the
+//   advisoryEcosystemOf call passed the whole suite green, which is ISS-32's defect reintroduced
+function coverageCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  writeFileSync(join(root, 'engine.mts'), 'export function unrelated() { return 1; }\n');
+  writeFileSync(join(root, 'caller.mts'),
+    '// cm:edge contract -> engine.mts#unrelated — the engine must consume this\n'
+    + 'export function listThings() { return []; }\n');
+  writeFileSync(join(root, 'engine.pyi'), 'def unrelated() -> int: ...\n');
+  writeFileSync(join(root, 'caller.pyi'),
+    '# cm:edge contract -> engine.pyi#unrelated — the engine must consume this\n'
+    + 'def listThings() -> list: ...\n');
+  writeFileSync(join(root, 'engine.ts'), 'export function unrelated() { return 1; }\n');
+  writeFileSync(join(root, 'Widget.vue'),
+    '// cm:edge contract -> engine.ts#unrelated — the engine must consume this\n'
+    + 'export function listThings() { return []; }\n');
+  cm(pluginRoot, root, 'baseline');
+
+  const out = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
+  check('cli: CM301 reaches a .mts pair — an extension BY_EXT resolves and the old table forgot',
+    /CM301/.test(out.out) && /caller\.mts:1/.test(out.out),
+    `an extension the profile table knows must not be silently out of the tier:\n${out.out}`);
+  check('cli: CM301 reaches a .pyi pair, for the same reason',
+    /CM301/.test(out.out) && /caller\.pyi:1/.test(out.out),
+    `a .pyi resolves to the py profile, which fires:\n${out.out}`);
+  check('cli: CM301 still never reaches a single-file component',
+    !/Widget\.vue/.test(out.out),
+    `an SFC shares TS's ecosystem and is out of the tier because no measurement covers that file `
+    + `format — widening it is a decision of its own, not a side effect:\n${out.out}`);
 }
 
 // cm:why a stub is a fixed-format double for archmap, not a real vendored copy — CM301's contract with
