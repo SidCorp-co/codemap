@@ -208,6 +208,106 @@ function channelCases(check) {
       + 'and billing it as doc reports it as machine-consumed');
   }
 
+  // cm:guard the orphan is pinned under BOTH tiers — CM001 carries it to prose when `grammar` is on,
+  //   so a case run only at the default would pass with the fallback still billing it as doc (ISS-36)
+  {
+    const orphan = 'and a third line is the orphan no channel loads';
+    const overSrc = [
+      '/** A doc comment the tooling parses. */',
+      'export type Row = { id: number };',
+      '',
+      '// cm:guard callers must hold the run lock',
+      '// and release it on every path out',
+      `// ${orphan}`,
+      'export function f() {}',
+    ].join('\n');
+    for (const grammar of [false, true]) {
+      const reg = { ...DEFAULT_REGISTRY, enforce: { ...DEFAULT_REGISTRY.enforce, grammar } };
+      const res = analyzeFile({ relPath: 'over.ts', src: overSrc, reg });
+      const om = fileMass({ relPath: 'over.ts', src: overSrc, res });
+      check(`mass: an annotation's orphaned continuation line is live prose (grammar: ${grammar})`,
+        om.live === orphan.length,
+        `live=${om.live} doc=${om.doc}, expected live=${orphan.length} — the line past the one adopted `
+        + 'wrap is narration, and CM204 neither is prose-family nor sits on the orphan\'s own line');
+      check(`mass: the orphaned continuation line is not a doc comment (grammar: ${grammar})`,
+        om.doc === 33,
+        `doc=${om.doc}, expected the 33 chars of the real doc comment alone — a doc figure carrying the `
+        + 'orphan reports narration as machine-consumed and hides it from the §11 number');
+
+      const { comments } = scanComments(overSrc, profileFor('over.ts'));
+      const whole = comments.filter((c) => c.text).reduce((n, c) => n + c.text.length, 0);
+      check(`mass: an overflowing annotation keeps conservation (grammar: ${grammar})`,
+        om.annotation + om.frozen + om.live + om.doc + om.header === whole,
+        `billed ${om.annotation + om.frozen + om.live + om.doc + om.header} != ${whole} of comment text`);
+    }
+  }
+
+  // cm:guard the SET is pinned, not only the channel it feeds — mass.mjs bills the annotation's own
+  //   line and its wrap from `annLines` first, so a member added there moves no figure and fails nothing
+  {
+    const memSrc = [
+      '// cm:guard callers must hold the run lock',
+      '// and release it on every path out',
+      '// and a third line is the first orphan',
+      '// and a fourth line is the second orphan',
+      'export function f() {}',
+      '',
+      '// plain narration under no annotation at all',
+      'export const x = 1;',
+    ].join('\n');
+    const reg = { ...DEFAULT_REGISTRY, enforce: { ...DEFAULT_REGISTRY.enforce, grammar: false } };
+    const res = analyzeFile({ relPath: 'mem.ts', src: memSrc, reg });
+    check('mass: overflowLines holds every line past the wrap and nothing else',
+      [...res.overflowLines].sort((a, b) => a - b).join(',') === '3,4',
+      `overflowLines=[${[...res.overflowLines]}], expected [3,4] — line 1 is the annotation, line 2 its `
+      + 'adopted wrap, line 7 prose under no annotation, and none of the three is an overflow line');
+
+    // cm:guard the run stands ALONE in this fixture — the sum is the two orphans, so a prose line under
+    //   no annotation sharing it would move channel under ISS-40 and fail this on a false cause
+    const runSrc = memSrc.split('\n').slice(0, 5).join('\n');
+    const runRes = analyzeFile({ relPath: 'run.ts', src: runSrc, reg });
+    const mm = fileMass({ relPath: 'run.ts', src: runSrc, res: runRes });
+    check('mass: every line past the wrap reaches prose, not just the first',
+      mm.live === 36 + 38,
+      `live=${mm.live} doc=${mm.doc}, expected the 36 + 38 chars of both orphans — a rescue that stopped `
+      + 'at the first would leave the rest of the run billed as machine-consumed');
+  }
+
+  // cm:guard a profile whose OWN `enforce: false` turns the tier off is covered — registry.mjs reads
+  //   `prof.enforce` ahead of the registry key, so sh/sql/yaml/docker carry this bug unconfigured (ISS-36)
+  {
+    const shSrc = [
+      '# cm:guard callers must hold the run lock',
+      '# and release it on every path out',
+      '# and a third line is the orphan no channel loads',
+      'run_it',
+    ].join('\n');
+    const res = analyzeFile({ relPath: 'deploy.sh', src: shSrc, reg: DEFAULT_REGISTRY });
+    const sm = fileMass({ relPath: 'deploy.sh', src: shSrc, res });
+    check('mass: an orphan in a profile with grammar off by profile is live prose',
+      sm.live === 47 && sm.doc === 0,
+      `live=${sm.live} doc=${sm.doc} — the default registry leaves sh's own enforce: false in force, `
+      + 'so this shape needs no registry key at all');
+  }
+
+  // cm:guard the header claims the orphan BEFORE prose does — §4.1 is CM204's own advice for this
+  //   shape, so a header channel that shed the line would bill orientation prose as narration (ISS-36)
+  {
+    const hdrSrc = [
+      '// cm:guard callers must hold the run lock',
+      '// and release it on every path out',
+      '// and a third line still inside the module header',
+      '',
+      'export function f() {}',
+    ].join('\n');
+    const reg = { ...DEFAULT_REGISTRY, enforce: { ...DEFAULT_REGISTRY.enforce, grammar: false } };
+    const res = analyzeFile({ relPath: 'hdr.ts', src: hdrSrc, reg });
+    const hm = fileMass({ relPath: 'hdr.ts', src: hdrSrc, res });
+    check('mass: an annotation overflowing inside the module header is billed to the header',
+      hm.header > 0 && hm.live === 0,
+      `header=${hm.header} live=${hm.live} doc=${hm.doc}`);
+  }
+
   const frozen = new Set([baselineKey('plain narration nobody froze')]);
   const res2 = analyzeFile({ relPath: 'row.ts', src, reg: DEFAULT_REGISTRY, frozen });
   const m2 = fileMass({ relPath: 'row.ts', src, res: res2, frozen });
