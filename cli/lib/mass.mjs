@@ -140,7 +140,10 @@ export function fileMass({ relPath, src, res, frozen }) {
     const prose = proseAt.get(c.line);
     if (prose) {
       const key = baselineKey(prose.text ?? prose.message);
-      if (frozen?.has(key) || (prose.blockKey && frozen?.has(prose.blockKey))) out.frozen += c.text.length;
+      const baselined = frozen?.has(key) || (prose.blockKey && frozen?.has(prose.blockKey));
+      // cm:edge contract -> cli/cm.mjs — `|| d.sited` bypasses the baseline there (§4: a sited line
+      //   cannot be frozen), so a frozen channel ignoring `sited` would contradict verify (ISS-41)
+      if (baselined && !prose.sited) out.frozen += c.text.length;
       else out.live += c.text.length;
       continue;
     }

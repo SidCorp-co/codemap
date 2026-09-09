@@ -315,6 +315,34 @@ function channelCases(check) {
     m2.frozen > 0 && m2.live === 0 && m2.frozen === m.live,
     `frozen=${m2.frozen} live=${m2.live} vs live=${m.live}`);
 
+  // cm:guard a SITED prose line is never frozen — cli/cm.mjs bypasses the baseline on `d.sited`, so a
+  //   frozen channel that captured it would read as paid while `cm verify` still errored on it (ISS-41)
+  {
+    const sitedSrc = [
+      'export const x = 1;',
+      '',
+      '// cm:guard callers must hold the run lock',
+      '// and release it on every path out',
+      '// the orphan that somebody froze back when grammar was on',
+      'export function f() {}',
+    ].join('\n');
+    const bare = analyzeFile({ relPath: 'sited.ts', src: sitedSrc, reg: DEFAULT_REGISTRY });
+    const orphan = bare.diags.find((d) => d.code === 'CM001' && d.sited);
+    const byBlock = new Set([orphan.blockKey]);
+    const sres = analyzeFile({ relPath: 'sited.ts', src: sitedSrc, reg: DEFAULT_REGISTRY, frozen: byBlock });
+    const sm = fileMass({ relPath: 'sited.ts', src: sitedSrc, res: sres, frozen: byBlock });
+    check('mass: a sited prose line stays live even when its block key is frozen',
+      sm.frozen === 0 && sm.live > 0,
+      `frozen=${sm.frozen} live=${sm.live} — the block key froze a line §4 says cannot be frozen`);
+
+    const byOwnKey = new Set([baselineKey(orphan.text ?? orphan.message)]);
+    const ores = analyzeFile({ relPath: 'sited.ts', src: sitedSrc, reg: DEFAULT_REGISTRY, frozen: byOwnKey });
+    const om2 = fileMass({ relPath: 'sited.ts', src: sitedSrc, res: ores, frozen: byOwnKey });
+    check('mass: a sited prose line stays live even when its OWN key is frozen',
+      om2.frozen === 0 && om2.live > 0,
+      `frozen=${om2.frozen} live=${om2.live}`);
+  }
+
   const rolled = massOf([m, { ...m, relPath: 'other.ts', narrative: 10 }]);
   check('mass: the total is every channel summed',
     rolled.total.comment === (m.annotation + m.frozen + m.live + m.doc + m.header) * 2,
