@@ -239,8 +239,8 @@ const P = {
     exempt: COMMON_EXEMPT,
   },
   docker: {
-    // cm:why its own id rather than a reuse of yaml — the id is what `cm ls` and every diagnostic
-    //   print, so a Dockerfile reporting as yaml misnames the file in its own error (ISS-25)
+    // cm:why its own id rather than a reuse of yaml — it is the only profile whose exempt list carries
+    //   Docker's parser directives, and `cm ls` prints the id, so reporting as yaml misnames it (ISS-25)
     id: 'docker',
     lineLeaders: ['#'],
     docLineLeaders: [],
@@ -281,6 +281,8 @@ const BASENAME_STEMS = Object.keys(BY_BASENAME);
 
 // cm:why a documentation file is the one place a FALSE annotation outranks a missed one (§6): under a
 //   `#` leader a fenced example `# cm:edge` becomes a real edge that fails a consumer's CI (ISS-25)
+// cm:guard this deny-list is the only place to close that — `md` is in no profile, so it misses BY_EXT
+//   and reaches the stem rules regardless, and no reordering of the lookup spares it (ISS-25)
 // cm:guard every spelling of a format already here must be here too — `adoc` and `asciidoc` denied
 //   while `asc` resolved is the same CM102 break wearing the third name for one format (ISS-25)
 const DOC_EXT_DENY = new Set([
@@ -290,8 +292,8 @@ const DOC_EXT_DENY = new Set([
 
 // cm:why junk is what a conflicted merge or `patch` writes, holding the PRE-merge annotations, so a
 //   variant whose last component is one is refused outright — `Dockerfile.orig` read as live (ISS-25)
-// cm:guard never merged with DOC_EXT_DENY — `example`/`sample`/`dist` are committed on purpose and go
-//   on being scanned, so one list cannot serve both (ISS-25)
+// cm:guard only words meaning "not the real file" go here — `example`/`sample`/`dist` are committed on
+//   purpose and must keep scanning; doc words are denied on ANY component, these only on the last
 const JUNK_WORDS = new Set(['bak', 'orig', 'rej', 'save', 'swp', 'tmp', 'old']);
 
 export const PROFILES = P;
@@ -359,6 +361,8 @@ export function advisoryEcosystemOf(filePath) {
 //   file: that comment IS a header marker, and the file then skips itself (ISS-26)
 // cm:guard the head SLICE is the whole of the window, never bounded by a comment's start line: a block
 //   opened on line 1 would be a header for its whole length, skipping the file on a marker far below
+// cm:edge lockstep -> tests/cases.mjs — `late.ts` and `commented-out.ts` pin that slice and both fail
+//   if it goes, which is reachable by commenting out code that quotes a marker (ISS-26)
 // cm:why the marker is tested against scan.mjs's own joined text, never a local re-join: a two-word
 //   marker legitimately spans two lines of one block header and `.*` never crosses a newline
 // cm:why the slice is scanned rather than the whole file: asking it of the whole file cost 407 ms on a

@@ -12,8 +12,8 @@
 #
 # cm:guard everything below stays one step in one job, never crossing a job boundary with a value
 #   derived from the secrets: a job OUTPUT matching a registered secret is dropped, not masked
-# cm:guard the loop never echoes a repo name or the token — this workflow's run log is world-readable,
-#   so the summary line only counts, it never lists which consumer was which
+# cm:guard neither the loop nor any job or step name may carry a repo name or the token — this run log
+#   is world-readable, and a name templated from the matrix printed it there; the summary only counts
 name: notify vendored-tier consumers
 on:
   push:

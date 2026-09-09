@@ -40,7 +40,10 @@ for (const t of analyzeCases) {
   const reg = t.reg
     ? { ...DEFAULT_REGISTRY, ...t.reg, enforce: { ...DEFAULT_REGISTRY.enforce, ...(t.reg.enforce ?? {}) } }
     : DEFAULT_REGISTRY;
-  const res = analyzeFile({ relPath: t.file, src: t.src, reg });
+  // cm:why a case may declare frozen prose by TEXT — §4's "a frozen line is never a continuation" and
+  //   the overflow count that rests on it are otherwise reachable by no case at all (ISS-33)
+  const res = analyzeFile({ relPath: t.file, src: t.src, reg,
+    frozen: t.frozen ? new Set(t.frozen.map(baselineKey)) : undefined });
 
   if (t.skipped) {
     check(t.name, res.skipped === t.skipped, `expected skipped=${t.skipped}, got ${res.skipped}`);

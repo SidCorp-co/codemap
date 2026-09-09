@@ -90,6 +90,38 @@ export const analyzeCases = [
       + ' because releasing between rows lets a second dispatcher claim the tail'],
   },
   {
+    // cm:edge lockstep -> cli/lib/analyze.mjs — the adoption branch's FROZEN test is what this pins,
+    //   and ISS-22 is the incident that put it there
+    name: 'ts: a FROZEN line directly under an annotation is still refused as its wrap',
+    file: 'frozen-wrap.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   a stranger parked this sentence here',
+      'const r = 1;',
+    ].join('\n'),
+    frozen: ['a stranger parked this sentence here'],
+    codes: ['CM001'],
+    annotations: ['guard'],
+    texts: ['the batch is claimed whole, never row by row'],
+  },
+  {
+    // cm:guard the frozen line sits BELOW a legal wrap here — the position the adoption branch never
+    //   reaches, where counting it would bill a stranger's sentence as the annotation's lost tail
+    name: 'ts: a FROZEN line below a legal wrap ends the run rather than counting as overflow',
+    file: 'frozen-overflow.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      '//   a stranger parked this sentence here',
+      'const r = 1;',
+    ].join('\n'),
+    frozen: ['a stranger parked this sentence here'],
+    codes: ['CM001'],
+    annotations: ['guard'],
+    texts: ['the batch is claimed whole, never row by row'
+      + ' because releasing between rows lets a second dispatcher claim the tail'],
+  },
+  {
     name: 'ts: an annotation wrapping onto exactly one line draws no CM204',
     file: 'wrap-fits.ts',
     src: [

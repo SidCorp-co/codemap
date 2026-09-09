@@ -131,7 +131,11 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
 
     // cm:guard the run is counted but NOT consumed — an overflow line stays ordinary prose and still
     //   reaches CM001 below, because CM204 reports the truncation and never licenses the line (ISS-33)
-    const chain = c.firstOnLine !== false ? chainAt.get(c.line - 1) : undefined;
+    // cm:guard a FROZEN line ends the run rather than counting in it — §4 says it is never a
+    //   continuation, so billing it as the annotation's lost tail is ISS-22's fault one line lower
+    const chain = c.firstOnLine !== false && !frozen?.has(baselineKey(text))
+      ? chainAt.get(c.line - 1)
+      : undefined;
     if (chain && chain.leader === c.leader) {
       overflow.set(chain.ann, (overflow.get(chain.ann) ?? 0) + 1);
       chainAt.set(c.line, chain);
@@ -199,8 +203,8 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     //   comment, so counting it would inflate the debt line the case study quotes as ground truth
     blockKeys,
     blockCounts,
-    // cm:guard the "is that frozen comment GONE" test reads THIS, never proseKeys — words that moved into a
-    //   cm: tag are still in the file, so a relabel cannot report the debt as paid (ISS-25)
+    // cm:guard the "is that frozen comment GONE" test reads THIS, never proseKeys — words relabelled
+    //   into an annotation are still in the file, so a relabel cannot report the debt as paid (ISS-25)
     presentKeys: [...new Set([
       ...proseKeys, ...blockKeys,
       ...annotations.flatMap((a) => [a.text, a.wrap].filter(Boolean).map((t) => baselineKey(t))),

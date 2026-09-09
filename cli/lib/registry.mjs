@@ -92,8 +92,8 @@ export function loadBaseline(root) {
       continue;
     }
     const set = new Set(keys);
-    // cm:why a side-channel property, never encoded into the key string itself — every existing
-    //   frozen.has(blockKey) reader stays correct without knowing this exists (ISS-9)
+    // cm:why a side-channel property, never encoded into the key string itself — sited/CM302 detection,
+    //   sweep's alive check and anchor selection all stay correct without knowing it exists (ISS-9)
     if (!Array.isArray(v) && v.blocks) set.blockCounts = v.blocks;
     out[file] = set;
   }
