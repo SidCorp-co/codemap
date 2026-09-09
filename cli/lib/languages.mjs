@@ -239,9 +239,8 @@ const P = {
     exempt: COMMON_EXEMPT,
   },
   docker: {
-    // cm:why its own id rather than a reuse of yaml — the id is what `cm ls`, `cm help languages` and
-    //   every diagnostic print, so a Dockerfile reporting as yaml misnames the file in its own error,
-    //   and this is the only profile where Docker's parser directives can be exempt (ISS-25)
+    // cm:why its own id rather than a reuse of yaml — the id is what `cm ls` and every diagnostic
+    //   print, so a Dockerfile reporting as yaml misnames the file in its own error (ISS-25)
     id: 'docker',
     lineLeaders: ['#'],
     docLineLeaders: [],
@@ -280,11 +279,8 @@ const BY_BASENAME = {
 //   documentation or leftover file is named after — `.go` as a stem would swallow every Go file
 const BASENAME_STEMS = Object.keys(BY_BASENAME);
 
-// cm:why a documentation file is the one place a FALSE annotation outranks a missed one (§6): its
-//   fenced examples are not declarations, and under a `#` leader a markdown heading is a comment,
-//   so an example `# cm:edge` becomes a real edge whose stale target fails a consumer's CI with
-//   CM102 in a repo that changed nothing. Ordering cannot spare it — `md` is in no profile either,
-//   so it misses BY_EXT and reaches the stem rules regardless (ISS-25)
+// cm:why a documentation file is the one place a FALSE annotation outranks a missed one (§6): under a
+//   `#` leader a fenced example `# cm:edge` becomes a real edge that fails a consumer's CI (ISS-25)
 // cm:guard every spelling of a format already here must be here too — `adoc` and `asciidoc` denied
 //   while `asc` resolved is the same CM102 break wearing the third name for one format (ISS-25)
 const DOC_EXT_DENY = new Set([
@@ -293,16 +289,15 @@ const DOC_EXT_DENY = new Set([
 ]);
 
 // cm:why junk is what a conflicted merge or `patch` writes, holding the PRE-merge annotations, so a
-//   variant whose last component is one is refused outright — `Dockerfile.orig` beside a fixed
-//   Dockerfile reported its stale edge as live. `example`/`sample`/`dist` are committed on purpose
-//   and keep scanning, which is why one list cannot serve both (ISS-25)
+//   variant whose last component is one is refused outright — `Dockerfile.orig` read as live (ISS-25)
+// cm:guard never merged with DOC_EXT_DENY — `example`/`sample`/`dist` are committed on purpose and go
+//   on being scanned, so one list cannot serve both (ISS-25)
 const JUNK_WORDS = new Set(['bak', 'orig', 'rej', 'save', 'swp', 'tmp', 'old']);
 
 export const PROFILES = P;
 
 // cm:guard split on the dot and judged per component, never on the trailing extension alone:
-//   `Dockerfile.md.bak` and `Dockerfile.markdown.old` are documentation whose doc word is not last,
-//   and a trailing-only test read both as Dockerfiles (ISS-25)
+//   `Dockerfile.md.bak` is documentation whose doc word is not last, and a trailing-only test missed it
 function variantWords(variant) {
   return variant.replace(/~+$/, '').split('.').filter(Boolean);
 }
@@ -321,8 +316,7 @@ function isLeftover(variant) {
 // cm:guard extension first, basename second — a hit in BY_EXT wins, or `x.yml` resolves by a stem
 //   rule and every YAML file in the tree changes profile
 // cm:guard this is the single authority on what is scannable; registry.mjs asks it rather than
-//   restating it, and the SCAN_EXT regex that used to be that second list is why Dockerfiles were
-//   indexed by `cm ls` and invisible to `cm verify` at the same time (ISS-25)
+//   restating it — a second SCAN_EXT list left Dockerfiles in `cm ls` and out of `cm verify` (ISS-25)
 export function profileFor(filePath) {
   const base = String(filePath).split(/[\\/]/).pop() ?? '';
   const ext = /\.([a-z0-9]+)$/i.exec(base)?.[1]?.toLowerCase();
@@ -359,23 +353,16 @@ export function advisoryEcosystemOf(filePath) {
   return prof.ecosystem ?? prof.id;
 }
 
-// cm:guard a marker counts only in COMMENT text. A file that quotes one in a regex or a string
-//   literal is ordinary code, and testing raw source skipped this file and registry.mjs whole,
-//   hiding every cm: annotation in both from every consumer (ISS-26). Do not name a marker
-//   verbatim in a comment inside the first GENERATED_HEAD_LINES lines of any file: that comment
-//   IS a header marker and the file skips itself.
-// cm:guard the head SLICE is the whole of the window, and the window must never be bounded by a
-//   comment's start line instead: a block carries one start line and text joined from all of them,
-//   so bounding the start made a block opened on line 1 a header for its whole length and a marker
-//   400 lines down skipped the file again — reachable by commenting out code that quotes a marker.
-//   The golden cases are `late.ts` (a marker below the window) and `commented-out.ts` (a block
-//   opened inside it); drop the slice and both fail.
-// cm:why the marker is tested against the scanner's own joined text rather than a local re-join,
-//   because a two-word marker legitimately spans two lines of one block header and `.*` never
-//   crosses a newline — scan.mjs is the single authority on that normalisation
-// cm:why the slice is scanned rather than the whole file: this rule exists for protobuf and bundler
-//   output, and asking the question of the whole file cost 407 ms on a 3.89 MB generated file
-//   where the slice costs 2 ms
+// cm:guard a marker counts only in COMMENT text — a file quoting one in a regex or a string literal is
+//   ordinary code, and testing raw source skipped this file and registry.mjs whole (ISS-26)
+// cm:guard never name a marker verbatim in a comment inside the first GENERATED_HEAD_LINES lines of any
+//   file: that comment IS a header marker, and the file then skips itself (ISS-26)
+// cm:guard the head SLICE is the whole of the window, never bounded by a comment's start line: a block
+//   opened on line 1 would be a header for its whole length, skipping the file on a marker far below
+// cm:why the marker is tested against scan.mjs's own joined text, never a local re-join: a two-word
+//   marker legitimately spans two lines of one block header and `.*` never crosses a newline
+// cm:why the slice is scanned rather than the whole file: asking it of the whole file cost 407 ms on a
+//   3.89 MB generated file where the slice costs 2 ms
 export function isGenerated(src, prof) {
   const head = src.split('\n', GENERATED_HEAD_LINES).join('\n');
   const { comments } = scanComments(head, prof, { flushOpen: true });

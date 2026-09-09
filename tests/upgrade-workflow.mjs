@@ -1,8 +1,7 @@
-// cm:why the shipped install step used to `cd /tmp/codemap` then run `cm.mjs install` in the same
-//   script — cm.mjs has no --root, so it vendors into $(pwd), and the `cd` leaked forward and
-//   pointed that at the throwaway CLONE instead of the checked-out consumer repo. The PR came out
-//   empty, silently, every run (ISS-5). This runs the shipped script text itself — not a paraphrase
-//   of it — so a regression here fails for the same reason a real workflow run would silently not.
+// cm:why runs the shipped script text itself, never a paraphrase, so a regression fails here for the
+//   same reason a real workflow run would silently not (ISS-5)
+// cm:guard never `cd` before `cm install` — cm.mjs has no --root and vendors into $(pwd), so a leaked
+//   `cd` pointed it at the throwaway clone and the PR came out empty, every run (ISS-5)
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';

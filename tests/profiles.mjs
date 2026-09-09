@@ -84,9 +84,8 @@ export function profileCases(pluginRoot, check) {
     profileFor('a.vue') === profileFor('a.svelte'),
     'expected one object; got two distinct profiles');
 
-  // cm:why every one of these resolved to `docker` when the deny-list read only the trailing
-  //   extension, so a fenced ```dockerfile example in a docs page became a real annotation and a
-  //   stale target in one failed a consumer's CI with CM102 (ISS-25)
+  // cm:why every one of these resolved to `docker` when the deny-list read only the trailing extension,
+  //   so a fenced example in a docs page became a real annotation and failed a consumer's CI (ISS-25)
   const unresolved = ['Dockerfile.md', 'Dockerfile.markdown', 'Dockerfile.txt', 'Dockerfile.rst',
     'Dockerfile.adoc', 'Dockerfile.asciidoc', 'Dockerfile.prod.md', 'README.md', 'LICENSE',
     'Makefile', 'Jenkinsfile', '.gitignore',

@@ -19,10 +19,10 @@ const DEFAULT_EXCLUDE = [
   '**/.claude/worktrees/**', '**/*-backup-*/**', '**/storybook-static/**',
 ];
 
-// cm:guard these hold whatever the registry's `exclude` says — a project onboarded by an older `cm init`
-// carries that list frozen in its file, so a path that must never be scanned cannot live in the default
-// alone. `.forge/codemap/**` is the vendored copy of this very tool: scanning it reports the tool's own
-// annotations as the project's, and one `cm install` would flood the baseline.
+// cm:guard these hold whatever the registry's `exclude` says — an older `cm init` froze that list into
+//   the project's file, so a path that must never be scanned cannot live in the default alone
+// cm:why `.forge/codemap/**` is the vendored copy of this very tool: scanning it reports the tool's own
+//   annotations as the project's, and one `cm install` would flood the baseline
 const HARD_EXCLUDE = ['**/.forge/codemap/**', '**/node_modules/**', '**/.git/**'];
 
 export const DEFAULT_REGISTRY = {
@@ -93,8 +93,7 @@ export function loadBaseline(root) {
     }
     const set = new Set(keys);
     // cm:why a side-channel property, never encoded into the key string itself — every existing
-    //   frozen.has(blockKey) reader (sited/CM302 detection, sweep's alive check, anchor selection)
-    //   stays correct without knowing this exists (ISS-9)
+    //   frozen.has(blockKey) reader stays correct without knowing this exists (ISS-9)
     if (!Array.isArray(v) && v.blocks) set.blockCounts = v.blocks;
     out[file] = set;
   }
