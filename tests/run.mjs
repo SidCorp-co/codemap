@@ -21,6 +21,7 @@ import { prCommentCases } from './prcomment.mjs';
 import { proposeCases } from './propose.mjs';
 import { massCases } from './mass.mjs';
 import { profileCases } from './profiles.mjs';
+import { mutateCases } from './mutate-cases.mjs';
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -166,6 +167,7 @@ mcpCases(PLUGIN_ROOT, check);
 prCommentCases(PLUGIN_ROOT, check);
 proposeCases(PLUGIN_ROOT, check);
 massCases(PLUGIN_ROOT, check);
+mutateCases(PLUGIN_ROOT, check);
 
 console.log(`codemap golden corpus: ${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.error(`  FAIL ${f}`);

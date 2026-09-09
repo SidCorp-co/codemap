@@ -37,17 +37,25 @@ bin/cm verify        # the repo checks itself with its own checker
 
 Both run in CI on every push and pull request (`.github/workflows/ci.yml`).
 
-Neither of them proves that a mechanism you just added is doing any work: a green corpus says the
-change broke nothing, not that anything pins the new rule. When a change adds one, declare it in
-`tests/mutate.mjs` and run that:
+A green corpus says the change broke nothing. It does **not** say the mechanism the change just
+added is doing any work — in ISS-26 that gap produced dead code twice in one issue, each time with a
+`cm:` annotation crediting the dead half. When a change adds a mechanism to the checker, declare it
+in `tests/mutate.mjs` and run that:
 
 ```bash
-node tests/mutate.mjs   # NOT a gate, and not in CI: one full corpus run per mutation, ~42s each
+node tests/mutate.mjs --only <id>   # while iterating on one new point
+node tests/mutate.mjs               # the whole declared list
 ```
 
-It prints which golden case pins each declared mechanism, with an unmutated control in the same
-table, and fails when a mechanism turns out to be pinned by nothing. Opt-in on purpose — the cost is
-why it is not a gate.
+It removes each declared mechanism in a throwaway copy of the working tree, runs the whole corpus
+against it, and names the checks that failed — with an unmutated control in the same table whose
+result gates every other row. It fails when a mechanism turns out to be pinned by nothing.
+
+NOT a gate, and in no workflow: it costs one full corpus run per declared point **plus one for the
+control**, so the whole list is several minutes. That cost is why it is opt-in. It answers for
+`node tests/run.mjs` only — a mechanism that only `bin/cm verify` pins reads as dead there, so check
+that gate by hand. Its own classifying and parsing are pinned by `tests/mutate-cases.mjs`, which
+does run in the corpus; importing the harness runs no mutation.
 
 ## Releasing
 
