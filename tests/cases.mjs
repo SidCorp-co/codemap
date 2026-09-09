@@ -926,8 +926,8 @@ export const analyzeCases = [
     annotations: [],
   },
   {
-    // cm:guard this is the case that decides `every` over `some` — under `some` one leading HTML line
-    //   would exempt the whole run and a 25-line narration header in an SFC would go unreported
+    // cm:guard this pins CM011's count to the BILLABLE half of a mixed header — count the whole
+    //   span instead, and a 25-line narration behind a short HTML banner goes unreported
     name: 'sfc: a mixed header whose BILLABLE half is over the max is still CM011 (ISS-28)',
     file: 'mixed-over.vue',
     src: ['<!--', ...Array(3).fill(' a short banner'), '-->', '/*', ...Array(23).fill(' * narration'), '*/', '',
