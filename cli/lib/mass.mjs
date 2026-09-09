@@ -98,8 +98,8 @@ export function narrativeMass(perFile) {
  *   text alone — which line is an annotation's wrap, and which comment is prose — are analyze.mjs's
  *   verdict rather than a second implementation of it.
  */
-// cm:edge contract -> cli/lib/analyze.mjs — the channels read `annotations`, `diags` and
-//   `header` off the analysis; deriving them from the source again would drift from it
+// cm:edge contract -> cli/lib/analyze.mjs — the channels read `annotations`, `diags`,
+//   `ignores` and `header` off the analysis; deriving them from the source again would drift from it
 export function fileMass({ relPath, src, res, frozen }) {
   const prof = profileFor(relPath);
   const out = { relPath, annotation: 0, frozen: 0, live: 0, doc: 0, header: 0, narrative: 0, annotations: 0, retelling: 0 };
@@ -156,8 +156,8 @@ export function fileMass({ relPath, src, res, frozen }) {
     if (prof.proseExemptBlockOpens?.includes(c.leader)) { out.live += c.text.length; continue; }
     // cm:guard §4.2 makes `/** */` documentation BY FORM and every other form prose, `/* */` included,
     //   so only `doc` is exempt here and a new kind fails toward prose rather than into doc (ISS-40)
-    // cm:guard this is also the ONLY rule billing an annotation's orphaned continuation line to live —
-    //   never rescue one by line number again: that bills a doc block sharing its line to prose (ISS-48)
+    // cm:guard at `grammar: false` it is also the only rule billing an annotation's orphaned continuation
+    //   line to live — above it, only that line's own CM001 does, and it is raised under the prose tier alone
     if (c.kind !== 'doc') { out.live += c.text.length; continue; }
     out.doc += c.text.length;
   }

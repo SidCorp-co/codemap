@@ -284,6 +284,12 @@ function channelCases(check) {
     const shReg = { ...DEFAULT_REGISTRY, enforce: { ...DEFAULT_REGISTRY.enforce, grammar: false } };
     const shRes = analyzeFile({ relPath: 'shared.ts', src: shSrc, reg: shReg });
     const sm = fileMass({ relPath: 'shared.ts', src: shSrc, res: shRes });
+    // cm:guard the PREMISE is asserted, not only the split — the two figures below also hold for a
+    //   fixture that is merely a doc block and a trailing comment, so a scanner change empties them
+    check('mass: line 3 of the shared-line fixture really is an orphan of the run',
+      shRes.diags.some((d) => d.code === 'CM204' && d.line === 1),
+      `diags=${JSON.stringify(shRes.diags.map((d) => `${d.code}@${d.line}`))}, expected CM204 at line 1 — `
+      + 'without it the annotation never overflowed and the two cases below test a different shape');
     check('mass: a doc block sharing the orphan\'s line keeps its own doc channel',
       sm.doc === 30,
       `doc=${sm.doc} live=${sm.live}, expected the 30 chars of the doc block alone — the orphan and the `
@@ -292,6 +298,15 @@ function channelCases(check) {
       sm.live === 15,
       `live=${sm.live} doc=${sm.doc}, expected the 15 chars of the orphan alone — §4.2's form rule bills `
       + 'it, so removing the line-keyed rescue must not take the orphan out of prose with it');
+
+    // cm:guard the SAME fixture is pinned at `grammar: true`, where the split is still wrong and this
+    //   is not the branch that decides it — proseAt is keyed on the line and claims both comments (ISS-51)
+    const onRes = analyzeFile({ relPath: 'shared.ts', src: shSrc, reg: DEFAULT_REGISTRY });
+    const on = fileMass({ relPath: 'shared.ts', src: shSrc, res: onRes });
+    check('mass: at the prose tier the doc block is still billed off the orphan\'s own CM001',
+      on.live === 45 && on.doc === 0,
+      `live=${on.live} doc=${on.doc}, expected live=45 doc=0 — today the orphan raises CM001 at line 3 and `
+      + 'proseAt bills the doc block from it; ISS-51 is where that is keyed by comment, and this figure moves');
 
     // cm:guard the run stands ALONE in this fixture — the sum is the two orphans, so a prose line under
     //   no annotation sharing it would move channel under ISS-40 and fail this on a false cause
