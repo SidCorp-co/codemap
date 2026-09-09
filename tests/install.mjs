@@ -207,4 +207,65 @@ export function installCases(pluginRoot, check) {
       'a per-clone hook cannot gate a team');
     rmSync(root, { recursive: true, force: true });
   }
+
+  // cm:guard these cases run the hook, never grep it — the defect they pin was a template that read
+  //   correctly and reported nothing, so a substring assertion is what missed it in the first place (ISS-35)
+  {
+    const root = makeRepo();
+    run(pluginCm, root, 'install', '--git-hook');
+
+    const runStagedHook = (name, body) => {
+      writeFileSync(join(root, name), body);
+      git(root, 'add', name);
+      const res = spawnSync('sh', [join(root, '.git', 'hooks', 'pre-commit')], {
+        cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
+      });
+      const out = `${res.stdout}${res.stderr}`;
+      git(root, 'rm', '-q', '--cached', name);
+      rmSync(join(root, name), { force: true });
+      return { out, status: res.status };
+    };
+
+    const unclosed = runStagedHook('iss35-unclosed.ts',
+      '/* this block comment is never closed\nexport const a = 1;\n// cm:why a why nothing will read\n');
+    check('install: the commit hook reports a file whose annotations have stopped being read',
+      /CM203/.test(unclosed.out),
+      `the hook is the one gate a trial repo installs; it must not be silent about CM203:\n${unclosed.out}`);
+    check('install: CM203 alone does not block the commit',
+      unclosed.status === 0,
+      `CM203 is structural and cannot set an exit code, so the hook must still pass:\n${unclosed.out}`);
+
+    const malformed = runStagedHook('iss35-grammar.ts',
+      'export const b = 2;\n// cm:hack no-key until:whenever — a malformed hack line\n');
+    check('install: the commit hook still blocks a grammar error',
+      malformed.status !== 0 && /CM007/.test(malformed.out),
+      `the grammar tier must keep gating exactly what it gated before:\n${malformed.out}`);
+
+    const dangling = runStagedHook('iss35-edge.ts',
+      'export const c = 3;\n// cm:edge contract -> does/not/exist.ts — a target that is not there\n');
+    check('install: the commit hook does not gate on a referential diagnostic',
+      dangling.status === 0 && !/CM102/.test(dangling.out),
+      `a dangling edge goes red on files the committer never touched; CI catches it, not the hook:\n${dangling.out}`);
+
+    rmSync(root, { recursive: true, force: true });
+  }
+
+  // cm:edge lockstep -> cli/lib/install.mjs — the committed hook and the per-clone one are one template,
+  //   and a change that reaches only one leaves half the repos on the old coverage (ISS-35)
+  {
+    const root = makeRepo();
+    run(pluginCm, root, 'install');
+    git(root, 'config', 'core.hooksPath', '.forge/codemap/hooks');
+    writeFileSync(join(root, 'iss35-team.ts'),
+      '/* never closed\nexport const a = 1;\n// cm:why a why nothing will read\n');
+    git(root, 'add', 'iss35-team.ts');
+    const teamHook = spawnSync('sh', [join(root, '.forge', 'codemap', 'hooks', 'pre-commit')], {
+      cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
+    });
+    const teamOut = `${teamHook.stdout}${teamHook.stderr}`;
+    check('install: the committed hook reports CM203 too, not just the per-clone one',
+      /CM203/.test(teamOut) && teamHook.status === 0,
+      `the hook that gates a team must report what the per-clone one reports:\n${teamOut}`);
+    rmSync(root, { recursive: true, force: true });
+  }
 }
