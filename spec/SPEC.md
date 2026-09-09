@@ -256,10 +256,20 @@ comment in that form, not a list of directive names that would need keeping curr
 The cost is stated rather than hidden: template narration is not policed at all, and no registry
 value makes it billable — the exemption is unconditional. `<!-- TODO -->` in a template is
 consequently silent where `/* TODO */` in `.ts` is not, against §3's stance on TODOs. Both are
-accepted so that adding this profile adds no diagnostic to any existing tree; making the exemption
-registry-reachable, and giving a template a per-site escape, are the two ways out and neither is
-built. `cm mass` still bills the text as live prose, not as a doc comment, so it remains visible in
-the one number §11 exists to keep honest.
+accepted so that adding this profile adds no *prose* diagnostic to any existing tree; making the
+exemption registry-reachable, and giving a template a per-site escape, are the two ways out and
+neither is built. `cm mass` still bills the text as live prose, not as a doc comment, so it remains
+visible in the one number §11 exists to keep honest — except where the comment is the file's module header
+(§4.1), which goes to the `header` channel, as every profile's header does.
+
+The exemption is about prose, and two diagnostics do newly reach a template, because the HTML form
+is comment text under this profile where it was not text at all before. A `cm:` line written inside
+`<!-- -->` is `CM003` (§4), and an unterminated `<!--` is `CM203`, which discards every annotation
+below it (§9.1). Neither is a new rule — both hold for every block form in every profile — but their
+reach into single-file components is new and a tree carrying either starts failing on adoption, so
+`cm verify` exits non-zero where it did not. That is the profile's one consumer-visible cost, and it
+is the reason `CM003`'s fix line names `<script>` as the destination: a template has no line leader
+to move the annotation to.
 
 A file whose first lines mark it generated (`Code generated ... DO NOT EDIT`, `@generated`,
 drizzle/`_ide_helper` markers) is skipped entirely. The marker counts only where it is

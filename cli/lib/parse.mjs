@@ -53,7 +53,7 @@ const ID = '[a-z0-9][a-z0-9-]*';
 const CODES = {
   CM001: { tier: 'grammar', section: '§1.1', message: 'prose comment is not allowed here', fix: 'if it records something the compiler, the types, the path and the LSP cannot state, keep it as cm:why (rationale) or cm:guard (something whoever edits this must know); if it restates the code, delete it' },
   CM002: { tier: 'grammar', section: '§3', message: 'unknown cm: tag', fix: `use one of: ${TAGS.join(', ')}` },
-  CM003: { tier: 'grammar', section: '§4', message: 'cm: annotation inside a block or doc comment', fix: 'move it to a line comment — block/doc comments are parsed by TSDoc, PHPStan, Psalm and rustdoc' },
+  CM003: { tier: 'grammar', section: '§4', message: 'cm: annotation inside a block or doc comment', fix: 'move it to a line comment — block/doc comments are parsed by TSDoc, PHPStan, Psalm and rustdoc; a single-file component template has no line leader, so move it into <script>' },
   CM004: { tier: 'grammar', section: '§5', message: 'cm:edge needs a known kind', fix: `kind must be one of: ${EDGE_KINDS.join(', ')}` },
   CM005: { tier: 'grammar', section: '§4', message: 'cm:edge needs "-> <repo-relative-target>"', fix: 'write: cm:edge <kind> -> path/to/file.ts[#symbol] — <why they are coupled>; if this is rationale rather than a coupling, use cm:why' },
   CM006: { tier: 'grammar', section: '§4', message: 'cm:flow needs "<flow>/<step>"', fix: 'write: cm:flow <flow>/<step> [after:<step>] — <what this step does>' },

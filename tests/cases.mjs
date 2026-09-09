@@ -1068,6 +1068,33 @@ export const analyzeCases = [
     annotations: [],
   },
   {
+    // cm:edge lockstep -> spec/SPEC.md — §6 states this reach as the profile's one consumer-visible
+    //   cost, and a change that silences it has to fail a case rather than merely outdate the prose
+    name: 'sfc: a cm: annotation in a template HTML comment is CM003 and is not read (ISS-28)',
+    file: 'tmpl-annotation.vue',
+    src: [
+      '<template>',
+      '  <!-- cm:edge contract -> src/bus.ts \u2014 the topic string both sides spell -->',
+      '  <div/>',
+      '</template>',
+    ].join('\n'),
+    codes: ['CM003'],
+    annotations: [],
+  },
+  {
+    name: 'sfc: a template CM003 survives grammar: false, as losing an annotation is not prose (ISS-28)',
+    file: 'tmpl-annotation-nogrammar.vue',
+    src: [
+      '<template>',
+      '  <!-- cm:guard this must never be lost -->',
+      '  <div/>',
+      '</template>',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM003'],
+    annotations: [],
+  },
+  {
     name: 'sfc: an unclosed HTML comment is reported the same way as an unclosed /* (§6)',
     file: 'unterminated.vue',
     src: [
