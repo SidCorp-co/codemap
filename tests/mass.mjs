@@ -330,19 +330,27 @@ function channelCases(check) {
     ].join('\n');
     const bare = analyzeFile({ relPath: 'sited.ts', src: sitedSrc, reg: DEFAULT_REGISTRY });
     const orphan = bare.diags.find((d) => d.code === 'CM001' && d.sited);
-    const byBlock = new Set([orphan.blockKey]);
-    const sres = analyzeFile({ relPath: 'sited.ts', src: sitedSrc, reg: DEFAULT_REGISTRY, frozen: byBlock });
-    const sm = fileMass({ relPath: 'sited.ts', src: sitedSrc, res: sres, frozen: byBlock });
-    check('mass: a sited prose line stays live even when its block key is frozen',
-      sm.frozen === 0 && sm.live > 0,
-      `frozen=${sm.frozen} live=${sm.live} — the block key froze a line §4 says cannot be frozen`);
+    // cm:guard dereferencing the orphan aborts the SUITE — ISS-45's catch keeps the count line but
+    //   loses the 21 checks below, so this is a case of its own and they still run (ISS-43, ISS-45)
+    check('mass: the sited fixture raises a sited CM001 to freeze in the first place',
+      Boolean(orphan?.blockKey),
+      `diags=${JSON.stringify(bare.diags.map((d) => `${d.code}${d.sited ? ' sited' : ''}`))} — the two `
+      + 'cases below cannot run without a sited CM001 carrying a block key');
+    if (orphan?.blockKey) {
+      const byBlock = new Set([orphan.blockKey]);
+      const sres = analyzeFile({ relPath: 'sited.ts', src: sitedSrc, reg: DEFAULT_REGISTRY, frozen: byBlock });
+      const sm = fileMass({ relPath: 'sited.ts', src: sitedSrc, res: sres, frozen: byBlock });
+      check('mass: a sited prose line stays live even when its block key is frozen',
+        sm.frozen === 0 && sm.live > 0,
+        `frozen=${sm.frozen} live=${sm.live} — the block key froze a line §4 says cannot be frozen`);
 
-    const byOwnKey = new Set([baselineKey(orphan.text ?? orphan.message)]);
-    const ores = analyzeFile({ relPath: 'sited.ts', src: sitedSrc, reg: DEFAULT_REGISTRY, frozen: byOwnKey });
-    const om2 = fileMass({ relPath: 'sited.ts', src: sitedSrc, res: ores, frozen: byOwnKey });
-    check('mass: a sited prose line stays live even when its OWN key is frozen',
-      om2.frozen === 0 && om2.live > 0,
-      `frozen=${om2.frozen} live=${om2.live}`);
+      const byOwnKey = new Set([baselineKey(orphan.text ?? orphan.message)]);
+      const ores = analyzeFile({ relPath: 'sited.ts', src: sitedSrc, reg: DEFAULT_REGISTRY, frozen: byOwnKey });
+      const om2 = fileMass({ relPath: 'sited.ts', src: sitedSrc, res: ores, frozen: byOwnKey });
+      check('mass: a sited prose line stays live even when its OWN key is frozen',
+        om2.frozen === 0 && om2.live > 0,
+        `frozen=${om2.frozen} live=${om2.live}`);
+    }
   }
 
   // cm:guard the live figure may not move with the prose TIER — the tier decides what is reported,
