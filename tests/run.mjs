@@ -21,6 +21,8 @@ import { prCommentCases } from './prcomment.mjs';
 import { proposeCases } from './propose.mjs';
 import { massCases } from './mass.mjs';
 import { profileCases } from './profiles.mjs';
+import { pushCases } from './push.mjs';
+import { pushAll } from '../cli/lib/push.mjs';
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -103,7 +105,15 @@ for (const t of baselineCases) {
 }
 
 for (const t of parseCases) {
-  const r = parseAnnotation(t.text, 'p.ts', 1);
+  // cm:guard a THROW here is a failing case, never a dead run — the sibling guard in the
+  //   analyzeCases loop went unwritten until a case could throw, and cost 638 checks (ISS-45)
+  let r;
+  try {
+    r = parseAnnotation(t.text, 'p.ts', 1);
+  } catch (err) {
+    check(t.name, false, `parseAnnotation threw: ${err?.stack ?? err}`);
+    continue;
+  }
   if (t.result === null) {
     check(t.name, r === null,
       `expected null, got ${JSON.stringify(r)} — parseAnnotation may not claim text that never began cm:`);
@@ -120,7 +130,14 @@ for (const t of parseCases) {
 
 for (const t of codeShapeCases) {
   const shape = (src) => analyzeFile({ relPath: 'shape.ts', src, reg: DEFAULT_REGISTRY }).codeShape;
-  const same = shape(t.a) === shape(t.b);
+  // cm:guard a THROW here is a failing case, never a dead run — see the parseCases loop (ISS-45)
+  let same;
+  try {
+    same = shape(t.a) === shape(t.b);
+  } catch (err) {
+    check(t.name, false, `analyzeFile threw: ${err?.stack ?? err}`);
+    continue;
+  }
   check(t.name, same === t.same,
     `expected same=${t.same}, got ${same} — CM013 reads this to tell a code edit from a reflow`);
 }
@@ -151,6 +168,23 @@ for (const t of graphCases) {
     check(`${t.name} (impact)`, ok,
       `impact: guards=${r.guards.length} incoming=${r.incoming.length} outgoing=${r.outgoing.length} neighbours=[${nb}]`);
   }
+}
+
+for (const t of pushCases) {
+  // cm:guard a THROW here is a failing case, never a dead run — the first case is above the engine's
+  //   argument limit, so a restored spread crashes the process rather than failing by name (ISS-45)
+  let got;
+  try {
+    got = pushAll(t.target, t.items);
+  } catch (err) {
+    check(t.name, false, `pushAll threw: ${err?.stack ?? err}`);
+    continue;
+  }
+  const ok = got === t.target
+    && got.length === t.length
+    && got[got.length - 1] === t.last
+    && (!t.expect || JSON.stringify(got) === JSON.stringify(t.expect));
+  check(t.name, ok, `length=${got.length} last=${got[got.length - 1]} returnedTarget=${got === t.target}`);
 }
 
 wiringCases(PLUGIN_ROOT, check);

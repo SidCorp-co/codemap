@@ -28,6 +28,7 @@ import { debtOf, drainBase, drainDiags } from './lib/drain.mjs';
 import { fileMass, massOf, narrativeMass, NARRATIVE_MIN } from './lib/mass.mjs';
 import { lockstepFindings, guardFindings, renderComment, MARKER } from './lib/prcomment.mjs';
 import { renderHelp, VERBS } from './lib/help.mjs';
+import { pushAll } from './lib/push.mjs';
 import { resolveCm } from './lib/locate.mjs';
 import {
   reconcileAll, buildPayload, annotationCounts, registrySnapshot,
@@ -115,7 +116,7 @@ function scopeFromPositional(reg) {
       // cm:why walk() is only needed to expand a directory — doing it for a single file made the
       // PostToolUse hook walk an entire monorepo on every edit
       all ??= walk(root, reg);
-      files.push(...all.filter((f) => rel === '' || f.startsWith(`${rel}/`)));
+      pushAll(files, all.filter((f) => rel === '' || f.startsWith(`${rel}/`)));
     } else files.push(rel);
   }
   if (unresolved.length) {
@@ -434,6 +435,8 @@ switch (cmd) {
       //   survives a reflow, and the line keys are what keep a newly added line in a legacy block reported
       const keep = f.diags.filter((d) => !PROSE_CODES.has(d.code) || d.sited
         || !(frozen.has(baselineKey(d.text ?? d.message)) || (d.blockKey && frozen.has(d.blockKey))));
+      // cm:why this spread stays where the whole-tree ones became pushAll: it is ONE file's diagnostics,
+      //   so the argument limit needs ~125k annotations in a single file, not a big repo (ISS-45)
       diags.push(...keep);
 
       // cm:edge contract -> cli/lib/drain.mjs — CM013 must count debt exactly
@@ -445,7 +448,7 @@ switch (cmd) {
 
     // cm:edge contract -> cli/lib/drain.mjs — CM013 rides the grammar tier from
     //   here, so the tier filter below drops it on any other --tier and no second tier test is needed
-    diags.push(...drainDiags({
+    pushAll(diags, drainDiags({
       root, reg, baseline, perFile,
       baseRef: drainBase({ since: flagValue('--since'), staged: flags.has('--staged') }),
     }));
@@ -467,8 +470,8 @@ switch (cmd) {
     // cm:guard the per-file pass raises more than one tier since CM203, so a blanket wipe here left a
     //   structural code reachable only under `all` and `grammar` — the two tiers it is not (ISS-31)
     if (tier !== 'all') diags = diags.filter((d) => d.tier === tier);
-    if (tier === 'all' || tier === 'referential') diags.push(...scopeGraph(referentialDiags(g, { root, reg })));
-    if (tier === 'all' || tier === 'structural') diags.push(...scopeGraph(structuralDiags(g)));
+    if (tier === 'all' || tier === 'referential') pushAll(diags, scopeGraph(referentialDiags(g, { root, reg })));
+    if (tier === 'all' || tier === 'structural') pushAll(diags, scopeGraph(structuralDiags(g)));
     // cm:edge contract -> cli/lib/archmap.mjs#loadCachedImportGraph — a bare tier=all run (the hook's,
     //   on every edit) may only ever read the cache; the live ~15s scan is for an explicit ask (ISS-14)
     const askedForAdvisory = tier === 'advisory' || (tier === 'all' && Boolean(reg.enforce?.advisory));
@@ -476,7 +479,7 @@ switch (cmd) {
       ? loadImportGraph(root)
       : (tier === 'all' && reg.enforce?.advisory !== false ? loadCachedImportGraph(root) : null);
     if (askedForAdvisory || importGraph) {
-      diags.push(...scopeGraph(advisoryDiags(g, { root, baseline, importGraph })));
+      pushAll(diags, scopeGraph(advisoryDiags(g, { root, baseline, importGraph })));
     }
 
     // cm:guard the graph tiers raise their diagnostics here, long after analyzeFile applied its own
