@@ -127,8 +127,8 @@ export function fileMass({ relPath, res, frozen }) {
   }
   const proseAt = new Map();
   for (const d of res.diags ?? []) {
-    // cm:why CM011 measures a header's LENGTH and carries `header:<n>` rather than a comment, so the
-    //   header channel below bills those characters and this map must not bill them again
+    // cm:why CM011 carries a header's LENGTH as its text, not a comment's, so the header channel bills
+    //   it and this map must not again — dropping this moves 9 chars to live on collide.ts (ISS-57)
     if (!PROSE_CODES.has(d.code) || d.code === 'CM011') continue;
     const at = proseAt.get(d.line) ?? [];
     at.push(d);

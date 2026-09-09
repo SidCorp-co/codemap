@@ -786,6 +786,32 @@ function annotationIdentityCases(check) {
     `annotation=${wm.annotation} live=${wm.live}, expected 69 — the 37 of the annotation and the 32 of its wrap`);
 }
 
+// cm:guard CM011 carries a header's LENGTH as its text, not a comment's, so the prose map must skip
+//   it — a header whose own text collides with `header:<n>` otherwise pays for it twice (ISS-57)
+function headerCollisionCases(check) {
+  const lines = ['// header:22'];
+  for (let i = 2; i <= 22; i++) lines.push(`// orientation prose line ${i} of the module header here`);
+  lines.push('', 'export function f() {}');
+  const src = lines.join('\n');
+  // cm:guard built from DEFAULT_REGISTRY, never from this checkout's config — .forge/codemap.json here
+  //   sets `grammar: false`, under which CM011 is never raised and the case pins nothing
+  const res = analyzeFile({ relPath: 'collide.ts', src, reg: DEFAULT_REGISTRY });
+
+  // cm:guard the PREMISE: CM011 must actually be raised, carrying the text the comment on line 1
+  //   duplicates. A later headerMaxLines change would otherwise empty this case in silence (ISS-48)
+  const c11 = res.diags.filter((d) => d.code === 'CM011');
+  check('mass: the 22-line header really raises CM011, carrying the text line 1 collides with',
+    c11.length === 1 && c11[0].line === 1 && c11[0].text === 'header:22',
+    `CM011=${JSON.stringify(c11.map((d) => ({ line: d.line, text: d.text })))}, expected one at line 1 `
+    + 'carrying "header:22" — without the collision this fixture is an ordinary long header');
+
+  const m = fileMass({ relPath: 'collide.ts', res });
+  check('mass: a header comment whose text equals CM011\'s own is billed to the header, once',
+    m.header === 1072 && m.live === 0,
+    `header=${m.header} live=${m.live}, expected header=1072 live=0 — dropping the CM011 exclusion from `
+    + 'the prose map bills the 9 chars of "header:22" to live as well, at header=1063 live=9 (ISS-57)');
+}
+
 function cliCases(pluginRoot, check, roots) {
   const root = mkdtempSync(join(tmpdir(), 'cm-mass-'));
   roots.push(root);
@@ -858,6 +884,7 @@ export function massCases(pluginRoot, check) {
     channelCases(check);
     singleReadCases(check);
     annotationIdentityCases(check);
+    headerCollisionCases(check);
     cliCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
