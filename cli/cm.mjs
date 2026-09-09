@@ -945,7 +945,7 @@ switch (cmd) {
     if (had && had !== version) {
       console.log(yellow('  re-run the gate before merging: the committed checker changed, so its verdict may too'));
     }
-    if (r.hook) console.log(`  ${r.hook} ${dim('runs: cm verify --staged --tier grammar')}`);
+    if (r.hook) console.log(`  ${r.hook} ${dim('runs: cm verify --staged — grammar tier gates, structural tier reports')}`);
     for (const n of r.notes) console.log(dim(`  note: ${n}`));
     console.log('');
     // cm:why a gate nobody wires is not a gate, and asking every contributor to run a setup command is the
@@ -961,7 +961,7 @@ switch (cmd) {
     console.log(dim('                  hooks:'));
     console.log(dim('                    - id: codemap'));
     console.log(dim('                      name: codemap'));
-    console.log(dim('                      entry: .forge/codemap/cm verify --staged --tier grammar'));
+    console.log(dim('                      entry: sh -c \'.forge/codemap/cm verify --staged --tier structural || true; exec .forge/codemap/cm verify --staged --tier grammar\''));
     console.log(dim('                      language: system'));
     console.log(dim('                      pass_filenames: false'));
     console.log('  Makefile      setup: ; git config core.hooksPath .forge/codemap/hooks');

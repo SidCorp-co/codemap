@@ -28,11 +28,25 @@ The checker is committed (`cm install`), so a clone has it. The commit hook is c
 | The repo already runs | Wire it with |
 |---|---|
 | `npm install` / `pnpm install` | `"prepare": "git config core.hooksPath .forge/codemap/hooks"` in `package.json` |
-| the `pre-commit` framework | a `repo: local` hook whose `entry` is `.forge/codemap/cm verify --staged --tier grammar` |
+| the `pre-commit` framework | a `repo: local` hook whose `entry` is `sh -c '.forge/codemap/cm verify --staged --tier structural \|\| true; exec .forge/codemap/cm verify --staged --tier grammar'` |
 | `make setup` | `git config core.hooksPath .forge/codemap/hooks` |
 
 `.git/hooks/pre-commit` (`cm install --git-hook`) still exists, but it is per-clone: a repo whose
 only gate lives there is gated on exactly the machines that remembered to run one command.
+
+#### What a commit gate covers, and what it does not
+
+Both hooks run two passes over the staged tree, and the split is deliberate:
+
+| Pass | Tier | What it does |
+|---|---|---|
+| first | `structural` | reports `CM203` — a file whose block comment is never closed, so every `cm:` annotation below it has stopped being read. It cannot change the exit code, so it never blocks a commit. |
+| second | `grammar` | the gate: malformed annotations (`CM001`-`CM0xx`) fail the commit. |
+
+The **referential** tier (`CM101`-`CM107` — an edge pointing at a path that is not there) is
+deliberately *not* run at commit time. Those diagnostics go red on a file the commit never touched,
+because the target moved somewhere else in the tree, and a commit gate that refuses on them blocks
+work that is not the committer's. CI runs the full `cm verify` and is where they are caught.
 
 CI templates that need no runner-side setup beyond a node image: `adapters/ci/gitlab-ci.yml`,
 `adapters/ci/codemap-upgrade.yml`.

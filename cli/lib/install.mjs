@@ -27,10 +27,17 @@ d=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 exec node "$d/cm.mjs" "$@"
 `;
 
+// cm:guard the structural pass must stay ahead of the grammar exec and keep its `|| true` — it reports
+//   CM203, whose tier cannot set an exit code (cm.mjs:503), and a commit gate that started refusing a
+//   warning would be a different decision about what may block a commit (ISS-35)
 const PRE_COMMIT = `#!/bin/sh
 # codemap/1 — installed by: cm install --git-hook
 # Gates the staged tree only, so an unrelated legacy file can never block a commit.
-exec "$(git rev-parse --show-toplevel)/.forge/codemap/cm" verify --staged --tier grammar
+# Two passes: the first reports what the gating tier cannot see (CM203 — a file whose annotations have
+# stopped being read) and never blocks; the second is the gate, and its status is the hook's.
+cm="$(git rev-parse --show-toplevel)/.forge/codemap/cm"
+"$cm" verify --staged --tier structural || true
+exec "$cm" verify --staged --tier grammar
 `;
 
 function stamp(dest, version) {
