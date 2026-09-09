@@ -34,6 +34,8 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
   const ignores = new Map();
   const annLines = new Map();
   const annAt = new Map();
+  const chainAt = new Map();
+  const overflow = new Map();
 
   // cm:guard never gated on `grammar` — a repo that took the graph without the comment discipline still
   //   needs its annotations READ, so losing them silently is not a prose-discipline matter (ISS-31)
@@ -119,9 +121,20 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
       //   annotation's author wrote — adopting one fused a stranger's sentence into an injected guard (ISS-22)
       if (!frozen?.has(baselineKey(text))) {
         const prev = annAt.get(c.line - 1);
-        if (prev) prev.wrap = text;
+        if (prev) {
+          prev.wrap = text;
+          chainAt.set(c.line, { ann: prev, leader: c.leader });
+        }
         continue;
       }
+    }
+
+    // cm:guard the run is counted but NOT consumed — an overflow line stays ordinary prose and still
+    //   reaches CM001 below, because CM204 reports the truncation and never licenses the line (ISS-33)
+    const chain = c.firstOnLine !== false ? chainAt.get(c.line - 1) : undefined;
+    if (chain && chain.leader === c.leader) {
+      overflow.set(chain.ann, (overflow.get(chain.ann) ?? 0) + 1);
+      chainAt.set(c.line, chain);
     }
 
     if (!grammar || inHeader(c)) continue;
@@ -133,6 +146,12 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
       const exempt = c.firstOnLine && documentsExported(lines, codeLines, c.line, prof);
       if (!exempt) raw.push({ ...diag('CM001', relPath, c.line, trunc(text)), text });
     }
+  }
+
+  // cm:guard never gated on `grammar` — the lines past a wrap are dropped from the channel whatever a
+  //   repo's prose discipline, so this reports the loss where CM001 reports the prose (ISS-33)
+  for (const [ann, lost] of overflow) {
+    raw.push(diag('CM204', relPath, ann.line, `${lost} line${lost === 1 ? ' is' : 's are'} not loaded`));
   }
 
   const diags = raw.filter((d) => {
@@ -281,8 +300,7 @@ function moduleHeader(lines, comments, codeLines, prof) {
   }
 
   // cm:guard CM011's count is the BILLABLE lines, never the run's span — a run mixing an exempt form
-  //   with a billable one otherwise reports the exempt lines too, and its fix line then asks the
-  //   author to delete comments the profile says are not the narration channel (§9.1, ISS-28)
+  //   with a billable one otherwise reports the exempt lines too (§9.1, ISS-28)
   const isExempt = (c) => !!prof?.proseExemptBlockOpens?.includes(c.leader);
   const exemptForm = run.every(isExempt);
   const billable = run.filter((c) => !isExempt(c))

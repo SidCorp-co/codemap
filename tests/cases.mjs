@@ -29,7 +29,7 @@ export const analyzeCases = [
       '// a third line is prose again',
       'const r = 1;',
     ].join('\n'),
-    codes: ['CM001'],
+    codes: ['CM001', 'CM204'],
     annotations: ['why'],
     sited: [3],
     texts: ['the retry budget is per-run because a per-attempt one lets a flapping step spend it all'
@@ -69,6 +69,66 @@ export const analyzeCases = [
     codes: ['CM005'],
     annotations: [],
     fixMatches: /use cm:why/,
+  },
+  {
+    // cm:edge lockstep -> cli/lib/analyze.mjs — the ungating this pins is stated there as a guard, and
+    //   a change that gates CM204 on `grammar` has to fail a case, not merely contradict a comment
+    name: 'ts: CM204 survives grammar: false, and is raised once however far the annotation overflows',
+    file: 'wrap-overflow-nogrammar.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      '//   and the third line never reaches the channel',
+      '//   nor the fourth',
+      '//   nor the fifth',
+      'const r = 1;',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM204'],
+    annotations: ['guard'],
+    texts: ['the batch is claimed whole, never row by row'
+      + ' because releasing between rows lets a second dispatcher claim the tail'],
+  },
+  {
+    name: 'ts: an annotation wrapping onto exactly one line draws no CM204',
+    file: 'wrap-fits.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      'const r = 1;',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: [],
+    annotations: ['guard'],
+  },
+  {
+    // cm:guard php is the profile that makes this reachable — it carries `//` and `#` as two LINE
+    //   leaders, so dropping the same-leader test here has to fail a case rather than pass silently
+    name: 'php: a continuation under a different LINE leader is not part of the run, so no CM204',
+    file: 'leader-run.php',
+    src: [
+      '<?php',
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      '#   a different leader, so this is prose rather than the annotation running on',
+      '$r = 1;',
+    ].join('\n'),
+    codes: [],
+    annotations: ['guard'],
+    texts: ['the batch is claimed whole, never row by row'
+      + ' because releasing between rows lets a second dispatcher claim the tail'],
+  },
+  {
+    name: 'ts: a block comment under the wrap ends the run, so it draws no CM204',
+    file: 'wrap-overflow-leader.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      '/* narration in a block comment */',
+      'const r = 1;',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['guard'],
   },
   {
     name: 'ts: a wrapped line under a DIFFERENT leader is not a continuation',
