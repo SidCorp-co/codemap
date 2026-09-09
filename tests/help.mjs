@@ -97,6 +97,19 @@ export function helpCases(pluginRoot, check) {
       sixth !== null && !sixth.text.includes('undefined'),
       threw(`the word reached the reader anyway:\n${sixth?.text.split('\n').filter((l) => l.includes('undefined')).join('\n')}`));
 
+    let bare = null;
+    let bareErr = null;
+    try {
+      bare = annotations(['nosuchtag']);
+    } catch (err) {
+      bareErr = err;
+    }
+    check('help: a vocabulary with no sound row at all renders the guide rather than crashing',
+      bare !== null && bare.text.includes('ANNOTATIONS'),
+      bareErr
+        ? `zero sound rows threw instead of rendering: ${bareErr.stack}`
+        : 'the guidebook has to survive a table with no rows in it');
+
     // cm:why the order a reader meets the tags in is a decision no constant derives, so it is pinned
     //   here as a golden: a reorder of TAG_HELP has to be deliberate enough to move this line (ISS-53)
     const TEACHING_ORDER = ['guard', 'edge', 'flow', 'hack', 'why'];
