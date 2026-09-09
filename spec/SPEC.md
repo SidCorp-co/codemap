@@ -73,7 +73,9 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
   invariant is worse than handing it nothing: authors write the rule first and the consequence
   second, so the missing half is the actionable one.
 - **Line comments only.** Never inside a block or doc comment (`/* */`, `/** */`, `///`, `//!`,
-  `{{-- --}}`) — that is `CM003`. Rationale: block/doc comments are parsed by TSDoc, PHPStan,
+  `{{-- --}}`, `<!-- -->`) — that is `CM003`. A single-file component's template therefore cannot
+  carry an annotation at all: `//` is not a comment there, and the HTML form is a block. An SFC's
+  annotations live in its `<script>` block. Rationale: block/doc comments are parsed by TSDoc, PHPStan,
   Psalm, and rustdoc; staying out of them means no other toolchain ever sees a `cm:` line.
 - `<leader>` is the language's line-comment leader: `//`, `#`, or `--` (§6).
 - `<flow>/<step>` is the step's durable id. Ordering comes from `after:`, never from numbers, so
@@ -159,6 +161,7 @@ survive contact with ecosystems whose convention is the opposite of "few comment
 | Language | Leaders | docPolicy | Notes |
 |---|---|---|---|
 | TS/JS/TSX | `//` | `banned` for `//` and `/* */`; `/** */` doc blocks allowed (§4.2) | pragma allowlist covers `@ts-*`, eslint/biome, bundler hints |
+| Vue/Svelte (`sfc`) | `//` | as TS/JS inside `<script>`; a template's `<!-- -->` is **never** billed as prose | TS's profile plus `<!-- -->` as a block form, because that is what a template comments in and a generated component is stamped there. The form is read for generated-markers and is exempt from `CM001` and from `CM011`'s length by form (`proseExemptBlockOpens`), not by a directive allowlist — see below. It cannot carry an annotation either (§4). Both extensions resolve to the one profile, and its own id is what lets `languages.sfc` address an SFC's script prose without touching `.ts`/`.js` |
 | Go | `//` | **`required-on-exported`** | exempt directly above: the package clause, an EXPORTED top-level declaration, a `type`/`const`/`var` group opener, and a **capitalised member of an exported `struct`/`interface`/group** — godoc renders a field's and a method's doc exactly as a package-level one |
 | PHP | `//` `#` | `allowed` | PHPStan/Psalm/Laravel IDE-helper docblocks are load-bearing; `_ide_helper*` and `vendor/` are excluded outright |
 | Python | `#` | `allowed` | docstrings are strings, not comments, so they are out of scope by construction |
@@ -205,6 +208,24 @@ be silenced with `enforce.exclude`, whereas an image variant refused as a doc fi
 silence and has no knob at all — `languages` is keyed by profile id, and `enforce.include` cannot add
 a profile.
 
+**Why a template comment is exempt by form, and what that costs.** §6 decides the Dockerfile-vs-doc
+boundary above on recoverability — loud and silenceable beats missed in silence with no knob — and the
+single-file-component profile is the one place that boundary comes out the other way. A template has
+no per-site escape: `//` is not a comment there, so `cm:ignore` can only be written inside the HTML
+form, where any `cm:` line is `CM003` (§4). And a template comment is where two ecosystems put
+load-bearing directives — Svelte's `svelte-ignore`, `svelte-migrate`'s `@migration-task` — which a
+compiler reads and whose author cannot move or reword them. Billing that prose would therefore be a
+diagnostic whose own fix line cannot be followed (§9.1), so the exemption is by **form**: every
+comment in that form, not a list of directive names that would need keeping current.
+
+The cost is stated rather than hidden: template narration is not policed at all, and no registry
+value makes it billable — the exemption is unconditional. `<!-- TODO -->` in a template is
+consequently silent where `/* TODO */` in `.ts` is not, against §3's stance on TODOs. Both are
+accepted so that adding this profile adds no diagnostic to any existing tree; making the exemption
+registry-reachable, and giving a template a per-site escape, are the two ways out and neither is
+built. `cm mass` still bills the text as live prose, not as a doc comment, so it remains visible in
+the one number §11 exists to keep honest.
+
 A file whose first lines mark it generated (`Code generated ... DO NOT EDIT`, `@generated`,
 drizzle/`_ide_helper` markers) is skipped entirely. The marker counts only where it is
 **load-bearing — in comment text on one of the file's first 40 lines**; a file that merely quotes one
@@ -212,6 +233,11 @@ in a string or a regex literal, as a tool listing the markers it recognises does
 is analyzed normally. The window is counted per line, not per comment, so a block comment that opens
 inside it does not carry header status for its whole length; the lines of one header that fall inside
 the window are read together, so a marker may span them.
+
+"Comment text" means a comment in one of the forms the file's **own profile** declares, so a profile
+that does not model the syntax a generator actually stamps in cannot see the marker at all. That is
+why the single-file-component profile above carries the HTML form: a generated `.vue` is stamped in a
+template comment, and under TS's forms alone it was analyzed rather than skipped.
 
 The scanner keeps comment leaders inside string literals from being read as comments, and does the
 same for a **bare URL** outside one — the `//` in JSX text (`<a>https://x.dev</a>`) or a `#fragment`
@@ -307,7 +333,9 @@ none of the five has an import edge either, which is what the manual analysis ab
 hand. The two structural corrections were bugs rather than thresholds, and both are cases where
 evidence *cannot* exist:
 
-- a pair of files in **different languages** (26 of 36 hits in one repo) — Go cannot import a `.ts` file
+- a pair of files in **different languages** (26 of 36 hits in one repo) — Go cannot import a `.ts` file.
+  "Different" means a different **runtime**, not a different profile: a `.vue` and a `.ts` share one, so a
+  literal they both hold is ordinary import-reachable code and not a candidate
 - **Go**, which names the imported package DIRECTORY and never the file (10 of 10 same-language hits
   there), so a filename-only test warned on every correctly wired Go edge
 

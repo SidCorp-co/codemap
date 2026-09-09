@@ -39,7 +39,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
   const headerMax = reg.enforce?.headerMaxLines ?? 20;
   // cm:guard CM011 is prose-family (PROSE_CODES), so `grammar: false` must silence it too — a repo
   // adopting the graph without the comment discipline was still getting header-length errors
-  if (grammar && header && !header.glued && header.count > headerMax) {
+  if (grammar && header && !header.glued && !header.exemptForm && header.count > headerMax) {
     raw.push({ ...diag('CM011', relPath, header.start, `${header.count} lines (max ${headerMax})`), text: `header:${header.count}` });
   }
   const inHeader = (c) => !!header && !header.glued && c.line >= header.start && c.endLine <= header.end;
@@ -56,7 +56,11 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
       }
       // cm:why CM003 is the actionable diagnostic, so a misplaced block is not also billed as prose
       const hoverDoc = c.kind === 'doc' && prof.docBlocksAllowed;
+      // cm:guard a form in proseExemptBlockOpens is still read for markers, but never billed as prose:
+      //   CM001's remedy is unreachable there, since a cm: tag inside a block is CM003 (ISS-28)
+      const exemptForm = prof.proseExemptBlockOpens?.includes(c.leader);
       if (!misplaced && grammar && docPolicy === 'banned' && c.text && !inHeader(c) && !hoverDoc &&
+          !exemptForm &&
           !STRUCTURED_DOC.test(c.text) && !prof.exempt.some((re) => re.test(c.text))) {
         raw.push({ ...diag('CM001', relPath, c.line, trunc(c.text)), text: c.text });
       }
@@ -264,17 +268,27 @@ function moduleHeader(lines, comments, codeLines, prof) {
   if (!first) return null;
 
   let end = first.endLine;
+  const run = [first];
   for (;;) {
     const next = comments.find((c) => c.line === end + 1);
     if (!next) break;
+    run.push(next);
     end = next.endLine;
   }
 
+  // cm:guard CM011's count is the BILLABLE lines, never the run's span — a run mixing an exempt form
+  //   with a billable one otherwise reports the exempt lines too, and its fix line then asks the
+  //   author to delete comments the profile says are not the narration channel (§9.1, ISS-28)
+  const isExempt = (c) => !!prof?.proseExemptBlockOpens?.includes(c.leader);
+  const exemptForm = run.every(isExempt);
+  const billable = run.filter((c) => !isExempt(c))
+    .reduce((n, c) => n + (c.endLine - c.line + 1), 0);
+
   const firstCode = Math.min(...[...codeLines].filter((l) => l > prologueEnd), Infinity);
   if (firstCode <= end) return null;
-  if (lines[end] === undefined || lines[end].trim() !== '') return { start, end, glued: true };
+  if (lines[end] === undefined || lines[end].trim() !== '') return { start, end, glued: true, exemptForm };
 
-  return { start, end, count: end - start + 1 };
+  return { start, end, count: billable, exemptForm };
 }
 
 function documentsExported(lines, codeLines, fromLine, prof) {

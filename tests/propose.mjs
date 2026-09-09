@@ -76,6 +76,15 @@ function pureCases(check) {
     check('propose: contract drops a literal shared by files in the SAME language',
       sameLang.length === 0, `expected 0, got ${JSON.stringify(sameLang)}`);
 
+    // cm:guard an SFC and a .ts are the SAME ecosystem — §7.1 reads "different languages" as "cannot
+    //   import each other", and a .vue imports .ts freely, so a shared literal is not a contract (ISS-28)
+    writeFileSync(join(root, 'Widget.vue'), '<script setup lang="ts">\nconst e = "user:updated";\n</script>\n');
+    writeFileSync(join(root, 'bus.ts'), 'export const E = "user:updated";\n');
+    const sfcPair = contractCandidates(root, ['Widget.vue', 'bus.ts']);
+    check('propose: contract drops a literal shared by an SFC and a .ts (ISS-28)',
+      sfcPair.length === 0,
+      `an SFC/.ts pair is one ecosystem, not two languages; got ${JSON.stringify(sfcPair)}`);
+
     const noSep = contractCandidates(root, ['emit.go', 'noisy.ts']);
     check('propose: contract ignores a plain word with no separator (no coincidental "hello")',
       !noSep.some((c) => c.literal === 'hello'), `"hello" should not qualify: ${JSON.stringify(noSep)}`);

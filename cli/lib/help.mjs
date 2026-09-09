@@ -141,7 +141,8 @@ FORM
 ${TAGS.map((t) => `  ${forms[t]}`).join('\n')}
 
   <leader>  the language's line-comment leader: // , # or --  (line comments ONLY — inside a
-            /* */ or /** */ block it is CM003, so no other toolchain ever parses a cm: line)
+            /* */, /** */ or <!-- --> block it is CM003, so no other toolchain ever parses a
+            cm: line. An SFC template has no line leader, so its annotations go in <script>)
   <kind>    ${EDGE_KINDS.join(' | ')}
   <target>  repo-relative path, optionally path#symbol. Absolute paths, URLs and ../ or ./ are
             CM005 — a target resolves from the REPO ROOT, never from this file. cm fmt rewrites a
@@ -274,6 +275,11 @@ ${table(rows).join('\n')}
   TS/JS:  /** */ doc blocks are exempt ANYWHERE — the IDE surfaces them on hover, a consumer with an
           immediate payoff. /* */ is not a doc block and is prose. Narration inside a function body,
           the spam this exists to kill, is always a line comment.
+  sfc:    .vue and .svelte — TS's rules plus <!-- --> as a block form, which is what a template
+          comments in, so a generated component stamped there is skipped. Prose in an HTML comment
+          is NOT billed: a template has no cm:ignore (cm: in a block is CM003) and svelte-ignore is
+          a compiler directive, so a CM001 there would be one nobody could clear. // prose in a
+          <script> block is CM001 exactly as in .ts.
   Go:     godoc and revive require a comment above every exported declaration, so position decides.
   PHP:    PHPStan/Psalm/Laravel docblocks are load-bearing. vendor/ and _ide_helper* are excluded.
   Python: docstrings are strings, not comments — out of scope by construction.

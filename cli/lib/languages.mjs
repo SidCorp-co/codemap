@@ -81,7 +81,7 @@ const SH_EXEMPT = [/^!/, /^shellcheck\b/];
 const DOCKER_EXEMPT = [/^syntax=/, /^escape=/, /^check=/];
 
 /** How far into a file a generated-marker comment is still the file's own header. */
-const GENERATED_HEAD_LINES = 40;
+export const GENERATED_HEAD_LINES = 40;
 
 /** A file whose head carries one of these is skipped entirely. */
 export const GENERATED_MARKERS = [
@@ -97,26 +97,43 @@ export const GENERATED_MARKERS = [
  * multiline  — delimiters that legitimately span lines; every other one resets at EOL so a
  *              stray apostrophe in prose cannot desync the scanner for the rest of the file.
  */
+const TS = {
+  id: 'ts',
+  // cm:why the RUNTIME, not the profile — §7.1 reads "different languages" as "cannot import each
+  //   other", and an SFC imports .ts freely, so the sfc profile inherits this id and CM301 stays out
+  ecosystem: 'ts',
+  lineLeaders: ['//'],
+  docLineLeaders: [],
+  blockOpens: [['/**', '*/'], ['/*', '*/']],
+  docBlockOpens: ['/**'],
+  strDelims: ['"', "'", '`'],
+  multiline: ['`'],
+  docPolicy: 'banned',
+  // A /** */ block is documentation by form: the IDE surfaces it on hover, which is a consumer
+  // with an immediate payoff (principle 1). Narration in a function body is the spam this exists
+  // to kill, and that is always a line comment. So doc blocks are exempt and `//` prose is not —
+  // simpler and more predictable than trying to decide which declarations deserve docs.
+  docBlocksAllowed: true,
+  // An ECMAScript directive prologue is the one construct the language itself requires ABOVE
+  // everything else, so a header comment cannot get above it. Closed vocabulary (principle 3):
+  // a general "string literal as a statement" rule would swallow a stray expression statement.
+  prologue: /^\s*(['"])use (client|server|strict)\1\s*;?\s*$/,
+  exempt: [...COMMON_EXEMPT, ...TS_EXEMPT],
+};
+
 const P = {
-  ts: {
-    id: 'ts',
-    lineLeaders: ['//'],
-    docLineLeaders: [],
-    blockOpens: [['/**', '*/'], ['/*', '*/']],
-    docBlockOpens: ['/**'],
-    strDelims: ['"', "'", '`'],
-    multiline: ['`'],
-    docPolicy: 'banned',
-    // A /** */ block is documentation by form: the IDE surfaces it on hover, which is a consumer
-    // with an immediate payoff (principle 1). Narration in a function body is the spam this exists
-    // to kill, and that is always a line comment. So doc blocks are exempt and `//` prose is not —
-    // simpler and more predictable than trying to decide which declarations deserve docs.
-    docBlocksAllowed: true,
-    // An ECMAScript directive prologue is the one construct the language itself requires ABOVE
-    // everything else, so a header comment cannot get above it. Closed vocabulary (principle 3):
-    // a general "string literal as a statement" rule would swallow a stray expression statement.
-    prologue: /^\s*(['"])use (client|server|strict)\1\s*;?\s*$/,
-    exempt: [...COMMON_EXEMPT, ...TS_EXEMPT],
+  ts: TS,
+  // cm:why a template comments in HTML, not in TS's forms, and that is where a generator stamps a
+  //   component's marker — without the form the marker is not comment text at all (ISS-28)
+  // cm:guard exempt from prose BY FORM, never by a directive allowlist — a template has no per-site
+  //   escape, so billing svelte-ignore would be a CM001 nobody can clear (ISS-28, rule in ISS-22)
+  // cm:guard the spread comes FIRST — `id` after it, or TS's own id overwrites this profile's and
+  //   every diagnostic, `cm ls` and `languages.sfc` silently address `ts` instead
+  sfc: {
+    ...TS,
+    id: 'sfc',
+    blockOpens: [...TS.blockOpens, ['<!--', '-->']],
+    proseExemptBlockOpens: ['<!--'],
   },
   go: {
     id: 'go',
@@ -229,7 +246,7 @@ const P = {
 const BY_EXT = {
   ts: P.ts, tsx: P.ts, mts: P.ts, cts: P.ts,
   js: P.ts, jsx: P.ts, mjs: P.ts, cjs: P.ts,
-  vue: P.ts, svelte: P.ts,
+  vue: P.sfc, svelte: P.sfc,
   go: P.go,
   php: P.php,
   py: P.py, pyi: P.py,

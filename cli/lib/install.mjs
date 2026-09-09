@@ -35,8 +35,10 @@ exec "$(git rev-parse --show-toplevel)/.forge/codemap/cm" verify --staged --tier
 
 function stamp(dest, version) {
   const src = readFileSync(dest, 'utf8');
-  // cm:guard the marker must be @generated — languages.mjs skips a file whose head carries it, so the
-  // vendored copy's own annotations can never be read as the project's (belt to HARD_EXCLUDE's braces)
+  // cm:guard the marker `stamp` writes below must stay one GENERATED_MARKERS matches, or the vendored
+  //   copy stops being skipped and its annotations are read as the project's own
+  // cm:guard never spell that marker out here: naming one verbatim in a comment inside the first
+  //   GENERATED_HEAD_LINES lines makes this file skip itself and deliver nothing (ISS-29)
   const marker = `// @generated codemap ${version} — vendored by \`cm install\`; edit the plugin, not this.`;
   // cm:why a shebang has to stay on line 1 or the file stops being directly executable
   const lines = src.split('\n');
@@ -66,9 +68,10 @@ export function install({ root, version, gitHook, force }) {
     files.push(`.forge/codemap/lib/${f}`);
   }
 
-  // The spec is part of what is installed: every diagnostic cites a §section, and a contributor
-  // without the plugin has nowhere else to read it.
-  // the repo keeps SPEC.md in spec/, a level above cli/; a vendored copy keeps it beside cm.mjs
+  // cm:why the spec ships with the copy — every diagnostic cites a §section, and a contributor
+  //   without the plugin has nowhere else to read it
+  // cm:why three candidate paths, not one: the repo keeps SPEC.md in spec/ a level above cli/, and a
+  //   vendored copy keeps it beside cm.mjs, so the same code runs from either layout
   const spec = [resolve(SCRIPTS, '..', 'spec', 'SPEC.md'), resolve(SCRIPTS, '..', 'SPEC.md'), join(SCRIPTS, 'SPEC.md')].find((p) => existsSync(p));
   if (spec && resolve(spec) !== resolve(join(dir, 'SPEC.md'))) {
     copyFileSync(spec, join(dir, 'SPEC.md'));

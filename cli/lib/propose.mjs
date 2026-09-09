@@ -179,7 +179,7 @@ export function contractCandidates(root, files) {
         if (!TOKEN_RE.test(lit) || RESERVED.test(lit) || seenInFile.has(lit)) continue;
         seenInFile.add(lit);
         const entry = byLiteral.get(lit) ?? new Map();
-        if (!entry.has(rel)) entry.set(rel, { file: rel, line: i + 1, lang: prof.id });
+        if (!entry.has(rel)) entry.set(rel, { file: rel, line: i + 1, lang: prof.id, eco: prof.ecosystem ?? prof.id });
         byLiteral.set(lit, entry);
       }
     }
@@ -189,7 +189,7 @@ export function contractCandidates(root, files) {
   for (const [lit, entry] of byLiteral) {
     if (entry.size !== 2) continue;
     const [a, b] = [...entry.values()];
-    if (a.lang === b.lang) continue;
+    if (a.eco === b.eco) continue;
     out.push({ source: 'contract', literal: lit, files: [a, b] });
   }
   out.sort((x, y) => x.files[0].localeCompare(y.files[0]) || x.literal.localeCompare(y.literal));

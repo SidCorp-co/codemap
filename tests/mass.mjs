@@ -191,6 +191,23 @@ function channelCases(check) {
   check('mass: unfrozen prose is live, not frozen',
     m.live > 0 && m.frozen === 0, `live=${m.live} frozen=${m.frozen}`);
 
+  // cm:guard an exempt-form comment raises no diagnostic, so it reaches the doc fallback — billing it
+  //   there reports SFC template narration as machine-consumed and hides it from §11 (ISS-28)
+  {
+    const sfcSrc = [
+      '<template>',
+      '  <!-- the sidebar collapses below the medium breakpoint -->',
+      '  <div/>',
+      '</template>',
+    ].join('\n');
+    const sfcRes = analyzeFile({ relPath: 'mass.vue', src: sfcSrc, reg: DEFAULT_REGISTRY });
+    const sm = fileMass({ relPath: 'mass.vue', src: sfcSrc, res: sfcRes });
+    check('mass: an SFC template comment is live prose, not a doc comment',
+      sm.live > 0 && sm.doc === 0,
+      `live=${sm.live} doc=${sm.doc} — a template comment is exempt from CM001 but is still prose, `
+      + 'and billing it as doc reports it as machine-consumed');
+  }
+
   const frozen = new Set([baselineKey('plain narration nobody froze')]);
   const res2 = analyzeFile({ relPath: 'row.ts', src, reg: DEFAULT_REGISTRY, frozen });
   const m2 = fileMass({ relPath: 'row.ts', src, res: res2, frozen });

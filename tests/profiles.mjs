@@ -69,11 +69,20 @@ export function profileCases(pluginRoot, check) {
     ['config.yml', 'yaml'],
     ['config.yaml', 'yaml'],
     ['deploy.sh', 'sh'],
+    ['Widget.vue', 'sfc'],
+    ['Widget.svelte', 'sfc'],
+    ['app.jsx', 'ts'],
   ];
   for (const [path, id] of resolves) {
     check(`profiles: ${path} resolves to ${id}`, profileFor(path)?.id === id,
       `expected ${id}, got ${profileFor(path)?.id ?? 'null'}`);
   }
+
+  // cm:guard .vue and .svelte must resolve to the SAME profile object — the two are required to agree,
+  //   and two profiles with equal fields would drift the moment one of them is edited (ISS-28)
+  check('profiles: .vue and .svelte resolve to one shared profile',
+    profileFor('a.vue') === profileFor('a.svelte'),
+    'expected one object; got two distinct profiles');
 
   // cm:why every one of these resolved to `docker` when the deny-list read only the trailing
   //   extension, so a fenced ```dockerfile example in a docs page became a real annotation and a

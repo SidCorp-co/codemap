@@ -9,6 +9,9 @@ import { mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, stat
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { isGenerated, profileFor, GENERATED_HEAD_LINES } from '../cli/lib/languages.mjs';
+import { walk, DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
+import { scanComments } from '../cli/lib/scan.mjs';
 
 function git(root, ...args) {
   execFileSync('git', ['-C', root, ...args], {
@@ -50,6 +53,54 @@ function runHook(pluginRoot, name, { root, file }) {
 
 export function installCases(pluginRoot, check) {
   const pluginCm = join(pluginRoot, 'cli', 'cm.mjs');
+
+  // cm:guard the marker is built by concatenation, never written whole — a verbatim one anywhere in
+  //   this file's first GENERATED_HEAD_LINES lines would make THIS file skip itself, which is the
+  //   defect being pinned rather than a way to pin it (ISS-29)
+  const MARKER = `@${'generated'}`;
+  {
+    const rel = join('cli', 'lib', 'install.mjs');
+    const src = readFileSync(join(pluginRoot, rel), 'utf8');
+    const prof = profileFor(rel);
+
+    // cm:guard install.mjs states the vendored-copy constraint that stamp() can break, so it has to be
+    //   READABLE — a skipped file delivers no annotation to cm ls and nothing to the PreToolUse hook,
+    //   which leaves the editor of stamp() with no sight of the rule they are about to break (ISS-29)
+    check('install: the file stating the vendored-copy constraint is not skipped as generated',
+      isGenerated(src, prof) === false,
+      'cli/lib/install.mjs is skipped, so every cm: annotation in it — including the guard on the '
+      + 'marker stamp() writes — reaches nobody');
+
+    const head = src.split('\n', GENERATED_HEAD_LINES).join('\n');
+    const { comments } = scanComments(head, prof, { flushOpen: true });
+    check('install: no comment in that head window names the marker verbatim',
+      comments.every((c) => !c.text.includes(MARKER)),
+      `a comment in the first ${GENERATED_HEAD_LINES} lines contains "${MARKER}", which is what makes `
+      + 'that comment a header marker; point at the marker in the code instead of repeating it');
+
+    // cm:guard the property is REPO-WIDE, not one file's — install.mjs was only the first file to
+    //   name a marker in its own head, and the next one skips itself just as silently (ISS-29)
+    // cm:guard scoped to the TRACKED set, never the working tree — an untracked scratch file with a
+    //   marker head would otherwise fail this on something the repository does not own (ISS-29)
+    const tracked = new Set(execFileSync('git', ['-C', pluginRoot, 'ls-files'], { encoding: 'utf8' })
+      .split('\n').filter(Boolean));
+    const skipped = walk(pluginRoot, DEFAULT_REGISTRY).filter((rel) => tracked.has(rel)).filter((rel) => {
+      const p = profileFor(rel);
+      return p && isGenerated(readFileSync(join(pluginRoot, rel), 'utf8'), p);
+    });
+    check('install: no file in this repository skips itself as generated',
+      skipped.length === 0,
+      `these files are skipped and deliver no annotation: ${skipped.join(', ')} — a cm: comment in a `
+      + 'head window must not name a generated-marker verbatim');
+
+    // cm:guard the constraint itself must not move: stamp() keeps writing a marker the skip rule
+    //   matches, or the vendored copy's annotations start being read as the project's own (ISS-29)
+    check('install: stamp() still writes a marker the generated rule matches',
+      new RegExp(`const marker = \`//\\s*${MARKER}\\b`).test(src),
+      'the guard is about the marker stamp() writes; if stamp() stopped writing one, the vendored '
+      + 'copies stop being skipped and the guard describes nothing');
+  }
+
   const roots = [];
   try {
     const root = makeRepo();
