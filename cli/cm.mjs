@@ -179,6 +179,8 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
  *   unfixable behind a "fix: run cm fmt" hint (see lib/rewrite.mjs).
  */
 function fixCanonical(perFile) {
+  // cm:why the spread here and in migrateTargets is the one shape pushAll does NOT cover: `applied`
+  //   is CM009 fixes, so it counts cm: LINES in one file, never the prose lines CM001 bills (ISS-45)
   const done = [];
   for (const f of perFile) {
     const fixes = f.diags.filter((d) => d.code === 'CM009' && d.canonical);
@@ -435,9 +437,7 @@ switch (cmd) {
       //   survives a reflow, and the line keys are what keep a newly added line in a legacy block reported
       const keep = f.diags.filter((d) => !PROSE_CODES.has(d.code) || d.sited
         || !(frozen.has(baselineKey(d.text ?? d.message)) || (d.blockKey && frozen.has(d.blockKey))));
-      // cm:why this spread stays where the whole-tree ones became pushAll: it is ONE file's diagnostics,
-      //   so the argument limit needs ~125k annotations in a single file, not a big repo (ISS-45)
-      diags.push(...keep);
+      pushAll(diags, keep);
 
       // cm:edge contract -> cli/lib/drain.mjs — CM013 must count debt exactly
       //   as this line reports it, so the accounting lives there and both read the one copy

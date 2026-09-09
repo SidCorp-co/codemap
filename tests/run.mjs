@@ -21,7 +21,7 @@ import { prCommentCases } from './prcomment.mjs';
 import { proposeCases } from './propose.mjs';
 import { massCases } from './mass.mjs';
 import { profileCases } from './profiles.mjs';
-import { pushCases } from './push.mjs';
+import { pushCases, pushSourceCases } from './push.mjs';
 import { pushAll } from '../cli/lib/push.mjs';
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -106,7 +106,7 @@ for (const t of baselineCases) {
 
 for (const t of parseCases) {
   // cm:guard a THROW here is a failing case, never a dead run — the sibling guard in the
-  //   analyzeCases loop went unwritten until a case could throw, and cost 638 checks (ISS-45)
+  //   analyzeCases loop went unwritten until a case could throw, and cost 638 checks (ISS-43)
   let r;
   try {
     r = parseAnnotation(t.text, 'p.ts', 1);
@@ -187,19 +187,15 @@ for (const t of pushCases) {
   check(t.name, ok, `length=${got.length} last=${got[got.length - 1]} returnedTarget=${got === t.target}`);
 }
 
-wiringCases(PLUGIN_ROOT, check);
-profileCases(PLUGIN_ROOT, check);
-cliCases(PLUGIN_ROOT, check);
-installCases(PLUGIN_ROOT, check);
-helpCases(PLUGIN_ROOT, check);
-metricsCases(PLUGIN_ROOT, check);
-releaseTagCases(PLUGIN_ROOT, check);
-upgradeWorkflowCases(PLUGIN_ROOT, check);
-notifyConsumersCases(PLUGIN_ROOT, check);
-mcpCases(PLUGIN_ROOT, check);
-prCommentCases(PLUGIN_ROOT, check);
-proposeCases(PLUGIN_ROOT, check);
-massCases(PLUGIN_ROOT, check);
+// cm:guard a suite that THROWS is a failing suite, never a dead run — installCases taking the
+//   process down lost every suite after it, with no count line to say so had happened (ISS-45)
+for (const suite of [pushSourceCases, wiringCases, profileCases, cliCases, installCases, helpCases, metricsCases, releaseTagCases, upgradeWorkflowCases, notifyConsumersCases, mcpCases, prCommentCases, proposeCases, massCases]) {
+  try {
+    suite(PLUGIN_ROOT, check);
+  } catch (err) {
+    check(suite.name, false, `the suite threw: ${err?.stack ?? err}`);
+  }
+}
 
 console.log(`codemap golden corpus: ${pass} passed, ${failures.length} failed`);
 for (const f of failures) console.error(`  FAIL ${f}`);

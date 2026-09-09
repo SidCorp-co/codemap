@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 // pushAll tier. The mechanism is only load-bearing above the engine's argument limit, so the case
 // that pins it has to carry a collection that large — see the guard on the first case.
 
@@ -38,3 +41,25 @@ export const pushCases = [
     expect: [1, 2, 3],
   },
 ];
+
+// cm:guard the two allowed spreads are `done.push(...applied.map(…))` in fixCanonical and
+//   migrateTargets — anything else spreading into push() in cm.mjs is sized by the repo (ISS-45)
+const ALLOWED = 2;
+
+export function pushSourceCases(pluginRoot, check) {
+  const src = readFileSync(join(pluginRoot, 'cli', 'cm.mjs'), 'utf8');
+  const spreads = src.match(/\bpush\(\.\.\./g) ?? [];
+  check('push: cm.mjs spreads into push() only where the collection is one file\'s annotations',
+    spreads.length === ALLOWED,
+    `expected ${ALLOWED} push(... spreads, found ${spreads.length} — a collection sized by the `
+    + 'repository reaching an argument list is the ISS-43 crash, so it appends through pushAll');
+
+  const allowed = src.match(/done\.push\(\.\.\.applied\.map\(/g) ?? [];
+  check('push: the two spreads cm.mjs keeps are the per-file ones, not something else that grew',
+    allowed.length === ALLOWED,
+    `expected ${ALLOWED} done.push(...applied.map(, found ${allowed.length}`);
+
+  check('push: cm.mjs appends the whole-tree collections through pushAll',
+    (src.match(/pushAll\(/g) ?? []).length >= 6,
+    'the file list, the drain and the three graph tiers must each append by iteration');
+}

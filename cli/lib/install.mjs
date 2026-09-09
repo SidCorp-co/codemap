@@ -29,8 +29,8 @@ exec node "$d/cm.mjs" "$@"
 
 // cm:guard the structural pass must never decide this hook's exit status — a commit gate that began
 //   refusing a warning is a different decision about what may block a commit (ISS-35)
-// cm:guard keep the `|| true` — it is belt-and-braces today, since `errors` holds this pass out of the
-//   exit code (cm.mjs:530,566) and no `set -e` is set, but a later one would silently make it the gate
+// cm:guard keep the `|| true` — belt-and-braces today, since cm.mjs's `errors` filter holds this pass
+//   out of `process.exitCode` and no `set -e` is set, but a later one would silently make it the gate
 const PRE_COMMIT = `#!/bin/sh
 # codemap/1 — installed by: cm install --git-hook
 # Gates the staged tree only, so an unrelated legacy file can never block a commit.
