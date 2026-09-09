@@ -121,6 +121,12 @@ function sameSet(a, b) {
 //   line number, which sends the reader to a call that is not the offender (ISS-39)
 const REGEX_MAY_START = /[(,=:[!&|?{};+\-*%^~<>]/;
 
+// cm:why a `/` after one of these is ALWAYS a regex, never division, so they are safe to add —
+//   unlike `)` or `]`, where adding them would eat a real division as a regex (ISS-39)
+// cm:guard a preceding `.` excludes it: `obj.in / 2` is a property divided, not a keyword, and
+//   reading it as a regex start consumes live code to the next slash (ISS-39)
+const REGEX_AFTER_WORD = /(?:^|[^\w$.])(?:return|typeof|case|in|of|instanceof|new|delete|void|do|else|yield|await)$/;
+
 function blankComments(src) {
   const out = src.split('');
   let i = 0;
@@ -136,10 +142,17 @@ function blankComments(src) {
       }
       if (i < src.length) { out[i] = ' '; out[i + 1] = ' '; i += 2; }
     } else if (c === "'" || c === '"' || c === '`') {
+      const open = i;
       i += 1;
-      while (i < src.length && src[i] !== c) i += src[i] === '\\' ? 2 : 1;
-      i += 1;
-    } else if (c === '/' && REGEX_MAY_START.test(lastCode)) {
+      while (i < src.length && src[i] !== c) {
+        // cm:guard a quote scan that reaches a newline is a MIS-PARSE, not a string: it means the
+        //   scanner desynchronised earlier, and running on blanks live code below it (ISS-39)
+        if (c !== '`' && src[i] === '\n') { i = open; break; }
+        i += src[i] === '\\' ? 2 : 1;
+      }
+      if (i === open) { lastCode = c; i += 1; } else i += 1;
+    } else if (c === '/' && (REGEX_MAY_START.test(lastCode)
+      || REGEX_AFTER_WORD.test(src.slice(Math.max(0, i - 12), i).trimEnd()))) {
       i += 1;
       let klass = false;
       while (i < src.length && (klass || src[i] !== '/')) {
@@ -179,7 +192,9 @@ function sourceCases(check) {
     //   pattern they grep for, are not read back as call sites of their own (ISS-39)
     const src = blankComments(raw);
     for (const m of src.matchAll(/(?:execFileSync|spawnSync)\(\s*(?:'git'|"git"|process\.execPath|'sh'|'bash')/g)) {
-      const call = callText(raw, m.index);
+      // cm:guard judged on the BLANKED source, never the raw one: a comment INSIDE the argument
+      //   list otherwise satisfies both predicates, and `// no env here` reads as an env (ISS-39)
+      const call = callText(src, m.index);
       const at = `${name}:${src.slice(0, m.index).split('\n').length}`;
       scanned += 1;
       if (!/\benv\b/.test(call)) { inherits.push(at); continue; }
@@ -193,8 +208,8 @@ function sourceCases(check) {
   const CALL = `${'execFileSync'}('git', ['-C', root, 'status'], { encoding: 'utf8' });`;
   const seen = (text) => (text.match(new RegExp(`${'execFileSync'}\\(\\s*'git'`, 'g')) || []).length;
 
-  // cm:why an unhandled regex literal costs a FALSE POSITIVE, never a hidden call: string bodies
-  //   are never blanked, so what is lost is the blanking of a COMMENT below it (ISS-39)
+  // cm:why an unhandled regex whose body has BALANCED quotes costs only a false positive; one with
+  //   an odd quote desynchronises the scan and can blank a live call, hence the newline guard
   check('git-env source: a commented-out call below a regex holding a quote is not an offender',
     seen(blankComments([`const re = /["']/;`, `// ${CALL}`].join('\n'))) === 0,
     'the regex opened a string, so the comment below it was never blanked and reads as a call');
@@ -204,6 +219,17 @@ function sourceCases(check) {
   check('git-env source: a // inside a string hides no call on its line',
     seen(blankComments(`const u = 'a//b'; ${CALL}`)) === 1,
     'a string containing // blanked the code after it');
+  // cm:guard the OPPOSITE error is pinned too: widening the regex-start set until a real division
+  //   is eaten as a regex leaves the comment below it unblanked (ISS-39)
+  check('git-env source: a division is not read as a regex',
+    seen(blankComments(`const x = a / b; // ${CALL}`)) === 0,
+    'a division was consumed as a regex, so the comment after it went unblanked');
+  check('git-env source: a property named for a keyword is not read as a regex start',
+    seen(blankComments(`const x = obj.in / 2; // ${CALL}`)) === 0,
+    'obj.in was read as the keyword `in`, so the division opened a regex');
+  check('git-env source: a regex after a keyword hides no call below it',
+    seen(blankComments([`return /it's/.test(x);`, `const u = 'https://x'; ${CALL}`].join('\n'))) === 1,
+    'a regex following a keyword desynchronised the scan and blanked the call below it');
 
   check('git-env source: the sweep found calls to judge at all',
     scanned > 20, `only ${scanned} git/child invocations matched — the pattern has gone stale`);
