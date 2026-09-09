@@ -111,15 +111,20 @@ function sameSet(a, b) {
 //   own environment, so every call site's scrub is unobservable at runtime and only this reads it
 // cm:guard it matches the TEXT of a call, so an invocation spelled any other way than
 //   execFileSync or spawnSync is invisible to this sweep and has to be added by hand (ISS-39)
-// cm:guard it is STRING-AWARE but blanks only comments: a `//` inside a string literal made the
+// cm:guard it is STRING- and REGEX-aware but blanks only comments: a `//` inside a string made the
 //   old line-prefix skip drop the whole line, hiding an unscrubbed call sharing it (ISS-39)
+// cm:guard a regex literal is skipped as one token, character class included: /["']/ in wiring.mjs
+//   otherwise opens a string that runs to EOF, hiding every call site below it (ISS-39)
 // cm:guard string BODIES are left intact — the pattern this sweep matches is itself a string
 //   literal ('git'), so blanking them makes every call site invisible instead (ISS-39)
 // cm:guard it blanks in place so every offset is preserved: a shortened source reports the wrong
 //   line number, which sends the reader to a call that is not the offender (ISS-39)
+const REGEX_MAY_START = /[(,=:[!&|?{};+\-*%^~<>]/;
+
 function blankComments(src) {
   const out = src.split('');
   let i = 0;
+  let lastCode = ';';
   while (i < src.length) {
     const c = src[i];
     if (c === '/' && src[i + 1] === '/') {
@@ -134,7 +139,20 @@ function blankComments(src) {
       i += 1;
       while (i < src.length && src[i] !== c) i += src[i] === '\\' ? 2 : 1;
       i += 1;
-    } else i += 1;
+    } else if (c === '/' && REGEX_MAY_START.test(lastCode)) {
+      i += 1;
+      let klass = false;
+      while (i < src.length && (klass || src[i] !== '/')) {
+        if (src[i] === '\\') i += 1;
+        else if (src[i] === '[') klass = true;
+        else if (src[i] === ']') klass = false;
+        i += 1;
+      }
+      i += 1;
+    } else {
+      if (!/\s/.test(c)) lastCode = c;
+      i += 1;
+    }
   }
   return out.join('');
 }
@@ -168,6 +186,25 @@ function sourceCases(check) {
       if (/process\.env/.test(call) && !/stripGitEnv/.test(call)) ambient.push(at);
     }
   }
+  // cm:guard the blanker is pinned on a literal carrying the two shapes that broke it, not only on
+  //   the tree as it stands: both were found by a call surviving on the luck of its position
+  // cm:guard the sample call is ASSEMBLED, never written whole: this file is one of the files the
+  //   sweep reads, so a literal sample would be found and reported as an offender here (ISS-39)
+  const CALL = `${'execFileSync'}('git', ['-C', root, 'status'], { encoding: 'utf8' });`;
+  const seen = (text) => (text.match(new RegExp(`${'execFileSync'}\\(\\s*'git'`, 'g')) || []).length;
+
+  // cm:why an unhandled regex literal costs a FALSE POSITIVE, never a hidden call: string bodies
+  //   are never blanked, so what is lost is the blanking of a COMMENT below it (ISS-39)
+  check('git-env source: a commented-out call below a regex holding a quote is not an offender',
+    seen(blankComments([`const re = /["']/;`, `// ${CALL}`].join('\n'))) === 0,
+    'the regex opened a string, so the comment below it was never blanked and reads as a call');
+  check('git-env source: a real call below a regex holding a quote is still seen',
+    seen(blankComments([`const re = /["']/;`, CALL].join('\n'))) === 1,
+    'blanking the regex also blanked live code below it');
+  check('git-env source: a // inside a string hides no call on its line',
+    seen(blankComments(`const u = 'a//b'; ${CALL}`)) === 1,
+    'a string containing // blanked the code after it');
+
   check('git-env source: the sweep found calls to judge at all',
     scanned > 20, `only ${scanned} git/child invocations matched — the pattern has gone stale`);
   check('git-env source: no git or child invocation in tests/ inherits the environment implicitly',
