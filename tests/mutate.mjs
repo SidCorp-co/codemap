@@ -1,73 +1,39 @@
 #!/usr/bin/env node
-// Mutation harness. Opt-in, never part of the gate: every row is a full corpus run.
+// Mutation harness, the half that runs things. Opt-in, never part of the gate.
 //
 // cm:edge contract -> tests/run.mjs — parses that runner's stdout count line
 //   ("codemap golden corpus: N passed, M failed") and its stderr "  FAIL <name>" lines, which fail
 //   two different ways if either shape changes: losing the COUNT line turns every row into CRASH,
 //   which is loud, but losing the FAIL line leaves every row still reading `pinned` with an empty
 //   names column, which is silent and is the ISS-26 trap restored (ISS-30)
+// cm:edge protocol -> tests/mutate-lib.mjs — the declared list, the parse, the classification and
+//   the environment scrub live there so the corpus can pin them without importing `main`. Nothing in
+//   this file may be imported by tests/, or the corpus gains an import path to a corpus run (ISS-30)
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  applyMutation, classify, MUTATIONS, parseCorpusOutput, stripGitEnv,
+} from './mutate-lib.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CORPUS_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_BUFFER = 64 * 1024 * 1024;
 const STDERR_TAIL_LINES = 30;
 
-// cm:guard every `find` must occur EXACTLY once in its file, and is checked before anything is
-//   mutated. A line number would rot silently as the code moves; a string that no longer matches is
-//   reported as ANCHOR, which is the whole reason a stale point cannot read as a dead mechanism (ISS-30)
-// cm:guard a `file` is joined onto the copy's root unchecked, so a point declaring an absolute path
-//   or a `..` segment would write outside the throwaway tree. Nothing here takes a path from the
-//   command line; keep it that way, or resolve and check it stays inside the copy first (ISS-30)
-export const MUTATIONS = [
-  {
-    id: 'head-slice',
-    file: 'cli/lib/languages.mjs',
-    mechanism: 'the GENERATED_HEAD_LINES head slice in isGenerated',
-    find: String.raw`const head = src.split('\n', GENERATED_HEAD_LINES).join('\n');`,
-    replace: 'const head = src;',
-  },
-  {
-    id: 'head-join',
-    file: 'cli/lib/languages.mjs',
-    mechanism: 'rejoining the sliced head with newlines rather than with nothing',
-    find: String.raw`const head = src.split('\n', GENERATED_HEAD_LINES).join('\n');`,
-    replace: String.raw`const head = src.split('\n', GENERATED_HEAD_LINES).join('');`,
-  },
-  {
-    id: 'flushopen-arg',
-    file: 'cli/lib/languages.mjs',
-    mechanism: 'isGenerated asking scanComments to flush a block still open at the cut',
-    find: 'scanComments(head, prof, { flushOpen: true })',
-    replace: 'scanComments(head, prof)',
-  },
-  {
-    id: 'flushopen-block',
-    file: 'cli/lib/scan.mjs',
-    mechanism: 'the flush of a block still open at EOF, for the truncated head isGenerated hands in',
-    find: 'if (block && flushOpen) {',
-    replace: 'if (false) {',
-  },
-];
+// cm:guard git reads GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE in PREFERENCE to `-C`, and carries
+//   `-c` settings onward in GIT_CONFIG_PARAMETERS, so an inherited environment would make every call
+//   below act on another repository: `init` creates nothing and `add`/`commit` land the MUTATION as a
+//   commit in the outer checkout. `git bisect run`, `git rebase --exec` and every hook export
+//   these, so this is not hypothetical — the scrub is pinned in tests/mutate-cases.mjs (ISS-30)
+const GIT_ENV = stripGitEnv(process.env);
 
-// cm:guard git reads GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE in PREFERENCE to `-C`, so with any of
-//   them exported every call below would act on that repository instead of the copy: `init` creates
-//   nothing and `add`/`commit` land the MUTATION as a commit in the outer checkout. `git bisect run`,
-//   `git rebase --exec` and every git hook export them, so this is not hypothetical (ISS-30)
-export const GIT_ENV = (() => {
-  const env = { ...process.env };
-  for (const k of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
-    'GIT_COMMON_DIR', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG', 'GIT_CONFIG_GLOBAL']) {
-    delete env[k];
-  }
-  return env;
-})();
-
+// cm:guard the ONLY child git invocation in this file, so the scrub cannot be bypassed by a call
+//   that forgets it. tests/mutate-cases.mjs asserts that count, because a second call site is how
+//   this defence would quietly come undone (ISS-30)
 function git(cwd, args) {
   return execFileSync('git', ['-C', cwd, ...args],
     { encoding: 'utf8', maxBuffer: MAX_BUFFER, env: GIT_ENV }).trim();
@@ -132,32 +98,15 @@ function copyFrom(base, dest) {
 // cm:guard an uncommitted NEW file reaches the copy's worktree but not this commit's tree, so the
 //   clone-based tiers see a tree without it. Mutating a file that is not yet `git add`ed is measured
 //   by every tier except those, which is the other half of what the banner's tree state means (ISS-30)
-function initRepo(dest, base) {
+export function initRepo(gitFn, dest, base) {
   const id = ['-c', 'user.email=mutate@codemap.invalid', '-c', 'user.name=codemap mutation harness',
-    '-c', 'commit.gpgsign=false'];
-  git(dest, ['init', '-q']);
+    '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=', '-c', 'init.templateDir='];
+  gitFn(dest, ['init', '-q']);
   for (let i = 0; i < base.staged.length; i += 500) {
-    git(dest, ['add', '--', ...base.staged.slice(i, i + 500)]);
+    gitFn(dest, ['add', '--', ...base.staged.slice(i, i + 500)]);
   }
-  git(dest, [...id, 'commit', '-q', '--allow-empty', '-m', 'mutation harness working copy']);
-  for (const tag of base.tags) git(dest, ['tag', tag]);
-}
-
-export function parseCorpusOutput(stdout, stderr, spawnError) {
-  const count = /^codemap golden corpus: (\d+) passed, (\d+) failed$/m.exec(stdout ?? '');
-  // cm:guard anchored on the runner's exact two-space leader, never `^\s*`: a failure detail carries
-  //   another process's output verbatim (tests/install.mjs, tests/upgrade-workflow.mjs), so a loose
-  //   leader harvests any embedded "FAIL ..." line as a phantom check name (ISS-30)
-  const names = [...(stderr ?? '').matchAll(/^ {2}FAIL (.+)$/gm)].map((m) => m[1].trim());
-  return {
-    ran: Boolean(count),
-    passed: count ? Number(count[1]) : null,
-    failed: count ? Number(count[2]) : null,
-    total: count ? Number(count[1]) + Number(count[2]) : null,
-    names,
-    diagnosis: [spawnError ? `spawn: ${spawnError}` : '', (stderr ?? '').trim()]
-      .filter(Boolean).join('\n').split('\n').slice(-STDERR_TAIL_LINES).join('\n'),
-  };
+  gitFn(dest, [...id, 'commit', '-q', '--allow-empty', '-m', 'mutation harness working copy']);
+  for (const tag of base.tags) gitFn(dest, ['tag', tag]);
 }
 
 function runCorpus(dir) {
@@ -168,31 +117,8 @@ function runCorpus(dir) {
     maxBuffer: MAX_BUFFER,
     env: GIT_ENV,
   });
-  return parseCorpusOutput(res.stdout, res.stderr, res.error && (res.error.code ?? res.error.message));
-}
-
-// cm:guard a run that printed no count line is CRASH, never `pinned`. A mutation that makes the
-//   runner throw exits non-zero with no failing check, so anything keying off the exit status alone
-//   reads a crash as proof the mechanism is load-bearing — the trap that hid a case in ISS-26 (ISS-30)
-// cm:guard a run whose CHECK TOTAL differs from the control's is INCONCLUSIVE, never DEAD. A mutation
-//   that makes a whole tier disable itself rather than fail runs fewer checks and still reports 0
-//   failed, which reads as a dead mechanism and tells the author to delete working code (ISS-30)
-export function classify(result, controlTotal) {
-  if (!result.ran) return 'CRASH';
-  if (result.failed > 0) return 'pinned';
-  if (controlTotal !== null && controlTotal !== undefined && result.total !== controlTotal) return 'INCONCLUSIVE';
-  return 'DEAD';
-}
-
-export function applyMutation(dir, m) {
-  const path = join(dir, m.file);
-  if (!existsSync(path)) return `${m.file} is not in the tree`;
-  const src = readFileSync(path, 'utf8');
-  const hits = src.split(m.find).length - 1;
-  if (hits === 0) return `anchor not found in ${m.file}`;
-  if (hits > 1) return `anchor matches ${hits}x in ${m.file}, so it names no single site`;
-  writeFileSync(path, src.split(m.find).join(m.replace));
-  return null;
+  return parseCorpusOutput(res.stdout, res.stderr,
+    res.error && (res.error.code ?? res.error.message), STDERR_TAIL_LINES);
 }
 
 function inCopy(base, mutate) {
@@ -202,10 +128,11 @@ function inCopy(base, mutate) {
     const anchor = mutate ? applyMutation(dir, mutate) : null;
     if (anchor) return { anchor };
     try {
-      initRepo(dir, base);
+      initRepo(git, dir, base);
     } catch (e) {
       // cm:guard a git failure in the copy is one unusable ROW, never an uncaught stack that ends the
-      //   table: the rows already measured are the evidence somebody is waiting on (ISS-30)
+      //   table: the rows already measured are the evidence somebody is waiting on. This covers the
+      //   CONTROL too — it is the first initRepo of the run, so it is the likeliest to hit it (ISS-30)
       return { setup: String(e.stderr || e.message || e).trim().split('\n').slice(-3).join(' ') };
     }
     return { result: runCorpus(dir) };
@@ -215,8 +142,8 @@ function inCopy(base, mutate) {
 }
 
 function table(rows) {
-  const head = ['mutation', 'passed / failed', 'outcome', 'failing checks'];
-  const body = rows.map((r) => [r.id, r.counts, r.outcome, r.detail]);
+  const head = ['mutation', 'passed / failed', 'outcome'];
+  const body = rows.map((r) => [r.id, r.counts, r.outcome]);
   const widths = head.map((h, i) => Math.max(h.length, ...body.map((b) => b[i].length)));
   const line = (cells) => `| ${cells.map((c, i) => c.padEnd(widths[i])).join(' | ')} |`;
   return [line(head), `|${widths.map((w) => '-'.repeat(w + 2)).join('|')}|`, ...body.map(line)].join('\n');
@@ -239,9 +166,10 @@ Outcomes:
   INCONCLUSIVE  nothing failed but the corpus ran a different number of checks, so it proved nothing
   CRASH         no count line: the runner broke instead of a check failing, which is not proof either way
   ANCHOR        the point no longer names exactly one site in the source
+  SETUP         the copy could not be prepared, so the row measured nothing
 
-A name in the last column is one of run.mjs's checks, and one golden case can raise several of them,
-so the column is not a count of cases.
+The names printed under the table are run.mjs CHECKS, and one golden case usually raises several of
+them, so their number is not a number of cases.
 
 It answers for \`node tests/run.mjs\` only. A mechanism pinned by \`bin/cm verify\` instead reads DEAD
 here; that gate has to be checked by hand.`);
@@ -286,17 +214,24 @@ function main(argv) {
 
   const base = snapshot();
   const rows = [];
-  const crashed = [];
+  const notes = [];
   let bad = 0;
 
   try {
-    const control = inCopy(base, null).result;
-    const controlClean = control.ran && control.failed === 0;
+    const control = inCopy(base, null);
+    // cm:guard the control's own setup failure is a first-class outcome: reading `.result` off it
+    //   unconditionally turned a refusing pre-commit hook into `TypeError: Cannot read properties of
+    //   undefined`, on unmodified code, before any row had been measured (ISS-30)
+    if (control.setup) {
+      console.error(`the control's copy could not be prepared, so nothing could be measured:\n  ${control.setup}`);
+      return 1;
+    }
+    const c = control.result;
+    const controlClean = c.ran && c.failed === 0;
     rows.push({
       id: 'control, unmutated',
-      counts: control.ran ? `${control.passed} / ${control.failed}` : '— / —',
+      counts: c.ran ? `${c.passed} / ${c.failed}` : '— / —',
       outcome: controlClean ? 'clean' : 'CONTAMINATED',
-      detail: control.ran ? (control.names.join(', ') || '—') : 'no count line',
     });
 
     // cm:guard the control gates the whole table: with a control that is not clean, a mutation whose
@@ -305,35 +240,37 @@ function main(argv) {
     if (!controlClean) {
       console.log(table(rows));
       console.error('\ncontrol did not come back clean, so every mutation row would be unreadable.');
-      console.error(control.ran
-        ? `already failing without any mutation: ${control.names.join(', ')}`
-        : `the control run printed no count line:\n${control.diagnosis}`);
+      console.error(c.ran
+        ? `already failing without any mutation: ${c.names.join(', ')}`
+        : `the control run printed no count line:\n${c.diagnosis}`);
       return 1;
     }
+
+    // cm:guard the control's CHECK TOTAL is printed, because every row is judged against it and
+    //   nothing here can know the checkout's own total: a copy that quietly runs fewer checks than
+    //   `node tests/run.mjs` makes every DEAD in the table meaningless, and this line is what lets a
+    //   reader notice (ISS-30)
+    console.log(`control ran ${c.total} checks — compare it against \`node tests/run.mjs\` before trusting a DEAD row\n`);
 
     for (const m of selected) {
       const { anchor, setup, result } = inCopy(base, m);
       if (anchor || setup) {
-        rows.push({
-          id: m.id,
-          counts: '— / —',
-          outcome: anchor ? 'ANCHOR' : 'SETUP',
-          detail: anchor ?? `preparing the copy failed: ${setup}`,
-        });
+        rows.push({ id: m.id, counts: '— / —', outcome: anchor ? 'ANCHOR' : 'SETUP' });
+        notes.push([m.id, anchor ?? `preparing the copy failed: ${setup}`]);
         bad++;
         continue;
       }
-      const outcome = classify(result, control.total);
+      const outcome = classify(result, c.total);
       if (outcome !== 'pinned') bad++;
-      if (outcome === 'CRASH') crashed.push([m.id, result.diagnosis]);
       rows.push({
         id: m.id,
         counts: result.ran ? `${result.passed} / ${result.failed}` : '— / —',
         outcome,
-        detail: outcome === 'CRASH' ? 'no count line'
-          : outcome === 'INCONCLUSIVE' ? `ran ${result.total} checks, the control ran ${control.total}`
-            : (result.names.join(', ') || '—'),
       });
+      if (outcome === 'CRASH') notes.push([m.id, `the corpus did not finish:\n${result.diagnosis}`]);
+      else if (outcome === 'INCONCLUSIVE') {
+        notes.push([m.id, `ran ${result.total} checks where the control ran ${c.total}, so it measured nothing`]);
+      } else if (result.names.length) notes.push([m.id, result.names.join('\n  ')]);
     }
   } finally {
     rmSync(base.dir, { recursive: true, force: true });
@@ -341,12 +278,10 @@ function main(argv) {
 
   console.log(table(rows));
 
-  // cm:guard a CRASH row's diagnosis is printed here or it is lost with the temp tree, and a row
-  //   saying only "no count line" cannot be acted on — the guard promising this evidence outlived the
-  //   code that produced it once already (ISS-30)
-  for (const [id, diagnosis] of crashed) {
-    console.error(`\n${id} — the corpus did not finish:\n${diagnosis}`);
-  }
+  // cm:guard printed under the table and never inside a cell: the failure list is what a contributor
+  //   copies into an annotation, so it must be complete, and one mutation failing many checks used to
+  //   pad every row of the table to its width (ISS-30)
+  for (const [id, note] of notes) console.log(`\n${id}:\n  ${note}`);
 
   if (bad) {
     console.error(`\n${bad} of ${selected.length} declared mutation point(s) did not report a pinning check.`);

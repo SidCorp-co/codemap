@@ -51,11 +51,21 @@ It removes each declared mechanism in a throwaway copy of the working tree, runs
 against it, and names the checks that failed — with an unmutated control in the same table whose
 result gates every other row. It fails when a mechanism turns out to be pinned by nothing.
 
+The names it prints are **`run.mjs` checks, not golden cases**: one case usually raises several
+checks (a codes check and an annotations check, say), so three names can mean two cases. Read the
+control's check total against `node tests/run.mjs` before trusting a `DEAD` row — a copy that
+quietly ran fewer checks makes every `DEAD` in the table meaningless.
+
 NOT a gate, and in no workflow: it costs one full corpus run per declared point **plus one for the
 control**, so the whole list is several minutes. That cost is why it is opt-in. It answers for
 `node tests/run.mjs` only — a mechanism that only `bin/cm verify` pins reads as dead there, so check
-that gate by hand. Its own classifying and parsing are pinned by `tests/mutate-cases.mjs`, which
-does run in the corpus; importing the harness runs no mutation.
+that gate by hand.
+
+The harness is two files on purpose. `tests/mutate-lib.mjs` is the pure half — the declared list,
+the parse, the classification, the git-environment scrub — and the corpus pins all of it through
+`tests/mutate-cases.mjs`. `tests/mutate.mjs` is the half that copies trees and spawns runs, and
+nothing under `tests/` may import it: that import is what would put a corpus run on the corpus's own
+import graph.
 
 ## Releasing
 
