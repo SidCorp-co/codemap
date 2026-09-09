@@ -3,12 +3,13 @@
 //   case pins is the thing it exists to refuse. A new outcome or a changed parse belongs in the same
 //   change as its case here (ISS-30)
 
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
-  applyMutation, classify, GIT_CONFIG_VAR_NAMES, GIT_LOCATION_VAR_NAMES, MUTATIONS,
+  applyMutation, classify, GIT_CONFIG_VAR_NAMES, GIT_IDENTITY_VAR_NAMES, GIT_LOCATION_VAR_NAMES,
+  MUTATIONS,
   parseCorpusOutput, stripGitEnv,
 } from './mutate-lib.mjs';
 
@@ -190,13 +191,33 @@ function gitEnvCases(check) {
       configSurvivors.length === 0,
       `git honours these from the environment, so they reach the copy: ${configSurvivors.join(', ')}`);
 
+    // cm:guard the expectation is a FIXED list, never the same arrays the scrub iterates: reading
+    //   those back can only catch a broken loop, so dropping GIT_INDEX_FILE from the list passed
+    //   every case — the one variable whose inheritance staged a fixture into a real index (ISS-30)
+    const MUST_NOT_SURVIVE = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
+      'GIT_COMMON_DIR', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_TEMPLATE_DIR', 'GIT_NAMESPACE',
+      'GIT_CEILING_DIRECTORIES', 'GIT_PREFIX', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS',
+      'GIT_CONFIG_COUNT', 'GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_AUTHOR_DATE',
+      'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL', 'GIT_COMMITTER_DATE'];
     const everything = { ...process.env };
-    for (const k of [...GIT_LOCATION_VAR_NAMES, ...GIT_CONFIG_VAR_NAMES]) everything[k] = '/poison';
+    for (const k of MUST_NOT_SURVIVE) everything[k] = '/poison';
+    // cm:guard these three are poisoned too, because the harness spawns its own corpus runs with
+    //   exactly the values the scrub sets: unpoisoned, the case read them back out of the ambient
+    //   environment and could not fail during `node tests/mutate.mjs` at all (ISS-30)
+    everything.GIT_CONFIG_GLOBAL = '/poison';
+    everything.GIT_CONFIG_SYSTEM = '/poison';
+    everything.GIT_CONFIG_NOSYSTEM = '0';
     const scrubbedAll = stripGitEnv(everything);
-    const survivors = [...GIT_LOCATION_VAR_NAMES, ...GIT_CONFIG_VAR_NAMES]
-      .filter((k) => k in scrubbedAll);
-    check('mutate: stripGitEnv removes every location and config variable it names',
+    const survivors = MUST_NOT_SURVIVE.filter((k) => k in scrubbedAll);
+    check('mutate: stripGitEnv removes every location, config and identity variable',
       survivors.length === 0, `still present after the scrub: ${survivors.join(', ')}`);
+
+    const named = new Set([...GIT_LOCATION_VAR_NAMES, ...GIT_CONFIG_VAR_NAMES,
+      ...GIT_IDENTITY_VAR_NAMES]);
+    const unnamed = MUST_NOT_SURVIVE.filter((k) => !named.has(k));
+    check('mutate: the scrub names every variable this case requires it to remove',
+      unnamed.length === 0,
+      `the fixed list expects these but the module does not name them: ${unnamed.join(', ')}`);
 
     // cm:guard suppressing the user's own config is done by POINTING it at an empty file, not by
     //   unsetting it: an environment that had already set GIT_CONFIG_GLOBAL=/dev/null was suppressing
@@ -229,26 +250,45 @@ function wiringCases(pluginRoot, check) {
     `found ${execGit} execFileSync and ${spawnGit} spawnSync git call sites — every one has to go `
     + 'through the single wrapper that passes the scrubbed environment, or the scrub is bypassable');
 
-  // cm:guard tests/run.mjs reaches the pure half through this file. If it ever reaches the CLI half
-  //   instead, `main` joins the corpus's import graph and the corpus spawns a corpus run per declared
-  //   point, each level bounded only by the ten-minute timeout (ISS-30)
-  const lib = readFileSync(join(pluginRoot, 'tests', 'mutate-lib.mjs'), 'utf8');
-  check('mutate: the pure half does not import the half that spawns',
-    !/from\s+['"]\.\/mutate\.mjs['"]/.test(lib),
-    'tests/mutate-lib.mjs must not import tests/mutate.mjs, or importing the list runs the harness');
+  // cm:guard EVERY file under tests/ is read, not a named three: a new tier importing the CLI half
+  //   put `main` back on the corpus's import graph and no check noticed. Dynamic `import()` counts —
+  //   a static-only pattern missed `await import('./mutate' + '.mjs')` (ISS-30)
+  const dir = join(pluginRoot, 'tests');
+  const importers = readdirSync(dir)
+    .filter((f) => f.endsWith('.mjs') && f !== 'mutate.mjs')
+    .filter((f) => {
+      // cm:guard line comments are dropped before matching, because the guard above spells the
+      //   bypass out and the check matched its own documentation (ISS-30)
+      const src = readFileSync(join(dir, f), 'utf8')
+        .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+      return /(?:from|import)\s*\(?\s*['"`][^'"`]*mutate\.mjs['"`]/.test(src)
+        || /import\s*\(\s*['"`][^'"`]*mutate['"`]\s*\+/.test(src);
+    });
+  check('mutate: nothing else under tests/ imports the half that spawns',
+    importers.length === 0,
+    `these import tests/mutate.mjs: ${importers.join(', ')} — the corpus would then hold a path to `
+    + 'main, which spawns one whole corpus run per declared point');
 
-  const cases = readFileSync(join(pluginRoot, 'tests', 'mutate-cases.mjs'), 'utf8');
-  check('mutate: the corpus cases do not import the half that spawns',
-    !/from\s+['"]\.\/mutate\.mjs['"]/.test(cases),
-    'these cases must import tests/mutate-lib.mjs only — importing the CLI puts main on the corpus import graph');
-
-  const runner = readFileSync(join(pluginRoot, 'tests', 'run.mjs'), 'utf8');
-  check('mutate: the runner does not reach the half that spawns',
-    !/['"]\.\/mutate\.mjs['"]/.test(runner),
-    'tests/run.mjs must not import tests/mutate.mjs — the harness is opt-in and spends a corpus run per point');
+  // cm:guard the entry-point check is the ONLY thing standing between an import of the CLI half and
+  //   a corpus run, so it is exercised rather than asserted about: importing the module must return
+  //   without printing a table or spawning anything (ISS-30)
+  const probe = spawnSync(process.execPath,
+    ['-e', `import(${JSON.stringify(join(dir, 'mutate.mjs'))}).then(() => console.log('imported'))`],
+    { encoding: 'utf8', timeout: 30000, env: stripGitEnv(process.env) });
+  check('mutate: importing the half that spawns runs nothing',
+    probe.status === 0 && /^imported\s*$/.test(probe.stdout ?? '')
+      && !/corpus runs/.test(probe.stdout ?? ''),
+    `importing tests/mutate.mjs must be inert: status=${probe.status} stdout=${JSON.stringify((probe.stdout ?? '').slice(0, 200))}`);
 }
 
 function declaredListCases(check) {
+  // cm:guard every other check here filters the list and asserts the result is empty, so all of them
+  //   pass on an EMPTY list — and the harness then prints "all 0 declared mechanism(s) are pinned"
+  //   and exits 0, a green run that measured nothing (ISS-30)
+  check('mutate: the declared list is not empty',
+    MUTATIONS.length > 0,
+    'with no declared points every other check here is vacuous and the harness reports success');
+
   // cm:guard the declared list is the reviewed artefact, so its shape is checked rather than its
   //   contents: a point with no id or no anchor is a row that cannot be read (ISS-30)
   const shapeless = MUTATIONS.filter((m) => !m.id || !m.file || !m.find || m.replace === undefined

@@ -40,7 +40,7 @@ Both run in CI on every push and pull request (`.github/workflows/ci.yml`).
 A green corpus says the change broke nothing. It does **not** say the mechanism the change just
 added is doing any work — in ISS-26 that gap produced dead code twice in one issue, each time with a
 `cm:` annotation crediting the dead half. When a change adds a mechanism to the checker, declare it
-in `tests/mutate.mjs` and run that:
+in `tests/mutate-lib.mjs` and run the harness:
 
 ```bash
 node tests/mutate.mjs --only <id>   # while iterating on one new point
@@ -64,8 +64,8 @@ that gate by hand.
 The harness is two files on purpose. `tests/mutate-lib.mjs` is the pure half — the declared list,
 the parse, the classification, the git-environment scrub — and the corpus pins all of it through
 `tests/mutate-cases.mjs`. `tests/mutate.mjs` is the half that copies trees and spawns runs, and
-nothing under `tests/` may import it: that import is what would put a corpus run on the corpus's own
-import graph.
+no other file under `tests/` may import it: that import is what would put a corpus run on the
+corpus's own import graph.
 
 ## Releasing
 

@@ -1,10 +1,10 @@
 // The mutation harness's pure half: the declared list, the environment scrub, the parse and the
 // classification. Nothing here spawns a process or touches a repository.
 //
-// cm:edge protocol -> tests/mutate.mjs — the CLI half imports this; this must never import that.
-//   tests/run.mjs reaches this file through tests/mutate-cases.mjs, so an import in this direction
-//   would put `main` on the corpus's import graph, and main spawns a corpus run per point: the
-//   corpus would spawn itself, each level bounded only by CORPUS_TIMEOUT_MS (ISS-30)
+// cm:guard this half must never import tests/mutate.mjs. tests/run.mjs reaches this file through
+//   tests/mutate-cases.mjs, so an import in that direction puts `main` on the corpus's import graph,
+//   and only the entry-point check in that file then stands between the corpus and spawning a corpus
+//   run per declared point (ISS-30)
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
@@ -47,6 +47,11 @@ const GIT_LOCATION_VARS = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OB
   'GIT_COMMON_DIR', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_TEMPLATE_DIR', 'GIT_NAMESPACE',
   'GIT_CEILING_DIRECTORIES', 'GIT_PREFIX'];
 
+// cm:guard these outrank the `-c user.email` / `user.name` the copy's commit passes, so leaving them
+//   gives the throwaway commit the identity of whatever run invoked the harness (ISS-30)
+const GIT_IDENTITY_VARS = ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_AUTHOR_DATE',
+  'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL', 'GIT_COMMITTER_DATE'];
+
 // cm:guard config travels to child gits in the ENVIRONMENT, not only in files: `git -c k=v` exports
 //   GIT_CONFIG_PARAMETERS to everything it runs, and GIT_CONFIG_COUNT/KEY_n/VALUE_n are read from the
 //   environment too. Stripping only the location variables left `git -c core.hooksPath=… bisect run`
@@ -58,7 +63,7 @@ const GIT_CONFIG_VARS = ['GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUN
 //   and deleting them re-enables it — the isolation runs backwards (ISS-30)
 export function stripGitEnv(env) {
   const out = { ...env };
-  for (const k of [...GIT_LOCATION_VARS, ...GIT_CONFIG_VARS]) delete out[k];
+  for (const k of [...GIT_LOCATION_VARS, ...GIT_CONFIG_VARS, ...GIT_IDENTITY_VARS]) delete out[k];
   for (const k of Object.keys(out)) {
     if (/^GIT_CONFIG_(KEY|VALUE)_\d+$/.test(k)) delete out[k];
   }
@@ -70,6 +75,7 @@ export function stripGitEnv(env) {
 
 export const GIT_LOCATION_VAR_NAMES = GIT_LOCATION_VARS;
 export const GIT_CONFIG_VAR_NAMES = GIT_CONFIG_VARS;
+export const GIT_IDENTITY_VAR_NAMES = GIT_IDENTITY_VARS;
 
 export function parseCorpusOutput(stdout, stderr, spawnError, tailLines = 30) {
   const count = /^codemap golden corpus: (\d+) passed, (\d+) failed$/m.exec(stdout ?? '');

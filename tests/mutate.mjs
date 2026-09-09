@@ -36,7 +36,8 @@ const GIT_ENV = stripGitEnv(process.env);
 //   this defence would quietly come undone (ISS-30)
 function git(cwd, args) {
   return execFileSync('git', ['-C', cwd, ...args],
-    { encoding: 'utf8', maxBuffer: MAX_BUFFER, env: GIT_ENV }).trim();
+    { encoding: 'utf8', maxBuffer: MAX_BUFFER, env: GIT_ENV, stdio: ['ignore', 'pipe', 'pipe'] })
+    .trim();
 }
 
 function listFiles(...selectors) {
@@ -98,15 +99,15 @@ function copyFrom(base, dest) {
 // cm:guard an uncommitted NEW file reaches the copy's worktree but not this commit's tree, so the
 //   clone-based tiers see a tree without it. Mutating a file that is not yet `git add`ed is measured
 //   by every tier except those, which is the other half of what the banner's tree state means (ISS-30)
-export function initRepo(gitFn, dest, base) {
+function initRepo(dest, base) {
   const id = ['-c', 'user.email=mutate@codemap.invalid', '-c', 'user.name=codemap mutation harness',
     '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=', '-c', 'init.templateDir='];
-  gitFn(dest, ['init', '-q']);
+  git(dest, ['init', '-q']);
   for (let i = 0; i < base.staged.length; i += 500) {
-    gitFn(dest, ['add', '--', ...base.staged.slice(i, i + 500)]);
+    git(dest, ['add', '--', ...base.staged.slice(i, i + 500)]);
   }
-  gitFn(dest, [...id, 'commit', '-q', '--allow-empty', '-m', 'mutation harness working copy']);
-  for (const tag of base.tags) gitFn(dest, ['tag', tag]);
+  git(dest, [...id, 'commit', '-q', '--allow-empty', '-m', 'mutation harness working copy']);
+  for (const tag of base.tags) git(dest, ['tag', tag]);
 }
 
 function runCorpus(dir) {
@@ -128,12 +129,14 @@ function inCopy(base, mutate) {
     const anchor = mutate ? applyMutation(dir, mutate) : null;
     if (anchor) return { anchor };
     try {
-      initRepo(git, dir, base);
+      initRepo(dir, base);
     } catch (e) {
       // cm:guard a git failure in the copy is one unusable ROW, never an uncaught stack that ends the
       //   table: the rows already measured are the evidence somebody is waiting on. This covers the
       //   CONTROL too — it is the first initRepo of the run, so it is the likeliest to hit it (ISS-30)
-      return { setup: String(e.stderr || e.message || e).trim().split('\n').slice(-3).join(' ') };
+      // cm:guard the FIRST lines of git's stderr, not the last: git prints `error: …` first and a
+      //   usage dump after it, so a tail kept the flag list and threw away the reason (ISS-30)
+      return { setup: String(e.stderr || e.message || e).trim().split('\n').slice(0, 3).join(' ') };
     }
     return { result: runCorpus(dir) };
   } finally {
@@ -202,7 +205,10 @@ function main(argv) {
   }
 
   const head = git(ROOT, ['rev-parse', '--short', 'HEAD']);
-  const modified = git(ROOT, ['status', '--porcelain', '--untracked-files=no']) !== '';
+  // cm:guard `--no-optional-locks`, so reading the tree state writes NOTHING in the repository being
+  //   measured: a plain `git status` takes index.lock and rewrites .git/index with a stat-cache
+  //   refresh, which is the one write this harness would otherwise make to the real checkout (ISS-30)
+  const modified = git(ROOT, ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=no']) !== '';
   const untracked = listFiles('--others', '--exclude-standard').length > 0;
   const state = [modified ? 'modified tracked files' : '', untracked ? 'untracked files' : '']
     .filter(Boolean).join(' and ');
