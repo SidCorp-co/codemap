@@ -201,6 +201,8 @@ export function contractCandidates(root, files) {
     if (a.eco === b.eco) continue;
     out.push({ source: 'contract', literal: lit, files: [a, b] });
   }
-  out.sort((x, y) => x.files[0].localeCompare(y.files[0]) || x.literal.localeCompare(y.literal));
+  // cm:guard this source's `files` holds {file,line,lang,eco} RECORDS, not the bare paths
+  //   lockstepCandidates pushes at :141 — sort and print through .file, never the element (ISS-52)
+  out.sort((x, y) => x.files[0].file.localeCompare(y.files[0].file) || x.literal.localeCompare(y.literal));
   return out;
 }

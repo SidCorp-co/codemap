@@ -119,6 +119,24 @@ function pureCases(check) {
     check('propose: the vocabulary exclusion does not swallow an ordinary shared token (ISS-50)',
       control.length === 1 && control[0].literal === 'ERR_TOKEN_SPENT',
       `the control must still be proposed, or the case above passes by excluding everything: ${JSON.stringify(control)}`);
+
+    // ISS-52 — the comparator at propose.mjs:196 only runs once source 3 has TWO candidates, which
+    //   is why a crash that shipped with ISS-12 stayed green here: every other contract case above
+    //   asserts 0 or 1. Two literals on one pair pin the literal tie-break; the second pair pins the
+    //   path key that orders them.
+    writeFileSync(join(root, 'a_emit.go'), 'const a = "SHARED_ONE"\nconst b = "SHARED_TWO"\n');
+    writeFileSync(join(root, 'b_parse.ts'), 'if (x === "SHARED_ONE") y();\nif (x === "SHARED_TWO") z();\n');
+    writeFileSync(join(root, 'm_emit.go'), 'const c = "OTHER_CODE"\n');
+    writeFileSync(join(root, 'n_parse.ts'), 'if (x === "OTHER_CODE") w();\n');
+    const many = contractCandidates(root, ['a_emit.go', 'b_parse.ts', 'm_emit.go', 'n_parse.ts']);
+    check('propose: contract returns every candidate when a repo has more than one (ISS-52)',
+      many.length === 3, `expected 3 candidates, got ${JSON.stringify(many)}`);
+    check('propose: contract orders candidates by first side\'s path, then literal (ISS-52)',
+      many.map((c) => c.literal).join(',') === 'SHARED_ONE,SHARED_TWO,OTHER_CODE',
+      `order was ${JSON.stringify(many.map((c) => [c.files[0]?.file, c.literal]))}`);
+    check('propose: a contract candidate\'s files carry the record the printer reads (ISS-52)',
+      many.every((c) => typeof c.files[0]?.file === 'string' && typeof c.files[0]?.line === 'number'),
+      `files must hold {file,line,lang,eco}: ${JSON.stringify(many[0])}`);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
