@@ -4,6 +4,8 @@
 //   below before this list is ever consulted, and TAGS is the tag vocabulary (ISS-50)
 // cm:edge lockstep -> cli/lib/help.mjs — a new member needs a COMPLETE TAG_HELP row there too; a
 //   row absent, or short of a field, drops from the guide and makes `cm help annotations` exit 2 (ISS-53)
+// cm:guard the CLI derives this size; six .md copies hand-type it and no check reads them (README,
+//   output-styles, skills, CONTRIBUTING, SPEC twice) — a member added here sweeps those too (ISS-55)
 export const TAGS = ['flow', 'edge', 'guard', 'hack', 'why'];
 
 // cm:why the whole prose family is baselined together, so `cm init` leaves a legacy repo green (§8)

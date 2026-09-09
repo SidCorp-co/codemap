@@ -4,13 +4,13 @@
 // diagnostic, tag, edge kind or language shows up without anyone editing prose), and the vendored copy
 // answers the same as the plugin's.
 
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync, readdirSync } from 'node:fs';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CODE_TABLE, TAGS, EDGE_KINDS } from '../cli/lib/parse.mjs';
 import { PROFILES } from '../cli/lib/languages.mjs';
-import { HELP_TOPICS, VERBS, renderHelp, tagHelpGaps, annotations } from '../cli/lib/help.mjs';
+import { HELP_TOPICS, VERBS, renderHelp, tagHelpGaps, annotations, overview } from '../cli/lib/help.mjs';
 import { stripGitEnv } from './git-env.mjs';
 
 function run(cmd, cwd, ...args) {
@@ -65,6 +65,39 @@ export function helpCases(pluginRoot, check) {
       `tags missing: ${missingTag.join(', ')} · kinds missing: ${missingKind.join(', ')}`);
     check('help: the tag count it claims is the real one',
       ann.includes(`Exactly ${TAGS.length} tags`), 'a hand-typed count is a second source of truth');
+
+    check('help: the topic blurb claims the real tag count too',
+      overview().includes(`the ${TAGS.length} tags`),
+      'the blurb above the tag table is the one count `help annotations` does not render');
+
+    // cm:why the case that fails when the numeral goes back into the string — the check above
+    //   passes on a hand-typed "5" for as long as TAGS has exactly five members (ISS-55)
+    const sixthOverview = overview([...TAGS, 'sixth']);
+    check('help: a sixth tag moves the blurb count with it',
+      sixthOverview.includes('the 6 tags'),
+      `the blurb read: ${sixthOverview.split('\n').filter((l) => / tags,/.test(l)).join(' | ') || '(no blurb line)'}`);
+
+    // cm:why scoped to "<word> tags", not the bare numeral word: cli/ prose counts other things
+    //   legitimately — "two arms", "three tiers" — and a sweep for those fails on those (ISS-55)
+    const SPELLED_COUNT = /\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+tags\b/i;
+    const mjsUnder = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const full = join(dir, e.name);
+      return e.isDirectory() ? mjsUnder(full) : (e.name.endsWith('.mjs') ? [full] : []);
+    });
+    const spelled = mjsUnder(join(pluginRoot, 'cli'))
+      .filter((f) => SPELLED_COUNT.test(readFileSync(f, 'utf8')))
+      .map((f) => f.slice(pluginRoot.length + 1));
+    check('help: no file under cli/ spells the size of the tag vocabulary as a word',
+      spelled.length === 0,
+      `a numeral no constant derives, in: ${spelled.join(', ')}`);
+
+    // cm:why a golden list, not a count: turning TOPIC_BLURBS into a call could drop or reorder a
+    //   key and a count would still pass (ISS-55)
+    const TOPICS_AT_CB07E5C = ['annotations', 'baseline', 'ci', 'codes', 'config',
+      'languages', 'principles', 'spec', 'verbs', 'workflow'];
+    check('help: `help topics` lists the same topics it listed before the blurb was derived',
+      JSON.stringify(renderHelp('topics').text.trim().split('\n').map((l) => l.trim())) === JSON.stringify(TOPICS_AT_CB07E5C),
+      `lists [${renderHelp('topics').text.trim().split('\n').map((l) => l.trim())}] against [${TOPICS_AT_CB07E5C}]`);
 
     // cm:why the check above passes on the broken row `  cm:sixth  undefined`, so it cannot pin
     //   totality — it asks only whether the string appears somewhere in the text (ISS-53)
