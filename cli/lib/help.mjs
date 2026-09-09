@@ -50,6 +50,9 @@ export const VERBS = [
 const pad = (s, n) => String(s).padEnd(n);
 
 function table(rows, gap = 2) {
+  // cm:guard zero rows is reachable: annotations() renders only the tags whose help row is sound,
+  //   and every row can be broken at once — rows[0] there is exit 1 with no guidebook (ISS-43)
+  if (rows.length === 0) return [];
   const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => String(r[i]).length)));
   return rows.map((r) => r.map((c, i) => (i === r.length - 1 ? String(c) : pad(c, widths[i]))).join(' '.repeat(gap)).trimEnd());
 }
@@ -143,11 +146,11 @@ const TAG_HELP = {
 
 // cm:why parameterised for its one caller so a test can exercise a vocabulary and a table this
 //   repo does not ship, rather than mutating either shared constant (ISS-50's shape)
-export function tagHelpGaps(tags = TAGS, table = TAG_HELP) {
-  const rows = Object.keys(table);
+export function tagHelpGaps(tags = TAGS, help = TAG_HELP) {
+  const rows = Object.keys(help);
   return {
     missing: tags.filter((t) => !rows.includes(t)),
-    partial: tags.filter((t) => table[t] && TAG_HELP_FIELDS.some((f) => !table[t][f])),
+    partial: tags.filter((t) => help[t] && TAG_HELP_FIELDS.some((f) => !help[t][f])),
     extra: rows.filter((t) => !tags.includes(t)),
   };
 }

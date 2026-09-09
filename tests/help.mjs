@@ -79,14 +79,23 @@ export function helpCases(pluginRoot, check) {
       tagHelpGaps(['guard'], { guard: { consumer: 'c', syntax: 's' } }).partial.includes('guard'),
       'a row missing one field renders that field as "undefined", which is the defect itself');
 
-    const sixth = annotations([...TAGS, 'sixth']);
+    // cm:guard a throw here is a failing case, never a dead run — helpCases taking the process down
+    //   loses every suite after it, and this call is the one that renders a table with a gap (ISS-45)
+    let sixth = null;
+    let sixthErr = null;
+    try {
+      sixth = annotations([...TAGS, 'sixth']);
+    } catch (err) {
+      sixthErr = err;
+    }
+    const threw = (why) => (sixthErr ? `annotations() threw instead of reporting the gap: ${sixthErr.stack}` : why);
     check('help: a TAGS member with no help row does not earn a clean render',
-      sixth.ok === false, 'ok:true is exit 0, so a broken table ships as a good guide');
+      sixth?.ok === false, threw('ok:true is exit 0, so a broken table ships as a good guide'));
     check('help: that render names the member it has no row for',
-      sixth.text.includes('sixth'), 'a gap a reader cannot name is a gap they cannot close');
+      sixth?.text.includes('sixth') === true, threw('a gap a reader cannot name is a gap they cannot close'));
     check('help: that render prints no "undefined" anywhere',
-      !sixth.text.includes('undefined'),
-      `the word reached the reader anyway:\n${sixth.text.split('\n').filter((l) => l.includes('undefined')).join('\n')}`);
+      sixth !== null && !sixth.text.includes('undefined'),
+      threw(`the word reached the reader anyway:\n${sixth?.text.split('\n').filter((l) => l.includes('undefined')).join('\n')}`));
 
     // cm:why the order a reader meets the tags in is a decision no constant derives, so it is pinned
     //   here as a golden: a reorder of TAG_HELP has to be deliberate enough to move this line (ISS-53)
