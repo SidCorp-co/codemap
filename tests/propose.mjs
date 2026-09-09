@@ -120,23 +120,23 @@ function pureCases(check) {
       control.length === 1 && control[0].literal === 'ERR_TOKEN_SPENT',
       `the control must still be proposed, or the case above passes by excluding everything: ${JSON.stringify(control)}`);
 
-    // ISS-52 — the comparator at propose.mjs:196 only runs once source 3 has TWO candidates, which
-    //   is why a crash that shipped with ISS-12 stayed green here: every other contract case above
-    //   asserts 0 or 1. Two literals on one pair pin the literal tie-break; the second pair pins the
-    //   path key that orders them.
-    writeFileSync(join(root, 'a_emit.go'), 'const a = "SHARED_ONE"\nconst b = "SHARED_TWO"\n');
-    writeFileSync(join(root, 'b_parse.ts'), 'if (x === "SHARED_ONE") y();\nif (x === "SHARED_TWO") z();\n');
-    writeFileSync(join(root, 'm_emit.go'), 'const c = "OTHER_CODE"\n');
-    writeFileSync(join(root, 'n_parse.ts'), 'if (x === "OTHER_CODE") w();\n');
-    const many = contractCandidates(root, ['a_emit.go', 'b_parse.ts', 'm_emit.go', 'n_parse.ts']);
+    writeFileSync(join(root, 'z_first.ts'), 'const q = "ALPHA_TWO";\nconst p = "ALPHA_ONE";\n');
+    writeFileSync(join(root, 'a_second.go'), 'const q = "ALPHA_TWO"\nconst p = "ALPHA_ONE"\n');
+    writeFileSync(join(root, 'm_first.ts'), 'const r = "BETA_CODE";\n');
+    writeFileSync(join(root, 'n_second.go'), 'const r = "BETA_CODE"\n');
+    // cm:guard z_first.ts is scanned first yet must sort AFTER m_first.ts, while a_second.go sorts
+    //   before both — only that makes the path key, not discovery order or the pair's smaller side, decide (ISS-52)
+    // cm:guard ALPHA_TWO stays written ABOVE ALPHA_ONE and BETA_CODE stays sorting after both, or
+    //   the literal key alone reproduces the expected order (ISS-52)
+    const many = contractCandidates(root, ['z_first.ts', 'a_second.go', 'm_first.ts', 'n_second.go']);
     check('propose: contract returns every candidate when a repo has more than one (ISS-52)',
       many.length === 3, `expected 3 candidates, got ${JSON.stringify(many)}`);
     check('propose: contract orders candidates by first side\'s path, then literal (ISS-52)',
-      many.map((c) => c.literal).join(',') === 'SHARED_ONE,SHARED_TWO,OTHER_CODE',
+      many.map((c) => c.literal).join(',') === 'BETA_CODE,ALPHA_ONE,ALPHA_TWO',
       `order was ${JSON.stringify(many.map((c) => [c.files[0]?.file, c.literal]))}`);
-    check('propose: a contract candidate\'s files carry the record the printer reads (ISS-52)',
-      many.every((c) => typeof c.files[0]?.file === 'string' && typeof c.files[0]?.line === 'number'),
-      `files must hold {file,line,lang,eco}: ${JSON.stringify(many[0])}`);
+    check('propose: both sides of a contract candidate carry the record the printer reads (ISS-52)',
+      many.every((c) => c.files.length === 2 && c.files.every((f) => typeof f?.file === 'string' && typeof f?.line === 'number')),
+      `both sides must hold {file,line,lang,eco}: ${JSON.stringify(many[0])}`);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -193,6 +193,8 @@ function cliCases(pluginRoot, check) {
     writeFileSync(join(root, '.forge', 'codemap.json'), '{}\n');
     writeFileSync(join(root, 'a.ts'), '// see product_create.go for the matching validation rules\nexport const a = 1;\n');
     writeFileSync(join(root, 'product_create.go'), 'package main\nfunc create() {}\n');
+    writeFileSync(join(root, 'pair_one.ts'), 'const p = "GAMMA_ONE";\nconst q = "GAMMA_TWO";\n');
+    writeFileSync(join(root, 'pair_two.go'), 'const p = "GAMMA_ONE"\nconst q = "GAMMA_TWO"\n');
     git(root, 'init', '-q');
     git(root, 'add', '-A');
     git(root, 'commit', '-qm', 'seed');
@@ -203,6 +205,12 @@ function cliCases(pluginRoot, check) {
     check('cli: propose never writes a fabricated — why', !/—\s*why they/.test(r.out) || /add\s*—\s*why/.test(r.out),
       'a suggestion line must not assert a why it did not derive');
     check('cli: propose says a candidate is not a fact', /not a fact/.test(r.out), r.out);
+
+    const two = cm(pluginRoot, root, 'propose', '--source', 'contract');
+    check('cli: propose exits 0 where source 3 finds two candidates (ISS-52)', two.status === 0,
+      `status ${two.status}\n${two.out}`);
+    check('cli: propose prints both contract candidates rather than dying on the second (ISS-52)',
+      /GAMMA_ONE/.test(two.out) && /GAMMA_TWO/.test(two.out), two.out);
 
     const asJson = cm(pluginRoot, root, 'propose', '--json');
     let parsed;
