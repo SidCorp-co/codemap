@@ -116,9 +116,8 @@ export function profileCases(pluginRoot, check) {
     /advisoryEcosystemOf\(/.test(graphSrc.replace(/^import .*$/m, '')),
     'the advisory tier must CALL languages.mjs, not merely import it');
 
-  // cm:guard the advisory tier is derived from the PROFILE, so every extension reaching a covered
-  //   profile is covered — this is the assertion that makes a new BY_EXT entry impossible to leave
-  //   behind, which is the whole of ISS-32
+  // cm:guard derived from the PROFILE, so every extension reaching a covered one is covered — this is
+  //   what makes a new BY_EXT entry impossible to leave behind, which is the whole of ISS-32
   const covered = [['a.ts', 'ts'], ['a.tsx', 'ts'], ['a.mts', 'ts'], ['a.cts', 'ts'],
     ['a.js', 'ts'], ['a.jsx', 'ts'], ['a.mjs', 'ts'], ['a.cjs', 'ts'],
     ['a.go', 'go'], ['a.php', 'php'], ['a.py', 'py'], ['a.pyi', 'py'], ['a.rs', 'rust']];
@@ -128,8 +127,8 @@ export function profileCases(pluginRoot, check) {
       `expected ${eco}, got ${advisoryEcosystemOf(path)}`);
   }
 
-  // cm:guard an SFC shares TS's ecosystem and is still OUT of the advisory tier — the two answers are
-  //   different questions, and collapsing them turns CM301 on in every consumer Vue repo (ISS-15)
+  // cm:guard an SFC shares TS's ecosystem and is still OUT of the advisory tier — no measurement
+  //   covers that file format, and collapsing the two turns CM301 on in every consumer Vue repo
   for (const path of ['Widget.vue', 'Widget.svelte']) {
     check(`profiles: ${path} shares the ts ecosystem`, ecosystemOf(path) === 'ts',
       `expected ts, got ${ecosystemOf(path)}`);
