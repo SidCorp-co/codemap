@@ -1,14 +1,10 @@
 #!/usr/bin/env node
 // Mutation harness, the half that runs things. Opt-in, never part of the gate.
 //
-// cm:edge contract -> tests/run.mjs — parses that runner's stdout count line
-//   ("codemap golden corpus: N passed, M failed") and its stderr "  FAIL <name>" lines, which fail
-//   two different ways if either shape changes: losing the COUNT line turns every row into CRASH,
-//   which is loud, but losing the FAIL line leaves every row still reading `pinned` with an empty
-//   names column, which is silent and is the ISS-26 trap restored (ISS-30)
-// cm:edge protocol -> tests/mutate-lib.mjs — the declared list, the parse, the classification and
-//   the environment scrub live there so the corpus can pin them without importing `main`. Nothing in
-//   this file may be imported by tests/, or the corpus gains an import path to a corpus run (ISS-30)
+// cm:edge contract -> tests/run.mjs — parses its count line and its "  FAIL <name>" lines. Changing
+//   the count line makes every row CRASH, loudly; changing the FAIL line empties the names silently
+// cm:edge protocol -> tests/mutate-lib.mjs — the pure half lives there so the corpus can pin it
+//   without importing `main`; nothing under tests/ may import THIS file (ISS-30)
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
@@ -24,16 +20,12 @@ const CORPUS_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_BUFFER = 64 * 1024 * 1024;
 const STDERR_TAIL_LINES = 30;
 
-// cm:guard git reads GIT_DIR, GIT_WORK_TREE and GIT_INDEX_FILE in PREFERENCE to `-C`, and carries
-//   `-c` settings onward in GIT_CONFIG_PARAMETERS, so an inherited environment would make every call
-//   below act on another repository: `init` creates nothing and `add`/`commit` land the MUTATION as a
-//   commit in the outer checkout. `git bisect run`, `git rebase --exec` and every hook export
-//   these, so this is not hypothetical — the scrub is pinned in tests/mutate-cases.mjs (ISS-30)
+// cm:guard git prefers GIT_DIR and friends to `-C`, so an inherited environment lands the MUTATION
+//   as a commit in the outer checkout — `bisect run` and every hook export them (ISS-30)
 const GIT_ENV = stripGitEnv(process.env);
 
-// cm:guard the ONLY child git invocation in this file, so the scrub cannot be bypassed by a call
-//   that forgets it. tests/mutate-cases.mjs asserts that count, because a second call site is how
-//   this defence would quietly come undone (ISS-30)
+// cm:guard the ONLY child git invocation here, so no call can forget the scrub; a second call site
+//   is how that defence would quietly come undone, and the corpus asserts the count (ISS-30)
 function git(cwd, args) {
   return execFileSync('git', ['-C', cwd, ...args],
     { encoding: 'utf8', maxBuffer: MAX_BUFFER, env: GIT_ENV, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -44,20 +36,15 @@ function listFiles(...selectors) {
   return git(ROOT, ['ls-files', '-z', ...selectors]).split('\0').filter(Boolean);
 }
 
-// cm:why the snapshot is taken from the WORKING TREE, not from `git archive HEAD`: the case this
-//   harness exists for is a mechanism somebody has just written and not committed. What that costs is
-//   printed instead — the head, and separately whether tracked files are modified or files are merely
-//   untracked, which are different claims about reproducing the table (ISS-30)
-// cm:guard taken ONCE, before the control, and every row copies from it rather than re-reading the
-//   working tree. Re-reading per row made the control and the rows the same table but not the same
-//   tree, so an editor saving during the run gave a later row a check name for a mechanism that row
-//   never measured — a false `pinned`, which is how this tool can lie into an annotation (ISS-30)
+// cm:why the snapshot comes from the WORKING TREE, not `git archive HEAD`: the mechanism this is
+//   pointed at is usually uncommitted, so the banner names the tree state instead (ISS-30)
+// cm:guard taken ONCE, before the control, and every row copies from it: re-reading per row let a
+//   save mid-run give a later row a false `pinned` the control could not catch (ISS-30)
 function snapshot() {
   const dir = mkdtempSync(join(tmpdir(), 'cm-mutate-base-'));
   const cached = listFiles('--cached');
-  // cm:guard `--others --exclude-standard` is not optional: a mechanism in a file that is written but
-  //   not yet `git add`ed is the commonest thing this harness is pointed at, and a cached-only copy
-  //   would leave it out of the tree and report ANCHOR for a site that is right there (ISS-30)
+  // cm:guard `--others --exclude-standard` is not optional: a mechanism written but not yet added is
+  //   the commonest case here, and a cached-only copy reports ANCHOR for a site that exists (ISS-30)
   const untracked = listFiles('--others', '--exclude-standard');
   const copied = [];
   for (const rel of [...cached, ...untracked]) {
@@ -72,15 +59,11 @@ function snapshot() {
   return {
     dir,
     files: copied,
-    // cm:edge contract -> tests/install.mjs — that case asks git for this repository's TRACKED set and
-    //   holds a guard that it must never read the working tree instead (ISS-29). So the copy stages
-    //   exactly what was cached here and leaves the rest untracked: `git add -A` would promote a
-    //   scratch file to tracked and fail that case on a file the repository does not own
+    // cm:edge contract -> tests/install.mjs — that case reads the TRACKED set and is guarded against
+    //   reading the working tree (ISS-29), so `git add -A` here would fail it on a scratch file
     staged: cached.filter((rel) => present.has(rel)),
-    // cm:edge contract -> tests/release-tag.mjs — that case disables itself when `git tag -l
-    //   codemap-v*` comes back empty, so a copy with no tags ran 653 of the checkout's 654 checks and
-    //   reported the version/tag coupling ISS-5 exists for as DEAD. The tag NAMES are carried onto the
-    //   copy's single commit, because existence under that glob is the whole of what it reads (ISS-30)
+    // cm:edge contract -> tests/release-tag.mjs — that case disables itself with no `codemap-v*` tag,
+    //   so a copy without the tag names runs fewer checks and reads the coupling as DEAD (ISS-30)
     tags: git(ROOT, ['tag', '-l', 'codemap-v*']).split('\n').filter(Boolean),
   };
 }
@@ -93,12 +76,10 @@ function copyFrom(base, dest) {
   }
 }
 
-// cm:edge ordering -> tests/upgrade-workflow.mjs — this MUST run after the mutation is written, never
-//   before. That case reads the CLONED tree and installs from its HEAD, so committing first would
-//   leave it testing unmutated code and report a mechanism dead on evidence that never held it (ISS-30)
-// cm:guard an uncommitted NEW file reaches the copy's worktree but not this commit's tree, so the
-//   clone-based tiers see a tree without it. Mutating a file that is not yet `git add`ed is measured
-//   by every tier except those, which is the other half of what the banner's tree state means (ISS-30)
+// cm:edge ordering -> tests/upgrade-workflow.mjs — must run AFTER the mutation is written: that case
+//   clones the copy and installs from HEAD, so committing first measures unmutated code (ISS-30)
+// cm:guard an uncommitted NEW file reaches the copy's worktree but not this commit, so the
+//   clone-based tiers alone do not measure a mutation to a file that is not yet added (ISS-30)
 function initRepo(dest, base) {
   const id = ['-c', 'user.email=mutate@codemap.invalid', '-c', 'user.name=codemap mutation harness',
     '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=', '-c', 'init.templateDir='];
@@ -131,9 +112,8 @@ function inCopy(base, mutate) {
     try {
       initRepo(dir, base);
     } catch (e) {
-      // cm:guard a git failure in the copy is one unusable ROW, never an uncaught stack that ends the
-      //   table: the rows already measured are the evidence somebody is waiting on. This covers the
-      //   CONTROL too — it is the first initRepo of the run, so it is the likeliest to hit it (ISS-30)
+      // cm:guard a git failure in the copy is one unusable ROW, never an uncaught stack: the rows
+      //   already measured are the evidence, and the control hits this first of all (ISS-30)
       // cm:guard the FIRST lines of git's stderr, not the last: git prints `error: …` first and a
       //   usage dump after it, so a tail kept the flag list and threw away the reason (ISS-30)
       return { setup: String(e.stderr || e.message || e).trim().split('\n').slice(0, 3).join(' ') };
@@ -205,9 +185,8 @@ function main(argv) {
   }
 
   const head = git(ROOT, ['rev-parse', '--short', 'HEAD']);
-  // cm:guard `--no-optional-locks`, so reading the tree state writes NOTHING in the repository being
-  //   measured: a plain `git status` takes index.lock and rewrites .git/index with a stat-cache
-  //   refresh, which is the one write this harness would otherwise make to the real checkout (ISS-30)
+  // cm:guard `--no-optional-locks` so reading the tree state writes NOTHING here: a plain `git
+  //   status` rewrites .git/index with a stat-cache refresh, the one write this would make (ISS-30)
   const modified = git(ROOT, ['--no-optional-locks', 'status', '--porcelain', '--untracked-files=no']) !== '';
   const untracked = listFiles('--others', '--exclude-standard').length > 0;
   const state = [modified ? 'modified tracked files' : '', untracked ? 'untracked files' : '']
@@ -226,8 +205,7 @@ function main(argv) {
   try {
     const control = inCopy(base, null);
     // cm:guard the control's own setup failure is a first-class outcome: reading `.result` off it
-    //   unconditionally turned a refusing pre-commit hook into `TypeError: Cannot read properties of
-    //   undefined`, on unmodified code, before any row had been measured (ISS-30)
+    //   unconditionally turned a refusing pre-commit hook into a TypeError (ISS-30)
     if (control.setup) {
       console.error(`the control's copy could not be prepared, so nothing could be measured:\n  ${control.setup}`);
       return 1;
@@ -240,9 +218,8 @@ function main(argv) {
       outcome: controlClean ? 'clean' : 'CONTAMINATED',
     });
 
-    // cm:guard the control gates the whole table: with a control that is not clean, a mutation whose
-    //   checks fail cannot be told from a tree that was already failing, so no verdict is printed at
-    //   all rather than printing rows that read as findings (ISS-30)
+    // cm:guard the control gates the whole table: against an unclean control a failing row cannot be
+    //   told from a tree already failing, so no verdict is printed rather than a false finding (ISS-30)
     if (!controlClean) {
       console.log(table(rows));
       console.error('\ncontrol did not come back clean, so every mutation row would be unreadable.');
@@ -252,10 +229,8 @@ function main(argv) {
       return 1;
     }
 
-    // cm:guard the control's CHECK TOTAL is printed, because every row is judged against it and
-    //   nothing here can know the checkout's own total: a copy that quietly runs fewer checks than
-    //   `node tests/run.mjs` makes every DEAD in the table meaningless, and this line is what lets a
-    //   reader notice (ISS-30)
+    // cm:guard the control's CHECK TOTAL is printed because nothing here knows the checkout's own: a
+    //   copy quietly running fewer checks makes every DEAD meaningless, and this is the signal (ISS-30)
     console.log(`control ran ${c.total} checks — compare it against \`node tests/run.mjs\` before trusting a DEAD row\n`);
 
     for (const m of selected) {
@@ -284,9 +259,8 @@ function main(argv) {
 
   console.log(table(rows));
 
-  // cm:guard printed under the table and never inside a cell: the failure list is what a contributor
-  //   copies into an annotation, so it must be complete, and one mutation failing many checks used to
-  //   pad every row of the table to its width (ISS-30)
+  // cm:guard printed under the table, never in a cell: this list is what a contributor copies into
+  //   an annotation, so it must be complete, and one long row padded every other row (ISS-30)
   for (const [id, note] of notes) console.log(`\n${id}:\n  ${note}`);
 
   if (bad) {

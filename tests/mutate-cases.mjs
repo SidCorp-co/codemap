@@ -1,7 +1,5 @@
-// cm:edge lockstep -> tests/mutate-lib.mjs — the harness's own classification, parsing, path
-//   containment and environment scrub are pinned here, because a mutation harness whose logic no
-//   case pins is the thing it exists to refuse. A new outcome or a changed parse belongs in the same
-//   change as its case here (ISS-30)
+// cm:edge lockstep -> tests/mutate-lib.mjs — its classification, parsing, containment and scrub are
+//   pinned here: a new outcome or a changed parse belongs in the same change as its case (ISS-30)
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -58,9 +56,8 @@ function parseCases(check) {
     JSON.stringify(named.names) === JSON.stringify(['first check', 'second check']),
     `expected both names, got ${JSON.stringify(named.names)} — the count alone is what hid a case in ISS-26`);
 
-  // cm:guard a failure detail carries another process's stdout verbatim (tests/install.mjs,
-  //   tests/upgrade-workflow.mjs), so the leader is exactly two spaces: a looser one invents a check
-  //   name that no case raised, and can push a real one out of the report (ISS-30)
+  // cm:guard the leader is exactly two spaces, because a failure detail quotes another process
+  //   verbatim: a looser one invents a check name nothing raised (ISS-30)
   const phantom = parseCorpusOutput(COUNT(1, 1),
     '  FAIL install: vendors it\n    install said:\n      FAIL not-a-real-check\n');
   check('mutate: an embedded FAIL line in a failure detail is not harvested',
@@ -84,9 +81,8 @@ function anchorCases(check) {
       /anchor not found/.test(applyMutation(dir, { file: rel, find: 'nowhere in this file', replace: 'x' })),
       'a point whose source moved must say the anchor is gone, not mutate something else');
 
-    // cm:guard the whole point of naming a site by a string instead of a line number: an anchor that
-    //   matches twice names no single site, and mutating both would report a mechanism that no single
-    //   edit corresponds to (ISS-30)
+    // cm:guard an anchor matching twice names no single site, so mutating both would report a
+    //   mechanism that no single edit corresponds to (ISS-30)
     check('mutate: an anchor matching more than once is refused',
       /matches 2x/.test(applyMutation(dir, { file: rel, find: 'const a', replace: 'const c' })),
       'an ambiguous anchor must be refused rather than replaced everywhere');
@@ -95,9 +91,8 @@ function anchorCases(check) {
       /is not in the tree/.test(applyMutation(dir, { file: 'lib/absent.mjs', find: 'x', replace: 'y' })),
       'a point naming a file the copy does not hold must say so');
 
-    // cm:guard the containment check is pinned against a file that really EXISTS outside the copy:
-    //   the first version of this case used a missing path, so it passed on "is not in the tree" and
-    //   left a `..` point free to overwrite the very tree being measured (ISS-30)
+    // cm:guard pinned against a file that really EXISTS outside the copy: with a missing path this
+    //   passed on "is not in the tree" and left a `..` point free to overwrite the tree (ISS-30)
     const victim = join(outside, 'victim.txt');
     writeFileSync(victim, 'untouched\n');
     const escape = applyMutation(dir, {
@@ -122,14 +117,10 @@ function anchorCases(check) {
   }
 }
 
-// cm:guard the scrub is pinned by putting a poisoned environment THROUGH stripGitEnv, never by
-//   passing an already-clean one: the first version asserted on a snapshot of a clean process.env, so
-//   neutering the strip loop entirely still passed every case — the mechanism was credited by a test
-//   that could not fail, which is the defect ISS-30 exists to catch (ISS-30)
-// cm:guard the poisoned environment is built from stripGitEnv(process.env) and given back ONLY
-//   GIT_DIR. Building it from process.env kept the inherited GIT_INDEX_FILE, and under any git hook
-//   this case then staged its fixture into the developer's real index — the gate corrupting the
-//   repository it was run to protect (ISS-30)
+// cm:guard the scrub is pinned by putting a poisoned environment THROUGH it, never an already-clean
+//   one: against a clean process.env a strip loop that strips nothing also passes (ISS-30)
+// cm:guard the poisoned environment starts from the SCRUBBED one and is given back only GIT_DIR:
+//   from process.env it keeps GIT_INDEX_FILE and stages this fixture in the real index (ISS-30)
 function gitEnvCases(check) {
   const victim = mkdtempSync(join(tmpdir(), 'cm-mutate-victim-'));
   const poisonedCopy = mkdtempSync(join(tmpdir(), 'cm-mutate-poisoned-'));
@@ -191,9 +182,8 @@ function gitEnvCases(check) {
       configSurvivors.length === 0,
       `git honours these from the environment, so they reach the copy: ${configSurvivors.join(', ')}`);
 
-    // cm:guard the expectation is a FIXED list, never the same arrays the scrub iterates: reading
-    //   those back can only catch a broken loop, so dropping GIT_INDEX_FILE from the list passed
-    //   every case — the one variable whose inheritance staged a fixture into a real index (ISS-30)
+    // cm:guard a FIXED list, never the arrays the scrub iterates: reading those back catches a
+    //   broken loop but never a shortened one, so dropping GIT_INDEX_FILE would pass (ISS-30)
     const MUST_NOT_SURVIVE = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
       'GIT_COMMON_DIR', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_TEMPLATE_DIR', 'GIT_NAMESPACE',
       'GIT_CEILING_DIRECTORIES', 'GIT_PREFIX', 'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS',
@@ -201,9 +191,8 @@ function gitEnvCases(check) {
       'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL', 'GIT_COMMITTER_DATE'];
     const everything = { ...process.env };
     for (const k of MUST_NOT_SURVIVE) everything[k] = '/poison';
-    // cm:guard these three are poisoned too, because the harness spawns its own corpus runs with
-    //   exactly the values the scrub sets: unpoisoned, the case read them back out of the ambient
-    //   environment and could not fail during `node tests/mutate.mjs` at all (ISS-30)
+    // cm:guard these three are poisoned too, since the harness spawns its runs with the values the
+    //   scrub sets: unpoisoned, this case could not fail during `node tests/mutate.mjs` (ISS-30)
     everything.GIT_CONFIG_GLOBAL = '/poison';
     everything.GIT_CONFIG_SYSTEM = '/poison';
     everything.GIT_CONFIG_NOSYSTEM = '0';
@@ -219,9 +208,8 @@ function gitEnvCases(check) {
       unnamed.length === 0,
       `the fixed list expects these but the module does not name them: ${unnamed.join(', ')}`);
 
-    // cm:guard suppressing the user's own config is done by POINTING it at an empty file, not by
-    //   unsetting it: an environment that had already set GIT_CONFIG_GLOBAL=/dev/null was suppressing
-    //   ~/.gitconfig deliberately, and deleting the variable hands that config back (ISS-30)
+    // cm:guard suppression is POINTING these at an empty file, not unsetting them: unsetting hands
+    //   back a ~/.gitconfig the caller may be suppressing on purpose (ISS-30)
     check('mutate: stripGitEnv suppresses user and system config rather than unsetting it',
       scrubbedAll.GIT_CONFIG_GLOBAL === '/dev/null'
       && scrubbedAll.GIT_CONFIG_SYSTEM === '/dev/null'
@@ -236,10 +224,8 @@ function gitEnvCases(check) {
   }
 }
 
-// cm:guard the CLI half is read as TEXT here on purpose, and only for invariants running it cannot
-//   show: that every git call goes through the one scrubbed wrapper, and that importing the module
-//   cannot start a run. A regex over the call site itself was gameable — the same call rewritten
-//   with spawnSync, or its options hoisted to a const, passed it (ISS-30)
+// cm:guard the CLI half is read as TEXT here, and only for what running it cannot show; a regex over
+//   the call site is gameable, since spawnSync or hoisted options walk past it (ISS-30)
 function wiringCases(pluginRoot, check) {
   const cli = readFileSync(join(pluginRoot, 'tests', 'mutate.mjs'), 'utf8');
 
@@ -250,9 +236,8 @@ function wiringCases(pluginRoot, check) {
     `found ${execGit} execFileSync and ${spawnGit} spawnSync git call sites — every one has to go `
     + 'through the single wrapper that passes the scrubbed environment, or the scrub is bypassable');
 
-  // cm:guard EVERY file under tests/ is read, not a named three: a new tier importing the CLI half
-  //   put `main` back on the corpus's import graph and no check noticed. Dynamic `import()` counts —
-  //   a static-only pattern missed `await import('./mutate' + '.mjs')` (ISS-30)
+  // cm:guard EVERY .mjs under tests/ is read, not a named few, and dynamic imports count: either
+  //   gap lets a new tier import the CLI half unnoticed (ISS-30)
   const dir = join(pluginRoot, 'tests');
   const importers = readdirSync(dir)
     .filter((f) => f.endsWith('.mjs') && f !== 'mutate.mjs')
@@ -269,13 +254,10 @@ function wiringCases(pluginRoot, check) {
     `these import tests/mutate.mjs: ${importers.join(', ')} — the corpus would then hold a path to `
     + 'main, which spawns one whole corpus run per declared point');
 
-  // cm:guard the entry-point check is the ONLY thing standing between an import of the CLI half and
-  //   a corpus run, so it is exercised rather than asserted about: importing the module must return
-  //   without printing a table or spawning anything (ISS-30)
-  // cm:guard the importer is a SCRIPT on disk, never `node -e`: under -e process.argv[1] is
-  //   undefined, so the check short-circuits on its first operand and the path comparison — the half
-  //   that is the actual defence — is never evaluated. Weakening the check to `if (process.argv[1])`
-  //   left the whole corpus green against an -e probe (ISS-30)
+  // cm:guard the entry-point check is the only thing between an import of the CLI half and a corpus
+  //   run, so it is exercised: importing must print nothing and spawn nothing (ISS-30)
+  // cm:guard the importer is a SCRIPT on disk, never `node -e`: under -e process.argv[1] is undefined
+  //   and the check short-circuits, leaving the path comparison — the real defence — unevaluated
   const probeDir = mkdtempSync(join(tmpdir(), 'cm-mutate-entry-'));
   try {
     const script = join(probeDir, 'import-the-cli.mjs');
@@ -292,10 +274,8 @@ function wiringCases(pluginRoot, check) {
     rmSync(probeDir, { recursive: true, force: true });
   }
 
-  // cm:guard `--no-optional-locks` is the whole of the harness's claim to write NOTHING in the
-  //   repository it measures, and it is one flag: removing it leaves the corpus green, so this reads
-  //   the call site. A text check, because the read itself cannot be reached from tests/ — no file
-  //   here may import the CLI half (ISS-30)
+  // cm:guard `--no-optional-locks` is the whole claim to write NOTHING in the measured repository,
+  //   read at the call site because no file under tests/ may import the half that performs it (ISS-30)
   const statusCalls = [...cli.matchAll(/git\(ROOT, \[([^\]]*)\]/g)]
     .map((m) => m[1])
     .filter((args) => args.includes("'status'"));
@@ -306,9 +286,8 @@ function wiringCases(pluginRoot, check) {
 }
 
 function declaredListCases(check) {
-  // cm:guard every other check here filters the list and asserts the result is empty, so all of them
-  //   pass on an EMPTY list — and the harness then prints "all 0 declared mechanism(s) are pinned"
-  //   and exits 0, a green run that measured nothing (ISS-30)
+  // cm:guard every other check here asserts a filter is empty, so all of them pass on an EMPTY list
+  //   and the harness then reports success having measured nothing (ISS-30)
   check('mutate: the declared list is not empty',
     MUTATIONS.length > 0,
     'with no declared points every other check here is vacuous and the harness reports success');
