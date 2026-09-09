@@ -6,12 +6,13 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { stripGitEnv } from './git-env.mjs';
 
 function talk(server, root, messages) {
   const res = spawnSync(process.execPath, [server, '--root', root], {
     input: messages.map((m) => JSON.stringify(m)).join('\n') + '\n',
     encoding: 'utf8',
-    env: { ...process.env, NO_COLOR: '1' },
+    env: { ...stripGitEnv(process.env), NO_COLOR: '1' },
   });
   const lines = `${res.stdout}`.split('\n').filter(Boolean);
   return { frames: lines.map((l) => JSON.parse(l)), stderr: res.stderr, status: res.status };
