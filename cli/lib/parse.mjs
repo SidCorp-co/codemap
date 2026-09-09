@@ -30,7 +30,10 @@ export const EDGE_KINDS = ['contract', 'ordering', 'lockstep', 'sideeffect', 'na
 //   leader, so never widen this to the full-line `^\s*(//|#|--)\s*cm:` §4 prints: no site could call it
 export const CM_PREFIX_RE = /^cm:/;
 const CM_TEXT_RE = /^cm:([a-z][a-z-]*)\b\s*(.*)$/s;
-const IGNORE_RE = /^cm:ignore\s+(CM\d{3})\s*(?:—|--|-)\s*(\S.*)$/;
+// cm:guard the only spelling of the ignore-directive prefix: parse.mjs, languages.mjs, mass.mjs and
+//   tests/mass.mjs all read this one, and it stays a RegExp because COMMON_EXEMPT holds it as one (ISS-47)
+export const CM_IGNORE_RE = /^cm:ignore\b/;
+const IGNORE_RE = new RegExp(`${CM_IGNORE_RE.source}\\s+(CM\\d{3})\\s*(?:—|--|-)\\s*(\\S.*)$`);
 // cm:why marker-shaped only — a bare \bXXX\b matched "TC-XXX" in real repos, and a validator that cries wolf gets switched off
 const TODO_RE = /^(TODO|FIXME|HACK)\b|\b(TODO|FIXME)\s*[:(]/;
 const ID = '[a-z0-9][a-z0-9-]*';
@@ -84,7 +87,7 @@ function splitProse(s) {
 export function parseAnnotation(text, file, line) {
   const ig = IGNORE_RE.exec(text);
   if (ig) return { ignore: { code: ig[1], reason: ig[2] }, };
-  if (/^cm:ignore\b/.test(text)) {
+  if (CM_IGNORE_RE.test(text)) {
     return { diags: [diag('CM008', file, line, 'cm:ignore needs "<CODE> — <reason>"')] };
   }
 

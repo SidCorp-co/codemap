@@ -9,9 +9,10 @@
 //   required-on-exported  -> a comment block directly above an exported declaration is exempt
 
 import { scanComments } from './scan.mjs';
+import { CM_IGNORE_RE } from './parse.mjs';
 
 const COMMON_EXEMPT = [
-  /^cm:ignore\b/,
+  CM_IGNORE_RE,
   /^(Copyright|SPDX-License-Identifier)\b/i,
   /^@generated\b/,
 ];

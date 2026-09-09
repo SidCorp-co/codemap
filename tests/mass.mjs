@@ -10,7 +10,7 @@ import { scanComments } from '../cli/lib/scan.mjs';
 import { profileFor } from '../cli/lib/languages.mjs';
 import { buildGraph, advisoryDiags } from '../cli/lib/graph.mjs';
 import { DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
-import { baselineKey } from '../cli/lib/parse.mjs';
+import { baselineKey, CM_IGNORE_RE } from '../cli/lib/parse.mjs';
 import { narrativeOf, retells, fileMass, massOf, narrativeMass, NARRATIVE_MIN } from '../cli/lib/mass.mjs';
 
 const STORY = 'the pool and the registry must stay in step (ISS-9). It was one lock per caller until'
@@ -150,7 +150,7 @@ function conservationCases(check) {
 
   const { comments } = scanComments(src, profileFor('torture.ts'));
   const whole = comments.filter((c) => c.text).reduce((n, c) => n + c.text.length, 0);
-  const directives = comments.filter((c) => /^cm:ignore\b/.test(c.text ?? '')).reduce((n, c) => n + c.text.length, 0);
+  const directives = comments.filter((c) => CM_IGNORE_RE.test(c.text ?? '')).reduce((n, c) => n + c.text.length, 0);
   const billed = m.annotation + m.frozen + m.live + m.doc + m.header;
 
   check('mass: the channels plus the ignore directives are the file\'s whole comment text',
