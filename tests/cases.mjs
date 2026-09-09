@@ -907,6 +907,74 @@ export const analyzeCases = [
     annotations: [],
     skipped: 'no-profile',
   },
+  {
+    name: 'ts: a block comment that never closes is reported at its opener (§6)',
+    file: 'unterminated.ts',
+    src: [
+      'const a = 1;',
+      '/* oops unterminated',
+      'const b = 2;',
+      '// cm:guard this must never be lost',
+      'const c = 3;',
+    ].join('\n'),
+    codes: ['CM203'],
+    annotations: [],
+  },
+  {
+    name: 'sfc: an unclosed HTML comment is reported the same way as an unclosed /* (§6)',
+    file: 'unterminated.vue',
+    src: [
+      '<template>',
+      '<!-- oops unterminated',
+      '</template>',
+      '<script>',
+      '// cm:guard this must never be lost',
+      'const c = 3;',
+      '</script>',
+    ].join('\n'),
+    codes: ['CM203'],
+    annotations: [],
+  },
+  {
+    // cm:edge lockstep -> cli/lib/analyze.mjs — the ungating this pins is stated there as a guard, and
+    //   a change that gates CM203 on `grammar` has to fail a case, not merely contradict a comment
+    name: 'ts: CM203 survives grammar: false, because losing annotations is not a prose matter',
+    file: 'unterminated-nogrammar.ts',
+    src: [
+      '// narration that grammar: false spares',
+      '/* oops unterminated',
+      '// cm:guard this must never be lost',
+      'const c = 3;',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM203'],
+    annotations: [],
+  },
+  {
+    // cm:guard CM203's fix line offers this escape, so it has to work from the position the convention
+    //   puts it in: a heredoc or raw-string opener has nothing to close, and §6 models neither (ISS-31)
+    name: 'ts: cm:ignore CM203 above the opener silences it',
+    file: 'unterminated-ignored.ts',
+    src: [
+      'const a = 1;',
+      '// cm:ignore CM203 — the opener is heredoc content, not a comment',
+      '/* not really an opener',
+      'const b = 2;',
+    ].join('\n'),
+    codes: [],
+    annotations: [],
+  },
+  {
+    name: 'ts: a block comment that closes reports no CM203, and what is below it is read',
+    file: 'terminated.ts',
+    src: [
+      '/* a closed block */',
+      '// cm:guard this is read',
+      'const c = 3;',
+    ].join('\n'),
+    codes: ['CM001'],
+    annotations: ['guard'],
+  },
 ];
 
 export const baselineCases = [

@@ -178,7 +178,9 @@ function codes() {
 
 Tier decides where it runs: grammar in the edit hook (blocking) and everywhere; referential and
 structural in CI; advisory is warning-only, cannot change the exit code, and is off unless asked for
-(--tier advisory, or enforce.advisory). Every code has a cause, a fix and a § pointer.
+(--tier advisory, or enforce.advisory). A tier says which run reports a code and whether it can block,
+never where it is computed — CM203 is structural and raised per file. Every code has a cause, a fix and
+a § pointer.
 
 ${table(rows).join('\n')}
 

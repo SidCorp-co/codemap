@@ -27,13 +27,17 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
 
   const { grammar, docPolicy } = enforcementFor(reg, prof);
   const lines = src.split('\n');
-  const { comments, codeLines } = scanComments(src, prof);
+  const { comments, codeLines, unterminated } = scanComments(src, prof);
 
   const annotations = [];
   const raw = [];
   const ignores = new Map();
   const annLines = new Map();
   const annAt = new Map();
+
+  // cm:guard never gated on `grammar` — a repo that took the graph without the comment discipline still
+  //   needs its annotations READ, so losing them silently is not a prose-discipline matter (ISS-31)
+  if (unterminated) raw.push(diag('CM203', relPath, unterminated.line, unterminated.leader));
 
   const header = moduleHeader(lines, comments, codeLines, prof);
   const headerMax = reg.enforce?.headerMaxLines ?? 20;

@@ -972,6 +972,55 @@ function skewCases(pluginRoot, check, roots) {
     `installing must not silently move a repo backwards:\n${down.out}`);
 }
 
+// cm:guard a warn that moves the exit code is a broken gate, so these cases assert the status and not
+//   only the text — CM203 is reported on a path that has to stay green (ISS-31)
+function unterminatedCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  // cm:why baselined FIRST, so the seed repo's legacy prose is frozen and CM203 is the only diagnostic
+  //   left — otherwise the exit code proves nothing about whether a warning gates
+  cm(pluginRoot, root, 'baseline');
+  const file = join(root, 'swallowed.ts');
+  writeFileSync(file,
+    'export const a = 1;\n'
+    + '/* oops unterminated\n'
+    + '// cm:guard the run lock is held for the whole batch\n'
+    + 'export const c = 3;\n');
+  git(root, 'add', '-A');
+  git(root, 'commit', '-qm', 'unterminated');
+
+  const r = cm(pluginRoot, root, 'verify');
+  check('cli: an unterminated block reports CM203 at its opener',
+    /CM203/.test(r.out) && /swallowed\.ts:2/.test(r.out),
+    `expected CM203 at swallowed.ts:2:\n${r.out}`);
+  check('cli: CM203 is a warning and does not gate',
+    r.status === 0 && /swallowed\.ts:2 warn CM203/.test(r.out) && /no errors, 1 warning/.test(r.out),
+    `expected a warning-only CM203 with status 0, got status=${r.status}:\n${r.out}`);
+
+  // cm:edge contract -> cli/cm.mjs — the tier filter there decides which run reports a per-file
+  //   diagnostic, so a code's tier and the tiers that reach it are one claim, asserted here (ISS-31)
+  for (const [t, want] of [['all', true], ['structural', true], ['grammar', false], ['referential', false]]) {
+    const scoped = cm(pluginRoot, root, 'verify', '--tier', t);
+    check(`cli: CM203 is reported under --tier ${t}: ${want}`,
+      /CM203/.test(scoped.out) === want,
+      `--tier ${t} should ${want ? '' : 'not '}report CM203:\n${scoped.out}`);
+  }
+
+  // cm:guard the opener is OUTSIDE the diff in the case that matters — the annotations being lost are
+  //   below it, so a line-filtered CM203 would report nothing exactly when it is needed (ISS-31)
+  writeFileSync(join(root, 'swallowed.ts'),
+    'export const a = 1;\n'
+    + '/* oops unterminated\n'
+    + '// cm:guard the run lock is held for the whole batch\n'
+    + 'export const c = 3;\n'
+    + 'export const d = 4;\n');
+  git(root, 'add', '-A');
+  const staged = cm(pluginRoot, root, 'verify', '--staged');
+  check('cli: CM203 survives --staged when the opener is outside the diff',
+    /CM203/.test(staged.out) && staged.status === 0,
+    `expected CM203 from a staged run whose diff is the last line:\n${staged.out}`);
+}
+
 export function cliCases(pluginRoot, check) {
   const roots = [];
   try {
@@ -1063,6 +1112,7 @@ export function cliCases(pluginRoot, check) {
     advisoryCases(pluginRoot, check, roots);
     archmapCases(pluginRoot, check, roots);
     onboardCases(pluginRoot, check, roots);
+    unterminatedCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
   }

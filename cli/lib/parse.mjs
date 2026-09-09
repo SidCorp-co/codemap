@@ -59,6 +59,7 @@ const CODES = {
   CM301: { tier: 'advisory', section: '§7.1', message: 'declared coupling has no evidence at the other end', fix: 'check the other side is really wired — if the coupling is real but reference-free (HTTP, SQL, a cron), say so with: cm:ignore CM301 — <why there is no reference>' },
   CM201: { tier: 'structural', section: '§7', message: 'flow has a single step', fix: 'either the remaining steps are unannotated, or this is not a flow' },
   CM202: { tier: 'structural', section: '§7', message: 'after: chain is cyclic or the flow has several roots', fix: 'exactly one step may omit after:' },
+  CM203: { tier: 'structural', section: '§6', message: 'block comment is never closed', fix: 'close it — the opener swallows the rest of the file, so every cm: annotation below this line is not read and the PreToolUse hook injects nothing for it. If there is nothing to close because the opener is inside a heredoc or a raw string, which §6 does not model, say so with: cm:ignore CM203 — <why this is not a comment>' },
 };
 
 export function diag(code, file, line, detail) {
