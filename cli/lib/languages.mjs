@@ -370,6 +370,5 @@ export function advisoryEcosystemOf(filePath) {
 export function isGenerated(src, prof) {
   const head = src.split('\n', GENERATED_HEAD_LINES).join('\n');
   const { comments } = scanComments(head, prof, { flushOpen: true });
-  return comments.some((c) => c.text !== ''
-    && GENERATED_MARKERS.some((re) => re.test(c.text)));
+  return comments.some((c) => GENERATED_MARKERS.some((re) => re.test(c.text)));
 }
