@@ -164,6 +164,7 @@ export function contractCandidates(root, files) {
   for (const rel of files) {
     const prof = profileFor(rel);
     if (!prof) continue;
+    const eco = ecosystemOf(rel);
     let raw;
     try { raw = readFileSync(join(root, rel), 'utf8'); } catch { continue; }
     const src = codeOnly(raw);
@@ -179,7 +180,7 @@ export function contractCandidates(root, files) {
         if (!TOKEN_RE.test(lit) || RESERVED.test(lit) || seenInFile.has(lit)) continue;
         seenInFile.add(lit);
         const entry = byLiteral.get(lit) ?? new Map();
-        if (!entry.has(rel)) entry.set(rel, { file: rel, line: i + 1, lang: prof.id, eco: ecosystemOf(rel) });
+        if (!entry.has(rel)) entry.set(rel, { file: rel, line: i + 1, lang: prof.id, eco });
         byLiteral.set(lit, entry);
       }
     }

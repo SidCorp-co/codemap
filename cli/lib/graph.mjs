@@ -147,8 +147,8 @@ export function advisoryDiags(g, { root, baseline = {}, importGraph } = {}) {
     // cm:why checked BEFORE the ecosystem guard — archmap only ever emits same-language
     //   edges, so a hit here is stronger evidence than a name match and short-circuits the guess
     if (importGraph && connected(importGraph, e.file, path)) continue;
-    const fam = advisoryEcosystemOf(e.file);
-    if (!fam || fam !== advisoryEcosystemOf(path)) continue;
+    const eco = advisoryEcosystemOf(e.file);
+    if (!eco || eco !== advisoryEcosystemOf(path)) continue;
     const target = readTarget(root, path, cache);
     const source = readTarget(root, e.file, cache);
     if (target.src === undefined || source.src === undefined) continue;

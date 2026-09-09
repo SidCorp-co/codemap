@@ -339,6 +339,18 @@ evidence *cannot* exist:
 - **Go**, which names the imported package DIRECTORY and never the file (10 of 10 same-language hits
   there), so a filename-only test warned on every correctly wired Go edge
 
+The runtime is the profile's `ecosystem` (falling back to its `id`), and that is the **single**
+authority on the question: nothing outside `languages.mjs` keeps its own table of extensions, so a
+language added to the profile table cannot be missing from the guard (ISS-32).
+
+Coverage is a separate question from the ecosystem, and a profile answers it with
+`advisoryTier: false`, which excludes its files from `CM301` while leaving their ecosystem intact.
+Out today: single-file components, because no measurement has covered that file format, and the
+four annotation-carrying formats whose prose is not policed (SQL, shell, YAML/TOML, Docker).
+Eligible is the **default**, so a newly added language joins the tier rather than being silently
+left out of it. This is not `enforce`, which is the prose-grammar switch of §6 and is overridable
+per repo.
+
 Measure before flipping `enforce.advisory` on for a repo with no archmap, and expect the answer to
 depend on how that repo's edges are shaped:
 

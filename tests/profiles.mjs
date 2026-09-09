@@ -112,13 +112,15 @@ export function profileCases(pluginRoot, check) {
     'walk() and gitFiles() must each ask profileFor');
 
   const graphSrc = readFileSync(join(pluginRoot, 'cli', 'lib', 'graph.mjs'), 'utf8');
+  const extTable = /\{[^{}\n]*\b(?:ts|js|go|php|py|rs|mjs|vue)\b\s*:\s*'[^']*'[^{}\n]*\b(?:tsx|jsx|cjs|go|php|py|rs)\b\s*:/;
   check('profiles: graph.mjs keeps no second language table',
-    !/\bFAMILY\b/.test(graphSrc),
-    'FAMILY is back — a second answer to "same ecosystem", which disagreed with the profile table '
-    + 'about .vue, .svelte, .mts, .cts and .pyi the last time it existed (ISS-32)');
-  check('profiles: graph.mjs asks the profile table for the ecosystem',
-    graphSrc.includes('advisoryEcosystemOf'),
-    'the advisory tier must derive its language guard from languages.mjs, not restate it');
+    !extTable.test(graphSrc),
+    'an extension-keyed language table is back in graph.mjs — a second answer to "same ecosystem", '
+    + 'which disagreed with the profile table about .vue, .svelte, .mts, .cts and .pyi (ISS-32). '
+    + 'The name does not matter; the second list does');
+  check('profiles: graph.mjs asks the profile table, and decides nothing itself',
+    /advisoryEcosystemOf\(/.test(graphSrc.replace(/^import .*$/m, '')),
+    'the advisory tier must CALL languages.mjs, not merely import it');
 
   // cm:guard the advisory tier is derived from the PROFILE, so every extension reaching a covered
   //   profile is covered — this is the assertion that makes a new BY_EXT entry impossible to leave
@@ -152,9 +154,22 @@ export function profileCases(pluginRoot, check) {
       `expected null/null, got ${ecosystemOf(path)}/${advisoryEcosystemOf(path)}`);
   }
 
-  check('profiles: every profile answers the ecosystem question',
-    Object.values(PROFILES).every((prof) => typeof (prof.ecosystem ?? prof.id) === 'string'),
-    'a profile with no ecosystem and no id cannot be compared to any other');
+  // cm:guard the opt-out is spelled `advisoryTier`, never `advisory` — the registry already defines
+  //   `enforce.advisory` with the OPPOSITE polarity, and `enforce` itself is the prose knob (ISS-32)
+  check('profiles: no profile opts out through enforce or a colliding key',
+    Object.values(PROFILES).every((prof) => prof.advisory === undefined),
+    'a profile uses `advisory`, which collides with the registry\'s enforce.advisory');
+  check('profiles: an enforce override cannot move a file in or out of the advisory tier',
+    advisoryEcosystemOf('a.go') === 'go' && PROFILES.go.enforce === undefined,
+    'enforce is per-repo overridable and means prose grammar; the advisory tier must not read it');
+
+  // cm:guard profileFor lowercases the extension and the deleted FAMILY did not, so .PY and .TS are
+  //   newly in the tier — pinned because it is part of ISS-32's accounting, not an accident
+  for (const [path, eco] of [['A.TS', 'ts'], ['A.PY', 'py'], ['A.MTS', 'ts']]) {
+    check(`profiles: ${path} resolves case-insensitively into the advisory tier`,
+      advisoryEcosystemOf(path) === eco,
+      `expected ${eco}, got ${advisoryEcosystemOf(path)}`);
+  }
 
   const roots = [];
   try {

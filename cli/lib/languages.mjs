@@ -100,7 +100,7 @@ export const GENERATED_MARKERS = [
 const TS = {
   id: 'ts',
   // cm:why the RUNTIME, not the profile — §7.1 reads "different languages" as "cannot import each
-  //   other", and an SFC imports .ts freely, so the sfc profile inherits this id and CM301 stays out
+  //   other", and an SFC imports .ts freely, so sfc inherits this and a literal they share is not a contract
   ecosystem: 'ts',
   lineLeaders: ['//'],
   docLineLeaders: [],
@@ -132,11 +132,9 @@ const P = {
   sfc: {
     ...TS,
     id: 'sfc',
-    // cm:why out of the advisory tier while sharing TS's ecosystem: an SFC imports .ts freely, so
-    //   `same ecosystem` is yes, but whether CM301 may FIRE on an SFC edge is a tier promotion
-    //   measured on false positives (ISS-15) — enabling it here would warn in every consumer Vue
-    //   repo as a side effect of a refactor
-    advisory: false,
+    // cm:why shares TS's ecosystem and is still out of CM301: no measurement has ever covered an SFC,
+    //   and admitting one would warn in every consumer Vue repo as a side effect of a refactor (ISS-32)
+    advisoryTier: false,
     blockOpens: [...TS.blockOpens, ['<!--', '-->']],
     proseExemptBlockOpens: ['<!--'],
   },
@@ -205,6 +203,9 @@ const P = {
     multiline: [],
     docPolicy: 'allowed',
     enforce: false, // annotations still parsed, so sideeffect edges can sit next to a trigger
+    // cm:why these four carry annotations without their prose being policed, and no CM301 measurement
+    //   covers them; `enforce` is NOT the knob for it — that is prose grammar, overridable per repo
+    advisoryTier: false,
     exempt: [...COMMON_EXEMPT, ...SQL_EXEMPT],
   },
   sh: {
@@ -217,6 +218,7 @@ const P = {
     multiline: [],
     docPolicy: 'allowed',
     enforce: false,
+    advisoryTier: false,
     exempt: [...COMMON_EXEMPT, ...SH_EXEMPT],
   },
   yaml: {
@@ -229,6 +231,7 @@ const P = {
     multiline: [],
     docPolicy: 'allowed',
     enforce: false,
+    advisoryTier: false,
     exempt: COMMON_EXEMPT,
   },
   docker: {
@@ -244,6 +247,7 @@ const P = {
     multiline: [],
     docPolicy: 'allowed',
     enforce: false,
+    advisoryTier: false,
     exempt: [...COMMON_EXEMPT, ...DOCKER_EXEMPT],
   },
 };
@@ -332,10 +336,8 @@ export function profileFor(filePath) {
   return null;
 }
 
-// cm:guard the SINGLE authority on "can these two files import each other" — graph.mjs kept a second
-//   extension-keyed table beside this one and the two disagreed about single-file components, which
-//   is how .mts, .cts, .pyi, .vue and .svelte were resolvable by BY_EXT and invisible to CM301 at the
-//   same time (ISS-32). Ask this; never restate it from a literal.
+// cm:guard the SINGLE authority on "can these two files import each other" — ask it, never restate it
+//   from a literal; a second extension-keyed table in graph.mjs silently lost 5 extensions (ISS-32)
 export function ecosystemOf(filePath) {
   const prof = profileFor(filePath);
   return prof ? (prof.ecosystem ?? prof.id) : null;
@@ -343,15 +345,11 @@ export function ecosystemOf(filePath) {
 
 // cm:guard a pair of files in different languages CANNOT reference each other — measured, that was 26 of
 //   36 hits in one repo, so firing there is a bug in the check and not a threshold to tune (§7.1)
-// cm:why narrowed on the PROFILE, not on the extension: an opt-out that lives on the profile is
-//   inherited by every extension pointing at it, so a new BY_EXT entry joins the advisory tier
-//   instead of being silently left out of it. Eligible is the default for the same reason (ISS-32).
-// cm:why `enforce: false` profiles are out because CM301 has never fired on them — those files carry
-//   annotations without their ordinary comments being policed, and admitting them would be the same
-//   unmeasured tier promotion the sfc opt-out refuses
+// cm:guard opt out on the PROFILE and never on the extension — a new BY_EXT entry must inherit its
+//   profile's answer, and eligible is the default so a new language cannot be left behind (ISS-32)
 export function advisoryEcosystemOf(filePath) {
   const prof = profileFor(filePath);
-  if (!prof || prof.enforce === false || prof.advisory === false) return null;
+  if (!prof || prof.advisoryTier === false) return null;
   return prof.ecosystem ?? prof.id;
 }
 
