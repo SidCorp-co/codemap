@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { CODE_TABLE, TAGS, EDGE_KINDS } from '../cli/lib/parse.mjs';
 import { PROFILES } from '../cli/lib/languages.mjs';
-import { HELP_TOPICS, VERBS, renderHelp } from '../cli/lib/help.mjs';
+import { HELP_TOPICS, VERBS, renderHelp, tagHelpGaps, annotations } from '../cli/lib/help.mjs';
 import { stripGitEnv } from './git-env.mjs';
 
 function run(cmd, cwd, ...args) {
@@ -65,6 +65,69 @@ export function helpCases(pluginRoot, check) {
       `tags missing: ${missingTag.join(', ')} · kinds missing: ${missingKind.join(', ')}`);
     check('help: the tag count it claims is the real one',
       ann.includes(`Exactly ${TAGS.length} tags`), 'a hand-typed count is a second source of truth');
+
+    // cm:why the check above passes on the broken row `  cm:sixth  undefined`, so it cannot pin
+    //   totality — it asks only whether the string appears somewhere in the text (ISS-53)
+    const gaps = tagHelpGaps();
+    check('help: the per-tag help table is total over TAGS',
+      gaps.missing.length === 0 && gaps.partial.length === 0 && gaps.extra.length === 0,
+      `no row: [${gaps.missing}] · incomplete row: [${gaps.partial}] · row for a non-tag: [${gaps.extra}]`);
+    check('help: a row whose tag has left TAGS is reported too, not only a missing one',
+      tagHelpGaps(TAGS.filter((t) => t !== 'why')).extra.includes('why'),
+      'a table that is total in one direction still renders a row for a tag nothing accepts');
+    check('help: a row that is present but incomplete is a gap, not a pass',
+      tagHelpGaps(['guard'], { guard: { consumer: 'c', syntax: 's' } }).partial.includes('guard'),
+      'a row missing one field renders that field as "undefined", which is the defect itself');
+
+    // cm:guard a throw here is a failing case, never a dead run — helpCases taking the process down
+    //   loses every suite after it, and this call is the one that renders a table with a gap (ISS-45)
+    let sixth = null;
+    let sixthErr = null;
+    try {
+      sixth = annotations([...TAGS, 'sixth']);
+    } catch (err) {
+      sixthErr = err;
+    }
+    const threw = (why) => (sixthErr ? `annotations() threw instead of reporting the gap: ${sixthErr.stack}` : why);
+    check('help: a TAGS member with no help row does not earn a clean render',
+      sixth?.ok === false, threw('ok:true is exit 0, so a broken table ships as a good guide'));
+    check('help: that render names the member it has no row for',
+      sixth?.text.includes('sixth') === true, threw('a gap a reader cannot name is a gap they cannot close'));
+    check('help: that render prints no "undefined" anywhere',
+      sixth !== null && !sixth.text.includes('undefined'),
+      threw(`the word reached the reader anyway:\n${sixth?.text.split('\n').filter((l) => l.includes('undefined')).join('\n')}`));
+
+    let bare = null;
+    let bareErr = null;
+    try {
+      bare = annotations(['nosuchtag']);
+    } catch (err) {
+      bareErr = err;
+    }
+    check('help: a vocabulary with no sound row at all renders the guide rather than crashing',
+      bare !== null && bare.text.includes('ANNOTATIONS'),
+      bareErr
+        ? `zero sound rows threw instead of rendering: ${bareErr.stack}`
+        : 'the guidebook has to survive a table with no rows in it');
+
+    // cm:why the order a reader meets the tags in is a decision no constant derives, so it is pinned
+    //   here as a golden: a reorder of TAG_HELP has to be deliberate enough to move this line (ISS-53)
+    const TEACHING_ORDER = ['guard', 'edge', 'flow', 'hack', 'why'];
+    const whichOne = ann.slice(ann.indexOf('WHICH ONE'), ann.indexOf('Multi-line rationale'))
+      .split('\n').map((l) => l.match(/\bcm:([a-z]+)\s*$/)).filter(Boolean).map((m) => m[1]);
+    check('help: WHICH ONE teaches every tag, in the order it means to',
+      JSON.stringify(whichOne) === JSON.stringify(TEACHING_ORDER),
+      `rendered [${whichOne}] against [${TEACHING_ORDER}] — a count alone passes a section of identical rows`);
+    check('help: that order is a permutation of TAGS, so no tag is missing from it',
+      JSON.stringify([...whichOne].sort()) === JSON.stringify([...TAGS].sort()),
+      `WHICH ONE teaches [${[...whichOne].sort()}] against TAGS [${[...TAGS].sort()}]`);
+
+    // cm:why the bare word cannot be swept for: `help spec` renders the whole of SPEC.md, so the
+    //   first time the grammar writes "undefined" the sweep would name the wrong file (ISS-53)
+    const brokenRow = /cm:[a-z]+\s+undefined|^\s*(<leader>.*)?undefined\s*$/m;
+    const undefTopics = HELP_TOPICS.filter((t) => brokenRow.test(renderHelp(t).text));
+    check('help: no topic renders a row whose text is "undefined"',
+      undefTopics.length === 0, `topics rendering one: ${undefTopics.join(', ')}`);
 
     const langs = renderHelp('languages').text;
     const missingLang = Object.keys(PROFILES).filter((id) => !langs.includes(id));
