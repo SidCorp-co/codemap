@@ -10,13 +10,10 @@
 # Both are secrets, not tracked files: naming other teams' repos in this public repo is exactly what
 # NORTH-STAR.md §10 already keeps out of this tree, for the same reason.
 #
-# cm:why everything below runs as one step in one job, never crossing a job boundary with a value
-#   derived from the secrets: a job OUTPUT that matches a registered secret is silently dropped by
-#   the runner rather than masked, so passing the parsed list between jobs made this look wired up
-#   with the secret unset and then break on the first real tag push once it was actually configured.
-# cm:why the loop never echoes a repo name or the token: this workflow's own run log is world-
-#   readable (public repo), and a job/step name templated from the matrix used to print it there —
-#   the summary line only counts, it never lists which consumer was which.
+# cm:guard everything below stays one step in one job, never crossing a job boundary with a value
+#   derived from the secrets: a job OUTPUT matching a registered secret is dropped, not masked
+# cm:guard neither the loop nor any job or step name may carry a repo name or the token — this run log
+#   is world-readable, and a name templated from the matrix printed it there; the summary only counts
 name: notify vendored-tier consumers
 on:
   push:

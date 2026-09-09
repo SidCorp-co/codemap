@@ -1,7 +1,7 @@
-// cm:why runs the shipped step script itself (not a paraphrase), under the same shell Actions uses
-//   (`bash --noprofile --norc -eo pipefail <file>`), with env vars set to '' rather than deleted —
-//   Actions never leaves an env: entry unset, an empty expression resolves to '' — so a regression
-//   here fails for the same reason a real workflow run would (ISS-21).
+// cm:why runs the shipped step script itself, never a paraphrase, under the shell Actions uses, so a
+//   regression here fails for the same reason a real workflow run would (ISS-21)
+// cm:guard env vars are set to '' rather than deleted — Actions never leaves an `env:` entry unset, and
+//   an empty expression resolves to '' (ISS-21)
 
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';

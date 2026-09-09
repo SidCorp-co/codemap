@@ -63,6 +63,22 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
   the baseline freezes forever, which is how an annotation layer ends up *adding* comments.
   A line below a cm: comment is its continuation whether or not the annotation parsed — otherwise a
   malformed annotation is reported twice, the second time telling the author to delete a legal wrap.
+  Running past the wrap is reported at the annotation's line as `CM204`, counting the lines that do not
+  load. It is structural, not grammar: the lines are dropped from the channel whatever a repo's prose
+  discipline, so a repo that took the graph without that discipline is still told its annotation reaches
+  its reader ending mid-clause, exactly as `CM203` tells it about an unread annotation (§6). What it
+  refuses is a SHAPE — two or more continuation lines under one annotation — decided from the run itself
+  and never from a token on the line, so no marker satisfies it and no reindenting or rewrapping clears it. Its
+  remedies are to reword, to split one annotation into two, or to move the annotation below prose that
+  was never its own. Two things end a run rather than counting in it: a line the baseline has FROZEN,
+  which §4 already says is never a continuation, and a blank line, which is the author's own statement
+  of where the annotation stops. The second is an escape, and a deliberate one — an author who declares
+  the end of their annotation is believed. It follows that the rule reads adjacency, not authorship: it
+  cannot tell a continuation from prose parked directly beneath, and does not try to. The module header
+  (§4.1) is where that shows: an annotation opening a header cannot be told from one whose header prose
+  continues below it, so both are counted. It is reported there deliberately rather than suppressed —
+  the rule warns and never gates, which is the state §7 admits a new rule in at while its false-positive
+  rate is measured, and the remedy where the prose is the header's is to move the annotation below it.
   A line the baseline has FROZEN is never a continuation: it was prose when the baseline was taken, so
   the annotation's author did not write it. Adopting one fuses a stranger's sentence into an injected
   guard, which is worse than the comment it replaces — the reader is told to honour it. Such a line falls
@@ -290,6 +306,7 @@ and correct on a scoped run, and it still does not block; a new rule enters at w
 | `CM201` | structural | flow has a single step — either it is not a flow, or steps are missing |
 | `CM202` | structural | `after:` chain is cyclic or the flow has several roots |
 | `CM203` | structural | a block comment is never closed, so no annotation below its opener is read (§6) |
+| `CM204` | structural | an annotation runs past the one line it may wrap onto, so the lines past it never reach the channel (§4) |
 | `CM104` | reserved | stale `cm:hack` (issue closed) — requires the Forge integration, tier 3 |
 
 ### §7.1 The advisory tier

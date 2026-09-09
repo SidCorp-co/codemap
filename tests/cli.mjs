@@ -1021,6 +1021,59 @@ function unterminatedCases(pluginRoot, check, roots) {
     `expected CM203 from a staged run whose diff is the last line:\n${staged.out}`);
 }
 
+// cm:guard a warn that moves the exit code is a broken gate, so these assert the status and not only
+//   the text — CM204 rides the warning path CM203 does (ISS-33)
+function overflowCases(pluginRoot, check, roots) {
+  const root = makeRepo();
+  roots.push(root);
+  // cm:why grammar is OFF here, which is the condition CM204 is ungated for: with the prose tier on,
+  //   the overflowing lines raise CM001 anyway and a case could not tell the ungating from it (ISS-33)
+  writeFileSync(join(root, '.forge', 'codemap.json'),
+    `${JSON.stringify({ specVersion: 'codemap/1', flows: [], externals: [], enforce: { grammar: false } })}\n`);
+  writeFileSync(join(root, 'over.ts'),
+    '// cm:guard the run lock is held for the whole batch, never per row\n'
+    + '//   because releasing between rows lets a second dispatcher claim the tail\n'
+    + '//   and this third line never reaches the channel\n'
+    + 'export const a = 1;\n');
+  // cm:guard a SECOND depth is pinned because the count is the diagnostic's whole payload — with one
+  //   case only, an implementation that always said "1 line" would pass every case (ISS-33)
+  writeFileSync(join(root, 'deep.ts'),
+    '// cm:guard the run lock is held for the whole batch, never per row\n'
+    + '//   because releasing between rows lets a second dispatcher claim the tail\n'
+    + '//   a third line\n'
+    + '//   a fourth line\n'
+    + '//   a fifth line\n'
+    + 'export const b = 2;\n');
+  git(root, 'add', '-A');
+  git(root, 'commit', '-qm', 'overflow');
+
+  const r = cm(pluginRoot, root, 'verify');
+  check('cli: CM204 is reported at the annotation, not at the line that overflowed',
+    /over\.ts:1 warn CM204/.test(r.out) && !/over\.ts:3/.test(r.out),
+    `expected CM204 at over.ts:1 and nothing at :3:\n${r.out}`);
+  check('cli: CM204 counts one lost line',
+    /over\.ts:1 warn CM204[^\n]*: 1 line is not loaded/.test(r.out),
+    `expected a count of 1 for over.ts:\n${r.out}`);
+  check('cli: CM204 counts three lost lines, so the count is not a constant',
+    /deep\.ts:1 warn CM204[^\n]*: 3 lines are not loaded/.test(r.out),
+    `expected a count of 3 for deep.ts:\n${r.out}`);
+  check('cli: CM204 is raised where the prose tier is off',
+    /CM204/.test(r.out) && !/ (error|warn) CM001/.test(r.out),
+    `expected CM204 and no CM001 diagnostic under enforce.grammar false:\n${r.out}`);
+  check('cli: CM204 is a warning and does not gate',
+    r.status === 0 && /no errors, 2 warnings/.test(r.out),
+    `expected warning-only CM204s with status 0, got status=${r.status}:\n${r.out}`);
+
+  // cm:edge contract -> cli/cm.mjs — the tier filter there decides which run reports a per-file
+  //   diagnostic, so a code's tier and the tiers that reach it are one claim, asserted here (ISS-33)
+  for (const [t, want] of [['all', true], ['structural', true], ['grammar', false], ['referential', false]]) {
+    const scoped = cm(pluginRoot, root, 'verify', '--tier', t);
+    check(`cli: CM204 is reported under --tier ${t}: ${want}`,
+      /CM204/.test(scoped.out) === want,
+      `--tier ${t} should ${want ? '' : 'not '}report CM204:\n${scoped.out}`);
+  }
+}
+
 export function cliCases(pluginRoot, check) {
   const roots = [];
   try {
@@ -1113,6 +1166,7 @@ export function cliCases(pluginRoot, check) {
     archmapCases(pluginRoot, check, roots);
     onboardCases(pluginRoot, check, roots);
     unterminatedCases(pluginRoot, check, roots);
+    overflowCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
   }

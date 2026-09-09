@@ -27,16 +27,16 @@ d=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 exec node "$d/cm.mjs" "$@"
 `;
 
-// cm:guard the structural pass must never decide this hook's exit status: a commit gate that began
-//   refusing a warning would be a different decision about what may block a commit (ISS-35). Today two
-//   things already ensure that — cm.mjs:503 keeps structural out of the exit code, and there is no
-//   `set -e` here — so the `|| true` is belt-and-braces, not the mechanism. Keep it anyway: a `set -e`
-//   added later would silently promote this pass to a gate, and then it IS the mechanism.
+// cm:guard the structural pass must never decide this hook's exit status — a commit gate that began
+//   refusing a warning is a different decision about what may block a commit (ISS-35)
+// cm:guard keep the `|| true` — it is belt-and-braces today, since `errors` holds this pass out of the
+//   exit code (cm.mjs:530,566) and no `set -e` is set, but a later one would silently make it the gate
 const PRE_COMMIT = `#!/bin/sh
 # codemap/1 — installed by: cm install --git-hook
 # Gates the staged tree only, so an unrelated legacy file can never block a commit.
-# Two passes: the first reports what the gating tier cannot see (CM203 — a file whose annotations have
-# stopped being read) and never blocks; the second is the gate, and its status is the hook's.
+# Two passes: the first reports what the gating tier cannot see — CM203, a file whose annotations have
+# stopped being read, and CM204, an annotation running past the one line it may wrap onto — and never
+# blocks; the second is the gate, and its status is the hook's.
 cm="$(git rev-parse --show-toplevel)/.forge/codemap/cm"
 "$cm" verify --staged --tier structural || true
 exec "$cm" verify --staged --tier grammar

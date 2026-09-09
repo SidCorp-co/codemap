@@ -54,9 +54,8 @@ function runHook(pluginRoot, name, { root, file }) {
 export function installCases(pluginRoot, check) {
   const pluginCm = join(pluginRoot, 'cli', 'cm.mjs');
 
-  // cm:guard the marker is built by concatenation, never written whole — a verbatim one anywhere in
-  //   this file's first GENERATED_HEAD_LINES lines would make THIS file skip itself, which is the
-  //   defect being pinned rather than a way to pin it (ISS-29)
+  // cm:guard the marker is built by concatenation, never written whole — a verbatim one in this file's
+  //   first GENERATED_HEAD_LINES lines would make THIS file skip itself (ISS-29)
   const MARKER = `@${'generated'}`;
   {
     const rel = join('cli', 'lib', 'install.mjs');
@@ -64,8 +63,7 @@ export function installCases(pluginRoot, check) {
     const prof = profileFor(rel);
 
     // cm:guard install.mjs states the vendored-copy constraint that stamp() can break, so it has to be
-    //   READABLE — a skipped file delivers no annotation to cm ls and nothing to the PreToolUse hook,
-    //   which leaves the editor of stamp() with no sight of the rule they are about to break (ISS-29)
+    //   READABLE — a skipped file delivers nothing to cm ls or the PreToolUse hook (ISS-29)
     check('install: the file stating the vendored-copy constraint is not skipped as generated',
       isGenerated(src, prof) === false,
       'cli/lib/install.mjs is skipped, so every cm: annotation in it — including the guard on the '

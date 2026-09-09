@@ -62,10 +62,10 @@ function findUnescaped(line, delim, from) {
  *              required-on-exported policy to find the declaration a comment block documents)
  *   unterminated: the opener of a block still open at EOF, when it was discarded rather than flushed
  */
-// cm:guard flushOpen exists for isGenerated alone, which hands in a truncated head and needs the
-//   block still open at the cut. Every other caller must leave it false — flushing an unterminated
-//   block into the general comment list would turn one missing close delimiter into prose
-//   diagnostics down the rest of the file (ISS-26)
+// cm:guard flushOpen exists for isGenerated alone, which hands in a truncated head and needs the block
+//   still open at the cut; every other caller must leave it false (ISS-26)
+// cm:why flushing an unterminated block into the general comment list would turn one missing close
+//   delimiter into prose diagnostics down the rest of the file (ISS-26)
 export function scanComments(src, prof, { flushOpen = false } = {}) {
   const comments = [];
   const codeLines = new Set();
