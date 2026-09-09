@@ -151,7 +151,9 @@ const TOKEN_RE = /^[A-Za-z][A-Za-z0-9]*(?:[_.:-][A-Za-z0-9]+)+$/;
 const LITERAL_RE = /"([^"\n]{4,80})"|'([^'\n]{4,80})'|`([^`\n]{4,80})`/g;
 // cm:why this tool's own tag vocabulary is quoted all over its help text, tests and docs — excluded,
 //   or a shared "cm:why" would look like a contract between two callers that share nothing (ISS-12)
-const RESERVED = new RegExp(`^cm:(?:${TAGS.join('|')})|${CM_IGNORE_RE.source}`);
+// cm:guard the two arms differ on the word boundary and both halves are deliberate — the TAGS arm
+//   is unbounded so cm:whyever stays excluded as before, CM_IGNORE_RE's \b means cm:ignored is not
+export const RESERVED = new RegExp(`^cm:(?:${TAGS.join('|')})|${CM_IGNORE_RE.source}`);
 
 /**
  * Confidence 3 — a string literal that appears in exactly two files, in two different languages

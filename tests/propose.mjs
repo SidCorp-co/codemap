@@ -9,9 +9,9 @@ import {
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { proseCandidates, lockstepCandidates, contractCandidates } from '../cli/lib/propose.mjs';
+import { proseCandidates, lockstepCandidates, contractCandidates, RESERVED } from '../cli/lib/propose.mjs';
 import { stripGitEnv } from './git-env.mjs';
-import { TAGS } from '../cli/lib/parse.mjs';
+import { TAGS, CM_IGNORE_RE } from '../cli/lib/parse.mjs';
 
 function git(root, ...args) {
   execFileSync('git', ['-C', root, ...args], {
@@ -102,6 +102,12 @@ function pureCases(check) {
     check('propose: contract excludes every tag in TAGS, plus cm:ignore (ISS-50)',
       notExcluded.length === 0,
       `derived from TAGS + CM_IGNORE_RE, so a new tag is covered on arrival; proposed anyway: ${JSON.stringify(notExcluded)}`);
+
+    // cm:guard the case below pins the BEHAVIOUR, which the restated list also satisfies — this pins
+    //   the DERIVATION, and is the only check that fails if someone spells the vocabulary again (ISS-50)
+    check('propose: RESERVED is derived from TAGS and CM_IGNORE_RE, not restated (ISS-50)',
+      RESERVED.source.includes(TAGS.join('|')) && RESERVED.source.includes(CM_IGNORE_RE.source),
+      `RESERVED.source is ${RESERVED.source}, which does not contain TAGS.join('|') and CM_IGNORE_RE.source`);
 
     writeFileSync(join(root, 'tag.ts'), 'export const t = "ERR_TOKEN_SPENT";\n');
     writeFileSync(join(root, 'tag.go'), 'const t = "ERR_TOKEN_SPENT"\n');
