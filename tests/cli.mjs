@@ -653,9 +653,8 @@ function advisoryCases(pluginRoot, check, roots) {
   coverageCases(pluginRoot, check, roots);
 }
 
-// cm:guard these drive the CHECKER, not the resolver — every other ISS-32 case asks
-//   advisoryEcosystemOf directly, and a second narrowing applied downstream of that call inside
-//   advisoryDiags passed the whole suite green, which is ISS-32's exact defect reintroduced
+// cm:guard these drive the CHECKER, not the resolver — a second narrowing applied downstream of the
+//   advisoryEcosystemOf call passed the whole suite green, which is ISS-32's defect reintroduced
 function coverageCases(pluginRoot, check, roots) {
   const root = makeRepo();
   roots.push(root);
@@ -675,14 +674,15 @@ function coverageCases(pluginRoot, check, roots) {
 
   const out = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
   check('cli: CM301 reaches a .mts pair — an extension BY_EXT resolves and the old table forgot',
-    /caller\.mts:1/.test(out.out),
+    /CM301/.test(out.out) && /caller\.mts:1/.test(out.out),
     `an extension the profile table knows must not be silently out of the tier:\n${out.out}`);
   check('cli: CM301 reaches a .pyi pair, for the same reason',
-    /caller\.pyi:1/.test(out.out),
+    /CM301/.test(out.out) && /caller\.pyi:1/.test(out.out),
     `a .pyi resolves to the py profile, which fires:\n${out.out}`);
   check('cli: CM301 still never reaches a single-file component',
     !/Widget\.vue/.test(out.out),
-    `an SFC shares TS's ecosystem and is deliberately out of the tier (ISS-15):\n${out.out}`);
+    `an SFC shares TS's ecosystem and is out of the tier because no measurement covers that file `
+    + `format — widening it is a decision of its own, not a side effect:\n${out.out}`);
 }
 
 // cm:why a stub is a fixed-format double for archmap, not a real vendored copy — CM301's contract with

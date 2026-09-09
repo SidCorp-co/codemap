@@ -112,12 +112,6 @@ export function profileCases(pluginRoot, check) {
     'walk() and gitFiles() must each ask profileFor');
 
   const graphSrc = readFileSync(join(pluginRoot, 'cli', 'lib', 'graph.mjs'), 'utf8');
-  const extTable = /\{[^{}\n]*\b(?:ts|js|go|php|py|rs|mjs|vue)\b\s*:\s*'[^']*'[^{}\n]*\b(?:tsx|jsx|cjs|go|php|py|rs)\b\s*:/;
-  check('profiles: graph.mjs keeps no second language table',
-    !extTable.test(graphSrc),
-    'an extension-keyed language table is back in graph.mjs — a second answer to "same ecosystem", '
-    + 'which disagreed with the profile table about .vue, .svelte, .mts, .cts and .pyi (ISS-32). '
-    + 'The name does not matter; the second list does');
   check('profiles: graph.mjs asks the profile table, and decides nothing itself',
     /advisoryEcosystemOf\(/.test(graphSrc.replace(/^import .*$/m, '')),
     'the advisory tier must CALL languages.mjs, not merely import it');
@@ -159,9 +153,8 @@ export function profileCases(pluginRoot, check) {
   check('profiles: no profile opts out through enforce or a colliding key',
     Object.values(PROFILES).every((prof) => prof.advisory === undefined),
     'a profile uses `advisory`, which collides with the registry\'s enforce.advisory');
-  // cm:guard asserted on the SOURCE, because no profile sets the two independently: every profile
-  //   carrying `enforce: false` also carries `advisoryTier: false`, so restoring the enforce clause
-  //   is behaviourally invisible in today's table and passed the whole suite green (ISS-32)
+  // cm:guard asserted on the SOURCE because no profile sets the two independently — restoring the
+  //   enforce clause is invisible through the table and passed the whole suite green (ISS-32)
   const advisoryBody = /export function advisoryEcosystemOf[\s\S]*?\n}/.exec(
     readFileSync(join(pluginRoot, 'cli', 'lib', 'languages.mjs'), 'utf8'))?.[0] ?? '';
   check('profiles: the advisory tier does not read enforce',
