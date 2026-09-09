@@ -272,13 +272,37 @@ function wiringCases(pluginRoot, check) {
   // cm:guard the entry-point check is the ONLY thing standing between an import of the CLI half and
   //   a corpus run, so it is exercised rather than asserted about: importing the module must return
   //   without printing a table or spawning anything (ISS-30)
-  const probe = spawnSync(process.execPath,
-    ['-e', `import(${JSON.stringify(join(dir, 'mutate.mjs'))}).then(() => console.log('imported'))`],
-    { encoding: 'utf8', timeout: 30000, env: stripGitEnv(process.env) });
-  check('mutate: importing the half that spawns runs nothing',
-    probe.status === 0 && /^imported\s*$/.test(probe.stdout ?? '')
-      && !/corpus runs/.test(probe.stdout ?? ''),
-    `importing tests/mutate.mjs must be inert: status=${probe.status} stdout=${JSON.stringify((probe.stdout ?? '').slice(0, 200))}`);
+  // cm:guard the importer is a SCRIPT on disk, never `node -e`: under -e process.argv[1] is
+  //   undefined, so the check short-circuits on its first operand and the path comparison — the half
+  //   that is the actual defence — is never evaluated. Weakening the check to `if (process.argv[1])`
+  //   left the whole corpus green against an -e probe (ISS-30)
+  const probeDir = mkdtempSync(join(tmpdir(), 'cm-mutate-entry-'));
+  try {
+    const script = join(probeDir, 'import-the-cli.mjs');
+    writeFileSync(script,
+      `import ${JSON.stringify(join(dir, 'mutate.mjs'))};\nconsole.log('imported');\n`);
+    const probe = spawnSync(process.execPath, [script],
+      { encoding: 'utf8', timeout: 30000, env: stripGitEnv(process.env) });
+    check('mutate: importing the half that spawns runs nothing',
+      probe.status === 0 && /^imported\s*$/.test(probe.stdout ?? ''),
+      `importing tests/mutate.mjs from a script must be inert: status=${probe.status} `
+      + `stdout=${JSON.stringify((probe.stdout ?? '').slice(0, 200))} `
+      + `stderr=${JSON.stringify((probe.stderr ?? '').slice(0, 200))}`);
+  } finally {
+    rmSync(probeDir, { recursive: true, force: true });
+  }
+
+  // cm:guard `--no-optional-locks` is the whole of the harness's claim to write NOTHING in the
+  //   repository it measures, and it is one flag: removing it leaves the corpus green, so this reads
+  //   the call site. A text check, because the read itself cannot be reached from tests/ — no file
+  //   here may import the CLI half (ISS-30)
+  const statusCalls = [...cli.matchAll(/git\(ROOT, \[([^\]]*)\]/g)]
+    .map((m) => m[1])
+    .filter((args) => args.includes("'status'"));
+  check('mutate: every tree-state read passes --no-optional-locks',
+    statusCalls.length > 0 && statusCalls.every((a) => a.includes("'--no-optional-locks'")),
+    `found ${statusCalls.length} status call(s); a plain git status takes index.lock and rewrites `
+    + `.git/index with a stat-cache refresh, which is a write in the tree being measured: ${statusCalls.join(' | ')}`);
 }
 
 function declaredListCases(check) {
