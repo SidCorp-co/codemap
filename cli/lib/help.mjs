@@ -69,7 +69,7 @@ function verbs() {
   ].join('\n');
 }
 
-function overview() {
+export function overview(tags = TAGS) {
   return `cm — codemap/${SPEC_VERSION.split('/')[1]}
 
 Carries the couplings NO tool can derive — cross-language contracts, cross-process flows, edit-time
@@ -94,21 +94,24 @@ ${verbs()}
 
 TOPICS  (cm help <topic>)
 
-${table(Object.entries(TOPIC_BLURBS).map(([t, d]) => [`  ${t}`, d])).join('\n')}`;
+${table(Object.entries(topicBlurbs(tags)).map(([t, d]) => [`  ${t}`, d])).join('\n')}`;
 }
 
-const TOPIC_BLURBS = {
-  annotations: 'the five tags, their syntax, and which one to reach for',
-  codes: 'every diagnostic: tier, section, cause, fix',
-  baseline: 'how legacy prose is frozen, and how the total is allowed to fall',
-  languages: 'per-language comment policy — why this survives a Go or Laravel repo',
-  config: '.forge/codemap.json: every knob, and the three adoption modes',
-  ci: 'exit codes, scoping a run, gating a commit',
-  workflow: 'what to do before an edit, and how to answer a block',
-  principles: 'when an annotation is earned, and what not to do',
-  spec: 'the contract itself — cm help spec [§N] slices SPEC.md',
-  verbs: 'the verb table on its own',
-};
+// cm:why the vocabulary arrives as an argument so a six-tag overview is a corpus case, not a mutation of TAGS (ISS-55)
+function topicBlurbs(tags = TAGS) {
+  return {
+    annotations: `the ${tags.length} tags, their syntax, and which one to reach for`,
+    codes: 'every diagnostic: tier, section, cause, fix',
+    baseline: 'how legacy prose is frozen, and how the total is allowed to fall',
+    languages: 'per-language comment policy — why this survives a Go or Laravel repo',
+    config: '.forge/codemap.json: every knob, and the three adoption modes',
+    ci: 'exit codes, scoping a run, gating a commit',
+    workflow: 'what to do before an edit, and how to answer a block',
+    principles: 'when an annotation is earned, and what not to do',
+    spec: 'the contract itself — cm help spec [§N] slices SPEC.md',
+    verbs: 'the verb table on its own',
+  };
+}
 
 const TAG_HELP_FIELDS = ['consumer', 'syntax', 'pick'];
 
@@ -519,11 +522,11 @@ const TOPICS = {
 export function renderHelp(topic, arg) {
   if (!topic) return { text: overview(), ok: true };
   if (topic === 'spec') return { text: spec(arg), ok: true };
-  if (topic === 'topics') return { text: Object.keys(TOPIC_BLURBS).sort().join('\n'), ok: true };
+  if (topic === 'topics') return { text: Object.keys(topicBlurbs()).sort().join('\n'), ok: true };
   const fn = TOPICS[topic];
   if (!fn) {
     return {
-      text: `no help topic "${topic}". Topics: ${Object.keys(TOPIC_BLURBS).sort().join(', ')}`,
+      text: `no help topic "${topic}". Topics: ${Object.keys(topicBlurbs()).sort().join(', ')}`,
       ok: false,
     };
   }
@@ -531,4 +534,4 @@ export function renderHelp(topic, arg) {
   return typeof out === 'string' ? { text: out, ok: true } : out;
 }
 
-export const HELP_TOPICS = Object.keys(TOPIC_BLURBS);
+export const HELP_TOPICS = Object.keys(topicBlurbs());
