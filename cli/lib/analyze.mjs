@@ -158,10 +158,15 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     raw.push(diag('CM204', relPath, ann.line, `${lost} line${lost === 1 ? ' is' : 's are'} not loaded`));
   }
 
+  // cm:guard a silenced prose diagnostic is KEPT here, not just dropped — it is the only record of which
+  //   COMMENT the author silenced, and mass bills that comment by its text (ISS-51)
+  const silencedProse = [];
   const diags = raw.filter((d) => {
     const above = ignores.get(d.line - 1);
     const same = ignores.get(d.line);
-    return !(above?.has(d.code) || same?.has(d.code));
+    const hushed = above?.has(d.code) || same?.has(d.code);
+    if (hushed && PROSE_CODES.has(d.code) && d.code !== 'CM011') silencedProse.push(d);
+    return !hushed;
   });
 
   // cm:why a whole orientation run reported line-by-line with "delete it" reads as a verdict on the prose
@@ -215,6 +220,9 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     // cm:edge contract -> cli/lib/mass.mjs — §11 bills the header as its own
     //   channel, and only this function knows where one ends: a glued run is not a header at all
     header,
+    // cm:edge contract -> cli/lib/mass.mjs — prose an author silenced is still prose, and only this
+    //   function knows WHICH comment it silenced; a profile constant there invented the verdict (ISS-51)
+    silencedProse,
     skipped: null,
   };
 }

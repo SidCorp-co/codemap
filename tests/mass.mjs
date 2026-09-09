@@ -10,7 +10,7 @@ import { scanComments } from '../cli/lib/scan.mjs';
 import { profileFor } from '../cli/lib/languages.mjs';
 import { buildGraph, advisoryDiags } from '../cli/lib/graph.mjs';
 import { DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
-import { baselineKey, CM_IGNORE_RE } from '../cli/lib/parse.mjs';
+import { baselineKey, CM_IGNORE_RE, PROSE_CODES } from '../cli/lib/parse.mjs';
 import { narrativeOf, retells, fileMass, massOf, narrativeMass, NARRATIVE_MIN } from '../cli/lib/mass.mjs';
 import { stripGitEnv } from './git-env.mjs';
 
@@ -299,14 +299,53 @@ function channelCases(check) {
       `live=${sm.live} doc=${sm.doc}, expected the 15 chars of the orphan alone — §4.2's form rule bills `
       + 'it, so removing the line-keyed rescue must not take the orphan out of prose with it');
 
-    // cm:guard the SAME fixture is pinned at `grammar: true`, where the split is still wrong and this
-    //   is not the branch that decides it — proseAt is keyed on the line and claims both comments (ISS-51)
+    // cm:guard the SAME fixture is pinned at `grammar: true`, where the orphan raises the line's only
+    //   CM001 and the split therefore holds only while that diagnostic is matched by TEXT (ISS-51)
     const onRes = analyzeFile({ relPath: 'shared.ts', src: shSrc, reg: DEFAULT_REGISTRY });
     const on = fileMass({ relPath: 'shared.ts', src: shSrc, res: onRes });
-    check('mass: at the prose tier the doc block is still billed off the orphan\'s own CM001',
-      on.live === 45 && on.doc === 0,
-      `live=${on.live} doc=${on.doc}, expected live=45 doc=0 — today the orphan raises CM001 at line 3 and `
-      + 'proseAt bills the doc block from it; ISS-51 is where that is keyed by comment, and this figure moves');
+    // cm:guard the PREMISE again — one CM001, carrying the ORPHAN's text. Two, or one carrying the doc
+    //   block's, and the two cases below would pass on a shape that cannot show the bug (ISS-51)
+    const shOn = onRes.diags.filter((d) => d.code === 'CM001' && d.line === 3);
+    check('mass: at the prose tier the shared line raises one CM001, and it is the orphan\'s',
+      shOn.length === 1 && shOn[0].text === 'the orphan text',
+      `CM001 at line 3: ${JSON.stringify(shOn.map((d) => d.text))}, expected exactly ["the orphan text"] — `
+      + 'the doc block is hover documentation and raises none of its own');
+    check('mass: at the prose tier the orphan\'s CM001 does not reach the doc block sharing its line',
+      on.doc === 30,
+      `doc=${on.doc} live=${on.live}, expected the 30 chars of the doc block — a diagnostic keyed on the `
+      + 'LINE bills the doc block from the orphan\'s CM001 too, which was live=45 doc=0 (ISS-51)');
+    check('mass: at the prose tier the orphan is billed from its own CM001',
+      on.live === 15,
+      `live=${on.live} doc=${on.doc}, expected the 15 chars of the orphan alone`);
+
+    // cm:guard two prose comments of DIFFERENT text on one physical line, one of them frozen — the only
+    //   shape that can see `proseAt` billing both from one diagnostic, which was last-wins (ISS-51)
+    const twoSrc = [
+      'export const a = 1;',
+      '',
+      '/* the first narration */ // the second narration',
+      'export const b = 2;',
+    ].join('\n');
+    const twoFrozen = new Set([baselineKey('the first narration')]);
+    const twoRes = analyzeFile({ relPath: 'two.ts', src: twoSrc, reg: DEFAULT_REGISTRY, frozen: twoFrozen });
+    const two = fileMass({ relPath: 'two.ts', src: twoSrc, res: twoRes, frozen: twoFrozen });
+    const twoDiags = twoRes.diags.filter((d) => d.code === 'CM001' && d.line === 3);
+    check('mass: the two-comment line really raises one CM001 per comment',
+      twoDiags.length === 2 && twoDiags[0].text === 'the first narration' && twoDiags[1].text === 'the second narration',
+      `CM001 at line 3: ${JSON.stringify(twoDiags.map((d) => d.text))}, expected both texts in scan order — `
+      + 'one diagnostic, or either text missing, and the split below proves nothing about the keying');
+    check('mass: the frozen comment sharing a line with an unfrozen one is billed frozen',
+      two.frozen === 19,
+      `frozen=${two.frozen} live=${two.live}, expected the 19 chars of the frozen block alone — a Map keyed `
+      + 'on the line kept the LAST diagnostic written, so the unfrozen one decided both (ISS-51)');
+    check('mass: the unfrozen comment sharing that line is billed live',
+      two.live === 20,
+      `live=${two.live} frozen=${two.frozen}, expected the 20 chars of the unfrozen comment alone`);
+    const twoWhole = scanComments(twoSrc, profileFor('two.ts')).comments
+      .filter((c) => c.text).reduce((n, c) => n + c.text.length, 0);
+    check('mass: two prose comments on one line keep conservation',
+      two.annotation + two.frozen + two.live + two.doc + two.header === twoWhole,
+      `billed ${two.annotation + two.frozen + two.live + two.doc + two.header} != ${twoWhole} of comment text`);
 
     // cm:guard the run stands ALONE in this fixture — the sum is the two orphans, so a prose line under
     //   no annotation sharing it would move channel under ISS-40 and fail this on a false cause
@@ -472,6 +511,179 @@ function channelCases(check) {
     const im = fileMass({ relPath: 'ign.ts', src: ignSrc, res: analyzeFile({ relPath: 'ign.ts', src: ignSrc, reg: DEFAULT_REGISTRY }) });
     check('mass: a silenced block comment is live prose, not a doc comment',
       im.live > 0 && im.doc === 0, `live=${im.live} doc=${im.doc}`);
+
+    // cm:guard the case above passes with a line-keyed rescue reinstated, because its comment is the only
+    //   one on the line — this one shares the line with a `doc` block, which is what saw it (ISS-51)
+    const igDocSrc = [
+      'export const x = 1;',
+      '',
+      '// cm:ignore CM001 — inherited, and nobody owns this file',
+      '/** a doc block the tooling parses */ // silenced narration',
+      'export const y = 2;',
+    ].join('\n');
+    const igDocRes = analyzeFile({ relPath: 'igndoc.ts', src: igDocSrc, reg: DEFAULT_REGISTRY });
+    const igDoc = fileMass({ relPath: 'igndoc.ts', src: igDocSrc, res: igDocRes });
+    // cm:guard the PREMISE: the directive really silences the line, so the two figures below are the
+    //   silenced reading and not merely a doc block beside an unremarkable comment (ISS-51)
+    check('mass: the ignore directive really silences CM001 on the shared line',
+      igDocRes.diags.length === 0 && !!igDocRes.ignores?.get(3)?.has('CM001'),
+      `diags=${JSON.stringify(igDocRes.diags.map((d) => `${d.code}@${d.line}`))} `
+      + `ignores=${JSON.stringify([...(igDocRes.ignores ?? new Map())].map(([l, c]) => `${l}:${[...c]}`))}`);
+    check('mass: a doc block sharing a silenced line keeps its own doc channel',
+      igDoc.doc === 30,
+      `doc=${igDoc.doc} live=${igDoc.live}, expected the 30 chars of the doc block — a channel keyed on the `
+      + 'silenced LINE took the doc block with it, which was live=48 doc=0 (ISS-51)');
+    check('mass: the silenced narration sharing that line is still live prose',
+      igDoc.live === 18,
+      `live=${igDoc.live} doc=${igDoc.doc}, expected the 18 chars of the silenced comment alone — §4.2's `
+      + 'form rule bills it, so dropping the line-keyed branch must not take it out of prose');
+  }
+
+  // cm:guard a profile with no `docBlocksAllowed` raises CM001 on its OWN doc form, so that form is
+  //   prose there — billing a silenced one to doc makes cm:ignore an escape from the MEASURE (ISS-51)
+  {
+    const phpReg = { ...DEFAULT_REGISTRY, languages: { ...(DEFAULT_REGISTRY.languages ?? {}), php: { docPolicy: 'banned' } } };
+    const body = ['<?php', '$x = 1;', '', '/** narration in a php docblock */', '$y = 2;'];
+    const loud = body.join('\n');
+    const hushed = [...body.slice(0, 3), '// cm:ignore CM001 — inherited, and nobody owns this file', ...body.slice(3)].join('\n');
+    const massOfPhp = (src) => fileMass({ relPath: 'a.php', src, res: analyzeFile({ relPath: 'a.php', src, reg: phpReg }) });
+    const loudM = massOfPhp(loud);
+    const hushedM = massOfPhp(hushed);
+    // cm:guard the PREMISE: unsilenced, the php doc form really does raise CM001, which is the profile
+    //   calling it prose — without that the two figures below say nothing about silencing (ISS-51)
+    check('mass: a php doc form under docPolicy banned really raises CM001 of its own',
+      analyzeFile({ relPath: 'a.php', src: loud, reg: phpReg }).diags.some((d) => d.code === 'CM001'),
+      `diags=${JSON.stringify(analyzeFile({ relPath: 'a.php', src: loud, reg: phpReg }).diags.map((d) => d.code))}`);
+    check('mass: a silenced doc form in a profile that allows no doc blocks is still live prose',
+      hushedM.live === 27 && hushedM.doc === 0,
+      `live=${hushedM.live} doc=${hushedM.doc}, expected live=27 doc=0 — the profile raises CM001 on this `
+      + 'form, so §4.2 may not exempt it and a silenced one must not land in doc (ISS-51)');
+    check('mass: the ignore directive moves no characters between channels',
+      hushedM.live === loudM.live && hushedM.doc === loudM.doc,
+      `silenced live=${hushedM.live} doc=${hushedM.doc} vs unsilenced live=${loudM.live} doc=${loudM.doc} — `
+      + 'a directive that moves prose into the machine-consumed figure is an escape from the measure');
+    // cm:guard the PREMISE of the pair above: the silenced verdict really reaches mass, keyed on the
+    //   comment — without it the two figures agree because NEITHER is prose (ISS-51)
+    check('mass: a silenced prose verdict reaches mass carrying the comment that raised it',
+      analyzeFile({ relPath: 'a.php', src: hushed, reg: phpReg }).silencedProse
+        ?.some((d) => d.code === 'CM001' && d.text === 'narration in a php docblock'),
+      `silencedProse=${JSON.stringify(analyzeFile({ relPath: 'a.php', src: hushed, reg: phpReg }).silencedProse?.map((d) => `${d.code}:${d.text}`))}`);
+
+    // cm:guard a doc form analyze does NOT call prose stays documentation, silenced or not — a profile
+    //   constant billed this to live, where analyze exempts it as structured (ISS-51)
+    const structured = ['<?php', '$x = 1;', '', '/** @param int $a phpdoc the tooling parses */', '$y = 2;'];
+    const structuredHushed = [...structured.slice(0, 3), '// cm:ignore CM001 — inherited, and nobody owns this file', ...structured.slice(3)].join('\n');
+    const stM = fileMass({ relPath: 'a.php', src: structuredHushed, res: analyzeFile({ relPath: 'a.php', src: structuredHushed, reg: phpReg }) });
+    check('mass: a structured phpdoc block under a banned policy is documentation, not silenced prose',
+      stM.doc === 39 && stM.live === 0,
+      `doc=${stM.doc} live=${stM.live}, expected doc=39 live=0 — analyze exempts a STRUCTURED_DOC block, `
+      + 'so nothing silenced it and no channel may read a profile field instead (ISS-51)');
+  }
+
+  // cm:guard a doc FORM in a profile that never asked about doc blocks is still documentation at
+  //   default settings — reading `docBlocksAllowed` here billed every rustdoc line as prose (ISS-51)
+  {
+    for (const [rel, comment, chars] of [
+      ['x.rs', '/// a rustdoc line the tooling parses', 33],
+      ['x.php', '/** @param int $a phpdoc the tooling parses */', 39],
+    ]) {
+      const src = ['let a = 1;', '', comment, 'let b = 2;'].join('\n');
+      const res = analyzeFile({ relPath: rel, src, reg: DEFAULT_REGISTRY });
+      const dm = fileMass({ relPath: rel, src, res });
+      // cm:guard the PREMISE: nothing is raised and nothing silenced, so the form rule alone decides —
+      //   a fixture that raised CM001 here would pass on live for the wrong reason (ISS-51)
+      check(`mass: ${rel} raises no prose of its own at default settings`,
+        res.diags.length === 0 && (res.silencedProse ?? []).length === 0,
+        `diags=${JSON.stringify(res.diags.map((d) => d.code))} silenced=${JSON.stringify((res.silencedProse ?? []).map((d) => d.code))}`);
+      check(`mass: a doc form is documentation where no policy calls it prose (${rel})`,
+        dm.doc === chars && dm.live === 0,
+        `doc=${dm.doc} live=${dm.live}, expected doc=${chars} live=0 — the profile leaves `
+        + '`docBlocksAllowed` unset because nothing asks, not because the form is prose (ISS-51)');
+    }
+  }
+
+  // cm:guard the annotation channel is keyed on the COMMENT — a prose comment sharing an annotation's
+  //   physical line was billed as annotation, which is the §11 headline figure (ISS-51)
+  {
+    const anSrc = [
+      'export const x = 1;',
+      '',
+      '/* narration nobody froze */ // cm:why callers must hold the run lock',
+      'export const y = 2;',
+    ].join('\n');
+    const anRes = analyzeFile({ relPath: 'an.ts', src: anSrc, reg: DEFAULT_REGISTRY });
+    const an = fileMass({ relPath: 'an.ts', src: anSrc, res: anRes });
+    // cm:guard the PREMISE: the annotation parsed AND the block raised its own CM001, or the split
+    //   below holds for a file with no annotation on that line at all (ISS-51)
+    check('mass: the annotation-sharing line really carries both an annotation and its own CM001',
+      anRes.annotations.length === 1 && anRes.diags.some((d) => d.code === 'CM001' && d.line === 3 && d.text === 'narration nobody froze'),
+      `annotations=${anRes.annotations.length} diags=${JSON.stringify(anRes.diags.map((d) => `${d.code}@${d.line}`))}`);
+    check('mass: a prose comment sharing an annotation\'s line is billed prose, not annotation',
+      an.live === 22,
+      `live=${an.live} annotation=${an.annotation}, expected the 22 chars of the block — a Set of LINE `
+      + 'numbers billed it to the annotation channel, which was annotation=59 live=0 (ISS-51)');
+    check('mass: the annotation sharing that line is still billed to the annotation channel',
+      an.annotation === 37,
+      `annotation=${an.annotation} live=${an.live}, expected the 37 chars of the annotation alone`);
+    const anWhole = scanComments(anSrc, profileFor('an.ts')).comments
+      .filter((c) => c.text).reduce((n, c) => n + c.text.length, 0);
+    check('mass: an annotation sharing a line with prose keeps conservation',
+      an.annotation + an.frozen + an.live + an.doc + an.header === anWhole,
+      `billed ${an.annotation + an.frozen + an.live + an.doc + an.header} != ${anWhole}`);
+  }
+
+  // cm:guard CM010 is a PROSE_CODES member too, so the text match is exercised on both codes — on
+  //   CM001 alone half of what the match reaches is dead to the corpus (ISS-51)
+  {
+    const tdSrc = [
+      'export const x = 1;',
+      '',
+      '/** a doc block the tooling parses */ // TODO: fix the retry',
+      'export const y = 2;',
+    ].join('\n');
+    const tdRes = analyzeFile({ relPath: 'todo.ts', src: tdSrc, reg: DEFAULT_REGISTRY });
+    const td = fileMass({ relPath: 'todo.ts', src: tdSrc, res: tdRes });
+    check('mass: the TODO fixture really raises CM010 and not CM001',
+      tdRes.diags.some((d) => d.code === 'CM010' && d.line === 3 && d.text === 'TODO: fix the retry'),
+      `diags=${JSON.stringify(tdRes.diags.map((d) => `${d.code}@${d.line}`))}`);
+    check('mass: a CM010 comment sharing a doc block\'s line is billed from its own diagnostic',
+      td.doc === 30 && td.live === 19,
+      `doc=${td.doc} live=${td.live}, expected doc=30 live=19 — a diagnostic keyed on the LINE bills the `
+      + 'doc block from the TODO comment too, which was live=49 doc=0 (ISS-51)');
+
+    // cm:guard the case above passes with the match narrowed to CM001, because one diagnostic on the
+    //   line routes both comments right by fall-through — a FROZEN CM010 needs its own to be found
+    const tdFrozen = new Set([baselineKey('TODO: fix the retry')]);
+    const tdfRes = analyzeFile({ relPath: 'todo.ts', src: tdSrc, reg: DEFAULT_REGISTRY, frozen: tdFrozen });
+    const tdf = fileMass({ relPath: 'todo.ts', src: tdSrc, res: tdfRes, frozen: tdFrozen });
+    check('mass: a frozen CM010 sharing a doc block\'s line reaches the frozen channel',
+      tdf.frozen === 19,
+      `frozen=${tdf.frozen} live=${tdf.live} doc=${tdf.doc}, expected frozen=19 — the TODO can only be `
+      + 'frozen through its OWN CM010, so a match that reads CM001 alone bills it live instead');
+    check('mass: the doc block beside a frozen CM010 keeps its doc channel',
+      tdf.doc === 30,
+      `doc=${tdf.doc} frozen=${tdf.frozen} live=${tdf.live}, expected the 30 chars of the doc block`);
+
+    // cm:guard the text match is TOTAL over what fileMass bills: a prose code arriving without its
+    //   comment's text would fall through to the form rule and change channel in silence (ISS-51)
+    const totality = [
+      ['shared', ['// cm:guard callers must hold the run lock', '// and release it on every path out',
+        '/** a doc block the tooling parses */ // the orphan text', 'export function f() {}'].join('\n'), 'shared.ts'],
+      ['two', ['export const a = 1;', '', '/* the first narration */ // the second narration',
+        'export const b = 2;'].join('\n'), 'two.ts'],
+      ['todo', tdSrc, 'todo.ts'],
+      ['annotation', ['export const x = 1;', '', '/* narration nobody froze */ // cm:why callers must hold the run lock',
+        'export const y = 2;'].join('\n'), 'an.ts'],
+    ];
+    for (const [name, src, rel] of totality) {
+      const r = analyzeFile({ relPath: rel, src, reg: DEFAULT_REGISTRY });
+      const texts = new Set(scanComments(src, profileFor(rel)).comments.map((c) => c.text));
+      const orphans = r.diags.filter((d) => PROSE_CODES.has(d.code) && d.code !== 'CM011' && !texts.has(d.text));
+      check(`mass: every prose diagnostic fileMass bills carries its comment's text (${name})`,
+        orphans.length === 0,
+        `orphans=${JSON.stringify(orphans.map((d) => `${d.code}@${d.line}:${JSON.stringify(d.text)}`))} — a `
+        + 'prose code reaching fileMass without its comment\'s text is matched by nothing and changes channel');
+    }
   }
 
   const rolled = massOf([m, { ...m, relPath: 'other.ts', narrative: 10 }]);

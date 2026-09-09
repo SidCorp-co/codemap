@@ -98,8 +98,8 @@ export function narrativeMass(perFile) {
  *   text alone — which line is an annotation's wrap, and which comment is prose — are analyze.mjs's
  *   verdict rather than a second implementation of it.
  */
-// cm:edge contract -> cli/lib/analyze.mjs — this reads `skipped`, `annotations`, `diags`,
-//   `ignores` and `header` off the analysis; deriving them from the source again would drift from it
+// cm:edge contract -> cli/lib/analyze.mjs — this reads `skipped`, `annotations`, `diags`, `ignores`,
+//   `header` and `silencedProse` off it; deriving any of them from the source again would drift from it
 export function fileMass({ relPath, src, res, frozen }) {
   const prof = profileFor(relPath);
   const out = { relPath, annotation: 0, frozen: 0, live: 0, doc: 0, header: 0, narrative: 0, annotations: 0, retelling: 0 };
@@ -113,20 +113,38 @@ export function fileMass({ relPath, src, res, frozen }) {
     if (story) { out.retelling++; out.narrative += story.chars; }
   }
 
-  const annLines = new Set();
+  // cm:guard the annotation channel is keyed on the COMMENT, never on its line — an annotation and a
+  //   prose comment share a line often, and the line billed that prose as annotation (ISS-51)
+  const annAt = new Set();
   for (const a of res.annotations ?? []) {
-    annLines.add(a.line);
-    if (a.wrap) annLines.add(a.line + 1);
+    annAt.add(`${a.line}\u0000${a.raw}`);
+    if (a.wrap) annAt.add(`${a.line + 1}\u0000${a.wrap}`);
   }
   const proseAt = new Map();
   for (const d of res.diags ?? []) {
     // cm:why CM011 measures a header's LENGTH and carries `header:<n>` rather than a comment, so the
     //   header channel below bills those characters and this map must not bill them again
     if (!PROSE_CODES.has(d.code) || d.code === 'CM011') continue;
-    proseAt.set(d.line, d);
+    const at = proseAt.get(d.line) ?? [];
+    at.push(d);
+    proseAt.set(d.line, at);
   }
-  const ignoredProse = (line) => [...(res.ignores?.get(line) ?? []), ...(res.ignores?.get(line - 1) ?? [])]
-    .some((code) => PROSE_CODES.has(code));
+  // cm:guard a diagnostic is matched to the COMMENT by text, never to its line — a block and the line
+  //   comment closing beside it share one line, and one diagnostic decided the channel of both (ISS-51)
+  // cm:why two comments of the SAME text on one line need no tie-break: every field the channel reads
+  //   — the baseline key, `blockKey`, `sited` — is equal for both, so consuming the match pinned nothing
+  const takeProse = (c) => proseAt.get(c.line)?.find((d) => d.text === c.text);
+  // cm:guard keyed on the COMMENT exactly as `takeProse` is — an ignore directive names a LINE, and a
+  //   line-keyed test billed a doc block sharing a silenced line as prose (ISS-51)
+  // cm:guard these carry no `sited` and no `blockKey`: analyze collects them BEFORE siteProse and the
+  //   blockKey loop, which walk `diags` alone — so the verdict is a boolean and never a frozen input
+  const silencedAt = new Map();
+  for (const d of res.silencedProse ?? []) {
+    const at = silencedAt.get(d.line) ?? [];
+    at.push(d);
+    silencedAt.set(d.line, at);
+  }
+  const takeSilenced = (c) => silencedAt.get(c.line)?.some((d) => d.text === c.text);
 
   const header = res.header;
   // cm:guard every comment carrying text is billed to exactly ONE channel, so the channels plus the
@@ -136,10 +154,12 @@ export function fileMass({ relPath, src, res, frozen }) {
     // cm:why an ignore directive is billed nowhere — it is the escape hatch a code's own fix line
     //   offers, and pricing it would charge an author for taking the way out the checker handed them
     if (CM_IGNORE_RE.test(c.text)) continue;
-    if (annLines.has(c.line)) { out.annotation += c.text.length; continue; }
-    const prose = proseAt.get(c.line);
+    if (annAt.has(`${c.line}\u0000${c.text}`)) { out.annotation += c.text.length; continue; }
+    const prose = takeProse(c);
     if (prose) {
-      const key = baselineKey(prose.text ?? prose.message);
+      // cm:guard no fallback to `.message` here: `takeProse` only ever returns a diagnostic whose `text`
+      //   equals this comment's, and a prose code arriving without one changes channel in silence (ISS-51)
+      const key = baselineKey(prose.text);
       const baselined = frozen?.has(key) || (prose.blockKey && frozen?.has(prose.blockKey));
       // cm:edge contract -> cli/cm.mjs — `|| d.sited` bypasses the baseline there (§4: a sited line
       //   cannot be frozen), so a frozen channel ignoring `sited` would contradict verify (ISS-41)
@@ -148,12 +168,11 @@ export function fileMass({ relPath, src, res, frozen }) {
       continue;
     }
     if (header && !header.glued && c.line >= header.start && c.endLine <= header.end) { out.header += c.text.length; continue; }
-    // cm:why prose an author silenced is still prose. Keyed on the LINE and ahead of §4.2's rule, so it
-    //   also takes a `doc` block off a covered line, for a directive that silenced nothing (ISS-51)
-    if (ignoredProse(c.line)) { out.live += c.text.length; continue; }
-    // cm:why a form the profile exempts from prose is still PROSE (ISS-28). §4.2's rule below bills
-    //   every non-doc form to live, so this states the intent and no longer decides the channel (ISS-51)
-    if (prof.proseExemptBlockOpens?.includes(c.leader)) { out.live += c.text.length; continue; }
+    // cm:why prose an author silenced is still prose, and the verdict comes from analyze per COMMENT —
+    //   a profile constant here billed every rustdoc line and phpdoc block as narration (ISS-51)
+    if (takeSilenced(c)) { out.live += c.text.length; continue; }
+    // cm:why a form the profile exempts from prose is still prose (ISS-28), which §4.2's rule below
+    //   bills to live with no branch of its own (ISS-40)
     // cm:guard §4.2 makes `/** */` documentation BY FORM and every other form prose, `/* */` included,
     //   so only `doc` is exempt here and a new kind fails toward prose rather than into doc (ISS-40)
     // cm:guard at `grammar: false` this is the only rule billing an annotation's orphaned continuation line
