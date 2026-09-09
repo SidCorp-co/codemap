@@ -13,12 +13,17 @@ const GIT_CONFIG_VARS = ['GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUN
 
 // cm:guard a real pre-commit hook exports GIT_EXEC_PATH, and git prepends it to PATH for every
 //   child it spawns, so a shim there is found by a hook the corpus is running (ISS-39)
-// cm:why these change what a tier's `git init` CREATES or what its pathspecs MEAN, which is why
-//   they belong with the location channel rather than being treated as cosmetic (ISS-39)
-const GIT_BEHAVIOUR_VARS = ['GIT_EXEC_PATH', 'GIT_EDITOR', 'GIT_DEFAULT_HASH',
-  'GIT_DEFAULT_REF_FORMAT', 'GIT_INDEX_VERSION', 'GIT_LITERAL_PATHSPECS', 'GIT_GLOB_PATHSPECS',
-  'GIT_NOGLOB_PATHSPECS', 'GIT_ICASE_PATHSPECS', 'GIT_REPLACE_REF_BASE', 'GIT_NO_REPLACE_OBJECTS',
-  'GIT_ATTR_SOURCE', 'GIT_SSH', 'GIT_SSH_COMMAND', 'GIT_ASKPASS', 'GIT_TERMINAL_PROMPT'];
+// cm:guard GIT_EXTERNAL_DIFF replaces git's diff with an arbitrary program and GIT_DIFF_OPTS
+//   reconfigures it: changedRanges parses -U0 hunk headers, so both make it assert on nothing
+// cm:why derived by diffing git(1) ENVIRONMENT VARIABLES and git-config(1) against these lists on
+//   git 2.43, NOT from what a hook happens to export — it is not claimed exhaustive (ISS-39)
+const GIT_BEHAVIOUR_VARS = ['GIT_EXEC_PATH', 'GIT_EDITOR', 'GIT_SEQUENCE_EDITOR',
+  'GIT_DEFAULT_HASH', 'GIT_DEFAULT_REF_FORMAT', 'GIT_INDEX_VERSION', 'GIT_LITERAL_PATHSPECS',
+  'GIT_GLOB_PATHSPECS', 'GIT_NOGLOB_PATHSPECS', 'GIT_ICASE_PATHSPECS', 'GIT_REPLACE_REF_BASE',
+  'GIT_NO_REPLACE_OBJECTS', 'GIT_ATTR_SOURCE', 'GIT_EXTERNAL_DIFF', 'GIT_DIFF_OPTS',
+  'GIT_NOTES_REF', 'GIT_OPTIONAL_LOCKS', 'GIT_REFLOG_ACTION', 'GIT_FLUSH', 'GIT_SSH',
+  'GIT_SSH_COMMAND', 'GIT_ASKPASS', 'GIT_TERMINAL_PROMPT', 'GIT_ALLOW_PROTOCOL',
+  'GIT_PROTOCOL_FROM_USER'];
 
 // cm:guard these outrank the GIT_AUTHOR_* a tier's own helper sets, so stripping has to happen
 //   BEFORE the fixture identity is applied, never after (ISS-39)
@@ -32,6 +37,10 @@ const GIT_IDENTITY_VARS = ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_AUTHOR_DA
 //   hands back a user config the caller may be suppressing on purpose (ISS-39)
 // cm:guard safe.directory is re-injected through the command scope, which protected config also
 //   reads: emptying global config alone makes the two real-checkout sites fail on ownership (ISS-39)
+// cm:why deliberate at a price: it uses the command-config channel this same function otherwise
+//   treats as hostile, and exempts EVERY git the corpus runs, not the two sites needing it (ISS-39)
+// cm:why a written global fixture file avoids both, and is the alternative if either ever bites —
+//   the ownership path is unexercised here, so the mechanism is argued rather than proved (ISS-39)
 // cm:edge contract -> tests/git-env-cases.mjs — that tier holds its own literal copy of these four
 //   lists and asserts set equality, so adding or removing a name here fails until it does too
 export function stripGitEnv(env) {

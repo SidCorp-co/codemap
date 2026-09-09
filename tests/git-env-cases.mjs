@@ -19,10 +19,13 @@ const EXPECTED_LOCATION = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OB
   'GIT_COMMON_DIR', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_TEMPLATE_DIR', 'GIT_NAMESPACE',
   'GIT_CEILING_DIRECTORIES', 'GIT_PREFIX', 'GIT_DISCOVERY_ACROSS_FILESYSTEM'];
 const EXPECTED_CONFIG = ['GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT'];
-const EXPECTED_BEHAVIOUR = ['GIT_EXEC_PATH', 'GIT_EDITOR', 'GIT_DEFAULT_HASH',
-  'GIT_DEFAULT_REF_FORMAT', 'GIT_INDEX_VERSION', 'GIT_LITERAL_PATHSPECS', 'GIT_GLOB_PATHSPECS',
-  'GIT_NOGLOB_PATHSPECS', 'GIT_ICASE_PATHSPECS', 'GIT_REPLACE_REF_BASE', 'GIT_NO_REPLACE_OBJECTS',
-  'GIT_ATTR_SOURCE', 'GIT_SSH', 'GIT_SSH_COMMAND', 'GIT_ASKPASS', 'GIT_TERMINAL_PROMPT'];
+const EXPECTED_BEHAVIOUR = ['GIT_EXEC_PATH', 'GIT_EDITOR', 'GIT_SEQUENCE_EDITOR',
+  'GIT_DEFAULT_HASH', 'GIT_DEFAULT_REF_FORMAT', 'GIT_INDEX_VERSION', 'GIT_LITERAL_PATHSPECS',
+  'GIT_GLOB_PATHSPECS', 'GIT_NOGLOB_PATHSPECS', 'GIT_ICASE_PATHSPECS', 'GIT_REPLACE_REF_BASE',
+  'GIT_NO_REPLACE_OBJECTS', 'GIT_ATTR_SOURCE', 'GIT_EXTERNAL_DIFF', 'GIT_DIFF_OPTS',
+  'GIT_NOTES_REF', 'GIT_OPTIONAL_LOCKS', 'GIT_REFLOG_ACTION', 'GIT_FLUSH', 'GIT_SSH',
+  'GIT_SSH_COMMAND', 'GIT_ASKPASS', 'GIT_TERMINAL_PROMPT', 'GIT_ALLOW_PROTOCOL',
+  'GIT_PROTOCOL_FROM_USER'];
 const EXPECTED_IDENTITY = ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_AUTHOR_DATE',
   'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL', 'GIT_COMMITTER_DATE'];
 
@@ -108,6 +111,34 @@ function sameSet(a, b) {
 //   own environment, so every call site's scrub is unobservable at runtime and only this reads it
 // cm:guard it matches the TEXT of a call, so an invocation spelled any other way than
 //   execFileSync or spawnSync is invisible to this sweep and has to be added by hand (ISS-39)
+// cm:guard it is STRING-AWARE but blanks only comments: a `//` inside a string literal made the
+//   old line-prefix skip drop the whole line, hiding an unscrubbed call sharing it (ISS-39)
+// cm:guard string BODIES are left intact — the pattern this sweep matches is itself a string
+//   literal ('git'), so blanking them makes every call site invisible instead (ISS-39)
+// cm:guard it blanks in place so every offset is preserved: a shortened source reports the wrong
+//   line number, which sends the reader to a call that is not the offender (ISS-39)
+function blankComments(src) {
+  const out = src.split('');
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '/' && src[i + 1] === '/') {
+      while (i < src.length && src[i] !== '\n') { out[i] = ' '; i += 1; }
+    } else if (c === '/' && src[i + 1] === '*') {
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) {
+        if (src[i] !== '\n') out[i] = ' ';
+        i += 1;
+      }
+      if (i < src.length) { out[i] = ' '; out[i + 1] = ' '; i += 2; }
+    } else if (c === "'" || c === '"' || c === '`') {
+      i += 1;
+      while (i < src.length && src[i] !== c) i += src[i] === '\\' ? 2 : 1;
+      i += 1;
+    } else i += 1;
+  }
+  return out.join('');
+}
+
 // cm:guard the text of a call is read to its own closing paren by depth, never to the first `);`:
 //   a nested call closes first and truncates the slice, which hid an `env:` that was there (ISS-39)
 function callText(src, from) {
@@ -125,14 +156,13 @@ function sourceCases(check) {
   const ambient = [];
   let scanned = 0;
   for (const name of readdirSync(dir).filter((f) => f.endsWith('.mjs')).sort()) {
-    const src = readFileSync(join(dir, name), 'utf8');
+    const raw = readFileSync(join(dir, name), 'utf8');
+    // cm:why matched against the BLANKED source so this tier's own cm: annotations, which name the
+    //   pattern they grep for, are not read back as call sites of their own (ISS-39)
+    const src = blankComments(raw);
     for (const m of src.matchAll(/(?:execFileSync|spawnSync)\(\s*(?:'git'|"git"|process\.execPath|'sh'|'bash')/g)) {
-      const call = callText(src, m.index);
+      const call = callText(raw, m.index);
       const at = `${name}:${src.slice(0, m.index).split('\n').length}`;
-      // cm:guard a match inside a COMMENT is skipped: this tier's own cm:edge names the pattern it
-      //   greps for, and matching that made the sweep report itself as an offender (ISS-39)
-      if (src.slice(src.lastIndexOf('\n', m.index) + 1, m.index).includes('//')) continue;
-      if (/'sleep'/.test(call)) continue;
       scanned += 1;
       if (!/\benv\b/.test(call)) { inherits.push(at); continue; }
       if (/process\.env/.test(call) && !/stripGitEnv/.test(call)) ambient.push(at);
@@ -169,8 +199,13 @@ export function gitEnvCases(pluginRoot, check) {
     const all = [...EXPECTED_LOCATION, ...EXPECTED_CONFIG, ...EXPECTED_BEHAVIOUR,
       ...EXPECTED_IDENTITY];
     for (const name of all) poisoned[name] = `poisoned-${name}`;
+    // cm:guard a SECOND numbered pair is poisoned, never only index 0: the re-injected
+    //   safe.directory overwrites KEY_0, so index 0 alone passes whether the loop deletes or not
+    poisoned.GIT_CONFIG_COUNT = '2';
     poisoned.GIT_CONFIG_KEY_0 = 'core.editor';
     poisoned.GIT_CONFIG_VALUE_0 = 'false';
+    poisoned.GIT_CONFIG_KEY_1 = 'core.hooksPath';
+    poisoned.GIT_CONFIG_VALUE_1 = '/nowhere';
     const scrubbed = stripGitEnv(poisoned);
 
     for (const name of all) {
@@ -182,9 +217,12 @@ export function gitEnvCases(pluginRoot, check) {
       check(`git-env: ${name} is removed outright`, !(name in scrubbed),
         `${name} is still present as ${JSON.stringify(scrubbed[name])}`);
     }
-    check('git-env: an inherited numbered GIT_CONFIG pair does not survive',
+    check('git-env: an inherited numbered GIT_CONFIG pair does not survive at index 0',
       scrubbed.GIT_CONFIG_KEY_0 !== 'core.editor' && scrubbed.GIT_CONFIG_VALUE_0 !== 'false',
       `survived: ${JSON.stringify({ k: scrubbed.GIT_CONFIG_KEY_0, v: scrubbed.GIT_CONFIG_VALUE_0 })}`);
+    check('git-env: an inherited numbered GIT_CONFIG pair does not survive past index 0',
+      !('GIT_CONFIG_KEY_1' in scrubbed) && !('GIT_CONFIG_VALUE_1' in scrubbed),
+      `survived: ${JSON.stringify({ k: scrubbed.GIT_CONFIG_KEY_1, v: scrubbed.GIT_CONFIG_VALUE_1 })}`);
     check('git-env: user and system config are suppressed rather than unset',
       scrubbed.GIT_CONFIG_GLOBAL === '/dev/null' && scrubbed.GIT_CONFIG_SYSTEM === '/dev/null',
       `got ${JSON.stringify({ g: scrubbed.GIT_CONFIG_GLOBAL, s: scrubbed.GIT_CONFIG_SYSTEM })}`);
