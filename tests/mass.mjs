@@ -156,6 +156,25 @@ function conservationCases(check) {
   check('mass: the channels plus the ignore directives are the file\'s whole comment text',
     billed + directives === whole,
     `billed ${billed} + directives ${directives} != ${whole} of comment text — ${whole - billed - directives} char(s) counted twice or lost`);
+
+  // cm:guard the count above reads CM_IGNORE_RE on BOTH sides, so it holds for any predicate and
+  //   cannot see one that widened — this literal is the only oracle left for what a directive is
+  check('mass: the fixture\'s one ignore directive is 54 chars, and they are billed to no channel',
+    directives === 54,
+    `directives ${directives} != 54 — a widened CM_IGNORE_RE swallows prose the channels should bill`);
+
+  const adjacent = [
+    '// cm:ignore CM001 — one',
+    '// cm:ignore CM301 — two',
+    'export const pair = 6;',
+  ].join('\n');
+  const adjRes = analyzeFile({ relPath: 'adjacent.ts', src: adjacent, reg: DEFAULT_REGISTRY });
+  const adj = fileMass({ relPath: 'adjacent.ts', src: adjacent, res: adjRes });
+  const adjBilled = adj.annotation + adj.frozen + adj.live + adj.doc + adj.header;
+  check('mass: two ignore directives on consecutive lines are both billed to no channel',
+    adjBilled === 0,
+    `adjacent directives billed ${adjBilled} char(s) — a stateful CM_IGNORE_RE leaves lastIndex past`
+      + ' the first, so the second stops matching its own anchor and lands in a prose channel');
   // cm:guard every channel is pinned EXACTLY — the fixture carries unsilenced prose too, so `live > 0`
   //   passes with the ignored CM001 mis-billed as a doc comment and conservation still holding
   // cm:guard doc is exactly the ONE `/** */` block, 54 chars — §4.2 makes only that form
