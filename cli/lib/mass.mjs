@@ -98,8 +98,8 @@ export function narrativeMass(perFile) {
  *   text alone — which line is an annotation's wrap, and which comment is prose — are analyze.mjs's
  *   verdict rather than a second implementation of it.
  */
-// cm:edge contract -> cli/lib/analyze.mjs — the channels read `annotations`, `diags`,
-//   `overflowLines` and `header` off the analysis; deriving them from the source again would drift from it
+// cm:edge contract -> cli/lib/analyze.mjs — this reads `skipped`, `annotations`, `diags`,
+//   `ignores` and `header` off the analysis; deriving them from the source again would drift from it
 export function fileMass({ relPath, src, res, frozen }) {
   const prof = profileFor(relPath);
   const out = { relPath, annotation: 0, frozen: 0, live: 0, doc: 0, header: 0, narrative: 0, annotations: 0, retelling: 0 };
@@ -149,16 +149,15 @@ export function fileMass({ relPath, src, res, frozen }) {
     }
     if (header && !header.glued && c.line >= header.start && c.endLine <= header.end) { out.header += c.text.length; continue; }
     // cm:why prose an author silenced is still prose. Keyed on the LINE and ahead of §4.2's rule, so it
-    //   also takes a `doc` block off a covered line, for a directive that silenced nothing (ISS-48)
+    //   also takes a `doc` block off a covered line, for a directive that silenced nothing (ISS-51)
     if (ignoredProse(c.line)) { out.live += c.text.length; continue; }
-    // cm:guard this matches a LINE, not a comment — a block's close and a line comment can share one,
-    //   so it can still claim a `doc` form the rule below would bill to doc (ISS-36, measured on ISS-40)
-    if (res.overflowLines?.has(c.line)) { out.live += c.text.length; continue; }
     // cm:why a form the profile exempts from prose is still PROSE (ISS-28). §4.2's rule below bills
-    //   every non-doc form to live, so this states the intent and no longer decides the channel (ISS-48)
+    //   every non-doc form to live, so this states the intent and no longer decides the channel (ISS-51)
     if (prof.proseExemptBlockOpens?.includes(c.leader)) { out.live += c.text.length; continue; }
     // cm:guard §4.2 makes `/** */` documentation BY FORM and every other form prose, `/* */` included,
     //   so only `doc` is exempt here and a new kind fails toward prose rather than into doc (ISS-40)
+    // cm:guard at `grammar: false` this is the only rule billing an annotation's orphaned continuation line
+    //   to live — never rescue one by line number instead: that bills a doc block sharing its line to prose (ISS-48)
     if (c.kind !== 'doc') { out.live += c.text.length; continue; }
     out.doc += c.text.length;
   }
