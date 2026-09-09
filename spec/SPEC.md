@@ -120,14 +120,25 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
 - Prefix is `cm:` — deliberately **not** `@`-prefixed. The `@`-in-comment namespace belongs to
   compilers and doc parsers (`@ts-expect-error`, `@param`, `@flow` is Flow's own file pragma).
 
-Single recognizer:
+Recognition and matching are two steps. A line comment is *recognized* as an annotation attempt by
+the prefix alone:
+
+```
+^\s*(//|#|--)\s*cm:
+```
+
+and then *matched* against the five tags, which is what decides whether it parses:
 
 ```
 ^\s*(//|#|--)\s*cm:(flow|edge|guard|hack|why)\b
 ```
 
 Because the recognizer keys on a line *starting* with `cm:`, prose that happens to wrap onto a line
-beginning with `cm:` parses as a malformed annotation. Reword such a line; do not escape it.
+beginning with `cm:` parses as a malformed annotation, and is `CM002`. That covers a tag outside the
+five and, where the colon is followed by a space, a digit, an upper-case letter or nothing at all, a
+line carrying no tag to read: the `cm:` prefix alone decides that an annotation was attempted, so such
+a line is reported rather than passed over as ordinary prose. Like every malformed annotation it
+forfeits its own wrap. Reword such a line; do not escape it.
 
 ### §4.1 The module header
 
@@ -288,7 +299,7 @@ and correct on a scoped run, and it still does not block; a new rule enters at w
 | Code | Tier | Meaning |
 |---|---|---|
 | `CM001` | grammar | prose comment where `docPolicy: banned` — delete it, or convert to `cm:why`/`cm:guard` if it records something non-derivable |
-| `CM002` | grammar | unknown `cm:` tag (§3) |
+| `CM002` | grammar | unknown `cm:` tag (§3) — or no readable tag at all: `cm:`, `cm: `, `cm:Guard`, `cm:123`, which are recognized as attempts and matched against nothing (§4) |
 | `CM003` | grammar | `cm:` annotation inside a block/doc comment (§4) |
 | `CM004` | grammar | `cm:edge` missing or unknown `<kind>` (§5) |
 | `CM005` | grammar | `cm:edge` target missing, absolute, or a URL (§4). Also when `->` is used inside what should have been a `cm:why` |
