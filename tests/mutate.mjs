@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  applyMutation, classify, MUTATIONS, parseCorpusOutput, stripGitEnv,
+  applyMutation, classify, MUTATIONS, NESTED_MARKER, parseCorpusOutput, stripGitEnv,
 } from './mutate-lib.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -99,7 +99,9 @@ function runCorpus(dir) {
     encoding: 'utf8',
     timeout: CORPUS_TIMEOUT_MS,
     maxBuffer: MAX_BUFFER,
-    env: GIT_ENV,
+    // cm:edge protocol -> tests/mutate-lib.mjs — the marker main refuses on, so a copy that reaches
+    //   main from its own corpus stops at one refusal instead of a harness per run (ISS-30)
+    env: { ...GIT_ENV, [NESTED_MARKER]: '1' },
   });
   return parseCorpusOutput(res.stdout, res.stderr,
     res.error && (res.error.code ?? res.error.message), STDERR_TAIL_LINES);
@@ -161,6 +163,13 @@ here; that gate has to be checked by hand.`);
 }
 
 function main(argv) {
+  // cm:guard refuse INSIDE a copy's corpus, before any argument is read: this is the only bound on
+  //   a copy that reaches main from the corpus it runs, and the recursion is unbounded (ISS-30)
+  if (process.env[NESTED_MARKER]) {
+    console.error(`${NESTED_MARKER} is set, so this is a corpus run inside a mutation copy`);
+    console.error('the harness refuses to measure from inside itself: each level spawns another');
+    return 2;
+  }
   const only = [];
   let list = false;
   for (let i = 0; i < argv.length; i++) {

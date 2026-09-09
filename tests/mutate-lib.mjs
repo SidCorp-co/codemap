@@ -71,6 +71,12 @@ export const GIT_LOCATION_VAR_NAMES = GIT_LOCATION_VARS;
 export const GIT_CONFIG_VAR_NAMES = GIT_CONFIG_VARS;
 export const GIT_IDENTITY_VAR_NAMES = GIT_IDENTITY_VARS;
 
+// cm:guard the corpus a copy runs carries this marker and main refuses when it is set: without it a
+//   copy that reaches main from its own corpus spawns a harness at every level, unbounded (ISS-30)
+// cm:why falsifying the entry-point check means running a copy that DOES reach main, so that
+//   falsification cannot be performed at all until this marker bounds it (ISS-30)
+export const NESTED_MARKER = 'CM_MUTATE_IN_COPY';
+
 export function parseCorpusOutput(stdout, stderr, spawnError, tailLines = 30) {
   const count = /^codemap golden corpus: (\d+) passed, (\d+) failed$/m.exec(stdout ?? '');
   // cm:guard anchored on the runner's exact two-space leader, never `^\s*`: a failure detail quotes

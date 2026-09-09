@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
   applyMutation, classify, GIT_CONFIG_VAR_NAMES, GIT_IDENTITY_VAR_NAMES, GIT_LOCATION_VAR_NAMES,
-  MUTATIONS,
+  MUTATIONS, NESTED_MARKER,
   parseCorpusOutput, stripGitEnv,
 } from './mutate-lib.mjs';
 
@@ -413,15 +413,24 @@ function wiringCases(pluginRoot, check) {
   // cm:guard matched against codeOnly, never raw source: commenting the assignment out rather than
   //   deleting it keeps both of these checks green (ISS-30)
   const gitOptions = /execFileSync\(\s*['"]git['"][\s\S]{0,300}?\{([^}]*)\}/.exec(cli);
-  const spawnOptions = /spawnSync\(\s*process\.execPath[\s\S]{0,300}?\{([^}]*)\}/.exec(cli);
+  // cm:guard the corpus spawn's options are taken as a SLICE, not by matching to the first `}`: its
+  //   env is an object literal now, and a brace-terminated match ends inside it (ISS-30)
+  const spawnAt = cli.indexOf('spawnSync(process.execPath');
+  const spawnCall = spawnAt < 0 ? null : cli.slice(spawnAt, spawnAt + 800);
   check('mutate: the git wrapper passes the scrubbed environment',
     Boolean(gitOptions) && /\benv:\s*GIT_ENV\b/.test(gitOptions[1]),
     `the one git call site must pass env: GIT_ENV, or GIT_DIR from a hook or a bisect reaches it: `
     + `options read as ${JSON.stringify(gitOptions && gitOptions[1].trim())}`);
   check('mutate: the corpus spawn passes the scrubbed environment',
-    Boolean(spawnOptions) && /\benv:\s*GIT_ENV\b/.test(spawnOptions[1]),
-    `the corpus child must pass env: GIT_ENV: options read as `
-    + `${JSON.stringify(spawnOptions && spawnOptions[1].trim())}`);
+    Boolean(spawnCall) && /\benv:\s*(?:GIT_ENV\b|\{\s*\.\.\.GIT_ENV\b)/.test(spawnCall),
+    `the corpus child's env must be GIT_ENV or spread from it: call read as `
+    + `${JSON.stringify(spawnCall && spawnCall.slice(0, 300))}`);
+  // cm:guard the marker travels on the corpus child, not merely on this process: it is what a copy
+  //   reaching main from its own corpus reads, and only the child carries it there (ISS-30)
+  check('mutate: the corpus spawn carries the nested-run marker',
+    Boolean(spawnCall) && new RegExp(`\\[NESTED_MARKER\\]:`).test(spawnCall),
+    `the corpus child must carry [NESTED_MARKER], or a copy whose entry-point check is neutered `
+    + `spawns a harness per run without bound: call read as ${JSON.stringify(spawnCall && spawnCall.slice(0, 300))}`);
 
   // cm:guard EVERY .mjs under tests/ is read, not a named few: a new tier importing the CLI half is
   //   otherwise unnoticed (ISS-30)
@@ -462,6 +471,26 @@ function wiringCases(pluginRoot, check) {
   } finally {
     rmSync(probeDir, { recursive: true, force: true });
   }
+
+  // cm:guard the refusal is exercised BOTH ways, and with `--list`, which spends no corpus run: an
+  //   unconditional refusal would pass the first of these and make the harness unrunnable (ISS-30)
+  // cm:why this spawns the CLI half as a program rather than importing it, because an import from
+  //   the corpus is the very path the marker exists to stop (ISS-30)
+  const listArgs = [join(dir, 'mutate.mjs'), '--list'];
+  const clean = { ...stripGitEnv(process.env) };
+  delete clean[NESTED_MARKER];
+  const plain = spawnSync(process.execPath, listArgs, { encoding: 'utf8', timeout: 30000, env: clean });
+  check('mutate: --list works outside a copy, so the refusal is not unconditional',
+    plain.status === 0 && MUTATIONS.every((m) => (plain.stdout ?? '').includes(m.id)),
+    `listing the declared points must work: status=${plain.status} `
+    + `stdout=${JSON.stringify((plain.stdout ?? '').slice(0, 200))}`);
+  const nested = spawnSync(process.execPath, listArgs,
+    { encoding: 'utf8', timeout: 30000, env: { ...clean, [NESTED_MARKER]: '1' } });
+  check('mutate: the harness refuses to run inside a mutation copy',
+    nested.status === 2 && !MUTATIONS.some((m) => (nested.stdout ?? '').includes(m.id)),
+    `with ${NESTED_MARKER} set the harness must refuse before reading an argument, or a copy that `
+    + `reaches main from its own corpus spawns another harness at every level: status=${nested.status} `
+    + `stdout=${JSON.stringify((nested.stdout ?? '').slice(0, 200))}`);
 
   // cm:guard `--no-optional-locks` is the whole claim to write NOTHING in the measured repository,
   //   read at the call site because no file under tests/ may import the half that performs it (ISS-30)
