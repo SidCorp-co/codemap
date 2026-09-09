@@ -70,7 +70,13 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
   refuses is a SHAPE — two or more continuation lines under one annotation — decided from the run itself
   and never from a token on the line, so no marker satisfies it and no reindenting or rewrapping clears it. Its
   remedies are to reword, to split one annotation into two, or to move the annotation below prose that
-  was never its own. Two things end a run rather than counting in it: a line the baseline has FROZEN,
+  was never its own. A line the run counts is narration, so `cm mass` bills it as **live prose, never as a
+  doc comment**, and does so on the run itself rather than on the `CM001` it raises only under the prose
+  tier — otherwise a repo at `grammar: false`, which for `sh`, `sql`, `yaml` and `docker` is every repo
+  that has not overridden the tier per language, reports the overflow as machine-consumed documentation
+  and hides it from the one number §11 exists to keep honest. Where the annotation opens a module header
+  the header channel claims the line first (§4.1), which is that channel's own attribution and not a
+  loss. Two things end a run rather than counting in it: a line the baseline has FROZEN,
   which §4 already says is never a continuation, and a blank line, which is the author's own statement
   of where the annotation stops. The second is an escape, and a deliberate one — an author who declares
   the end of their annotation is believed. It follows that the rule reads adjacency, not authorship: it
@@ -705,7 +711,8 @@ the annotation channel, so no repo could see the trade it had just made.
 **`cm mass [paths...] [--limit N] [--json]`** is the total. Characters of comment text, by channel —
 annotation (including the one line §4 lets it wrap onto), doc comment, module header, frozen prose, live
 prose — then the narrative inside the annotation channel, then the files holding the most of it, ranked,
-with the head's share of the whole.
+with the head's share of the whole. A line an annotation runs past its wrap onto (`CM204`, §4) is live
+prose, not annotation and not doc: it is narration the channel never loaded.
 
 - **It reaches the tail.** No `--since`, no `--staged`, no base revision anywhere in its path: a bare run
   walks the tree the way `cm baseline` and `cm sweep` already do, so a file nobody has edited is

@@ -36,6 +36,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
   const annAt = new Map();
   const chainAt = new Map();
   const overflow = new Map();
+  const overflowLines = new Set();
 
   // cm:guard never gated on `grammar` — a repo that took the graph without the comment discipline still
   //   needs its annotations READ, so losing them silently is not a prose-discipline matter (ISS-31)
@@ -138,6 +139,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
       : undefined;
     if (chain && chain.leader === c.leader) {
       overflow.set(chain.ann, (overflow.get(chain.ann) ?? 0) + 1);
+      overflowLines.add(c.line);
       chainAt.set(c.line, chain);
     }
 
@@ -212,6 +214,9 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     // cm:edge contract -> cli/lib/drain.mjs — CM013 compares this across two
     //   revisions to tell a code edit from a reflow, so it must ignore everything a reflow can change
     codeShape: codeShape(lines, comments),
+    // cm:edge contract -> cli/lib/mass.mjs — §11 bills these to prose unless the module header
+    //   claims them first (§4.1), because an overflow line raises no CM001 when `grammar` is false (ISS-36)
+    overflowLines,
     // cm:edge contract -> cli/lib/mass.mjs — §11 bills the header as its own
     //   channel, and only this function knows where one ends: a glued run is not a header at all
     header,

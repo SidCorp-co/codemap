@@ -98,8 +98,8 @@ export function narrativeMass(perFile) {
  *   text alone — which line is an annotation's wrap, and which comment is prose — are analyze.mjs's
  *   verdict rather than a second implementation of it.
  */
-// cm:edge contract -> cli/lib/analyze.mjs — the channels read `annotations`,
-//   `diags` and `header` off the analysis; deriving them from the source again would drift from it
+// cm:edge contract -> cli/lib/analyze.mjs — the channels read `annotations`, `diags`,
+//   `overflowLines` and `header` off the analysis; deriving them from the source again would drift from it
 export function fileMass({ relPath, src, res, frozen }) {
   const prof = profileFor(relPath);
   const out = { relPath, annotation: 0, frozen: 0, live: 0, doc: 0, header: 0, narrative: 0, annotations: 0, retelling: 0 };
@@ -148,6 +148,9 @@ export function fileMass({ relPath, src, res, frozen }) {
     // cm:why prose an author silenced is still prose — analyzeFile drops the diagnostic, so without this
     //   an ignored CM001 would be billed as a doc comment and read as machine-consumed
     if (ignoredProse(c.line)) { out.live += c.text.length; continue; }
+    // cm:guard a line past the annotation's one wrap is PROSE — CM204 is not prose-family and sits on
+    //   the annotation's line, so under `grammar: false` nothing else rescues it from doc (ISS-36)
+    if (res.overflowLines?.has(c.line)) { out.live += c.text.length; continue; }
     // cm:guard a form the profile exempts from prose is still PROSE — it raises no diagnostic, so it
     //   reaches here and would be billed as doc, hiding narration from the §11 number (ISS-28)
     if (prof.proseExemptBlockOpens?.includes(c.leader)) { out.live += c.text.length; continue; }
