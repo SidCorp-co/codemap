@@ -116,12 +116,14 @@ export function fileMass({ relPath, res, frozen }) {
     if (story) { out.retelling++; out.narrative += story.chars; }
   }
 
-  // cm:guard the annotation channel is keyed on the COMMENT, never on its line — an annotation and a
-  //   prose comment share a line often, and the line billed that prose as annotation (ISS-51)
+  // cm:guard the annotation channel is keyed on the comment's SCAN INDEX — a line key billed a
+  //   neighbouring prose comment (ISS-51), a text key a block of identical text beside it (ISS-58)
+  // cm:edge contract -> cli/lib/analyze.mjs — `ci` and `wrapCi` are indices into the SAME scan this
+  //   function walks below, which holds because both take `res.src` and profileFor(relPath) (ISS-56)
   const annAt = new Set();
   for (const a of res.annotations ?? []) {
-    annAt.add(`${a.line}\u0000${a.raw}`);
-    if (a.wrap) annAt.add(`${a.line + 1}\u0000${a.wrap}`);
+    if (a.ci !== undefined) annAt.add(a.ci);
+    if (a.wrap && a.wrapCi !== undefined) annAt.add(a.wrapCi);
   }
   const proseAt = new Map();
   for (const d of res.diags ?? []) {
@@ -152,12 +154,12 @@ export function fileMass({ relPath, res, frozen }) {
   const header = res.header;
   // cm:guard every comment carrying text is billed to exactly ONE channel, so the channels plus the
   //   directives below reconcile to the file's whole comment text — a channel is an attribution, never a filter
-  for (const c of scanComments(src, prof).comments) {
+  for (const [ci, c] of scanComments(src, prof).comments.entries()) {
     if (!c.text) continue;
     // cm:why an ignore directive is billed nowhere — it is the escape hatch a code's own fix line
     //   offers, and pricing it would charge an author for taking the way out the checker handed them
     if (CM_IGNORE_RE.test(c.text)) continue;
-    if (annAt.has(`${c.line}\u0000${c.text}`)) { out.annotation += c.text.length; continue; }
+    if (annAt.has(ci)) { out.annotation += c.text.length; continue; }
     const prose = takeProse(c);
     if (prose) {
       // cm:guard no fallback to `.message` here: `takeProse` only ever returns a diagnostic whose `text`

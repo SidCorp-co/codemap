@@ -741,6 +741,51 @@ function singleReadCases(check) {
     + `frozen=${m.frozen} live=${m.live} doc=${m.doc} — the analysis's own source decides every channel`);
 }
 
+// cm:guard the annotation channel bills the comment the annotation was READ FROM, identified by its
+//   scan index — a text key billed a misplaced block whose text equalled the annotation's beside it (ISS-58)
+function annotationIdentityCases(check) {
+  const ann = 'cm:why callers must hold the run lock';
+  const pairSrc = [`/* ${ann} */ // ${ann}`, 'export function f() {}'].join('\n');
+  const pairRes = analyzeFile({ relPath: 'pair.ts', src: pairSrc, reg: DEFAULT_REGISTRY });
+  const pm = fileMass({ relPath: 'pair.ts', res: pairRes });
+
+  // cm:guard the PREMISE: the block must be a MISPLACED annotation — earning CM003 and absent from
+  //   res.annotations — or the fixture is two annotations and the split below is right for the wrong reason
+  check('mass: the block of the byte-identical pair is a misplaced annotation, not a second one',
+    pairRes.diags.some((d) => d.code === 'CM003') && (pairRes.annotations ?? []).length === 1,
+    `CM003=${pairRes.diags.some((d) => d.code === 'CM003')} annotations=${(pairRes.annotations ?? []).length}`
+    + ' — expected one annotation and a CM003 for the block, which §4.2 bills to live by its form');
+
+  check('mass: a block whose text is byte-identical to the annotation beside it is not billed as annotation',
+    pm.annotation === 37,
+    `annotation=${pm.annotation} live=${pm.live}, expected the 37 chars of the line comment alone — a `
+    + 'channel keyed on `line \0 text` cannot tell the two apart and billed both, 74 and live 0 (ISS-58)');
+  check('mass: the misplaced block of the byte-identical pair is billed to live by its form',
+    pm.live === 37,
+    `live=${pm.live} annotation=${pm.annotation}, expected the 37 chars of the block`);
+
+  // cm:guard the CONTROL: one word changed makes the texts differ, which the text key already got
+  //   right — so this arm must be unmoved by the fix, or the fix is billing on something else
+  const ctlSrc = [`/* cm:why callers must hold the RUN lock */ // ${ann}`, 'export function f() {}'].join('\n');
+  const cm2 = fileMass({ relPath: 'pair.ts', res: analyzeFile({ relPath: 'pair.ts', src: ctlSrc, reg: DEFAULT_REGISTRY }) });
+  check('mass: the one-word-changed control keeps the split the text key already reached',
+    cm2.annotation === 37 && cm2.live === 37,
+    `annotation=${cm2.annotation} live=${cm2.live}, expected 37 / 37 unchanged by ISS-58`);
+
+  // cm:guard the wrap is billed by its OWN index too — dropping that leaves the continuation line to
+  //   §4.2's form rule, which bills it live and takes 32 characters out of the annotation channel
+  const wrapSrc = [`// ${ann}`, '// and release it on every path out', 'export function f() {}'].join('\n');
+  const wrapRes = analyzeFile({ relPath: 'wrap.ts', src: wrapSrc, reg: DEFAULT_REGISTRY });
+  check('mass: an annotation\'s adopted wrap line is billed to the annotation channel',
+    wrapRes.annotations?.[0]?.wrap === 'and release it on every path out',
+    `wrap=${JSON.stringify(wrapRes.annotations?.[0]?.wrap)} — without an adopted wrap the case below `
+    + 'tests a bare annotation and says nothing about the wrap');
+  const wm = fileMass({ relPath: 'wrap.ts', res: wrapRes });
+  check('mass: the annotation channel holds the annotation and its wrap, and nothing reaches live',
+    wm.annotation === 69 && wm.live === 0,
+    `annotation=${wm.annotation} live=${wm.live}, expected 69 — the 37 of the annotation and the 32 of its wrap`);
+}
+
 function cliCases(pluginRoot, check, roots) {
   const root = mkdtempSync(join(tmpdir(), 'cm-mass-'));
   roots.push(root);
@@ -812,6 +857,7 @@ export function massCases(pluginRoot, check) {
     conservationCases(check);
     channelCases(check);
     singleReadCases(check);
+    annotationIdentityCases(check);
     cliCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });

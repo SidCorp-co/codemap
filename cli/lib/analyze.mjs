@@ -51,7 +51,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
   const inHeader = (c) => !!header && !header.glued && c.line >= header.start && c.endLine <= header.end;
   const nearHeader = (line) => !!header && !!header.glued && line >= header.start && line <= header.end;
 
-  for (const c of comments) {
+  for (const [ci, c] of comments.entries()) {
     if (c.kind !== 'line') {
       let misplaced = false;
       for (const l of c.lines) {
@@ -94,7 +94,9 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
         for (const d of parsed.diags) raw.push(d.relative ? { ...d, col: c.col, leader: c.leader } : d);
         continue;
       }
-      const ann = { ...parsed.ann, indent: c.indent ?? '', leader: c.leader, col: c.col };
+      // cm:edge contract -> cli/lib/mass.mjs — `ci` is this comment's index in the scan, the identity
+      //   the annotation channel bills on; text cannot serve, two comments on one line can share it (ISS-58)
+      const ann = { ...parsed.ann, indent: c.indent ?? '', leader: c.leader, col: c.col, ci };
       annotations.push(ann);
       annAt.set(c.line, ann);
       const want = canonical(ann);
@@ -123,6 +125,9 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
         const prev = annAt.get(c.line - 1);
         if (prev) {
           prev.wrap = text;
+          // cm:edge contract -> cli/lib/mass.mjs — the annotation channel bills the wrap by THIS index,
+          //   since a wrap's own text can equal another comment's on the same line (ISS-58)
+          prev.wrapCi = ci;
           chainAt.set(c.line, { ann: prev, leader: c.leader });
         }
         continue;
