@@ -71,11 +71,12 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
   and never from a token on the line, so no marker satisfies it and no reindenting or rewrapping clears it. Its
   remedies are to reword, to split one annotation into two, or to move the annotation below prose that
   was never its own. A line the run counts is narration, so `cm mass` bills it as **live prose, never as a
-  doc comment**, and does so by the line's own FORM (§4.2) rather than by the `CM001` it raises only under
-  the prose tier — otherwise a repo at `grammar: false`, which for `sh`, `sql`, `yaml` and `docker` is every
-  repo that has not overridden the tier per language, reports the overflow as machine-consumed documentation
-  and hides it from the one number §11 exists to keep honest. A continuation line is always a line comment,
-  so the form rule reaches every line the run counts and reaches nothing else that shares one of their lines. Where the annotation opens a module header
+  doc comment**, and it does not depend on the `CM001` that only the prose tier raises — otherwise a repo
+  at `grammar: false`, which for `sh`, `sql`, `yaml` and `docker` is every repo that has not overridden
+  the tier per language, reports the overflow as machine-consumed documentation and hides it from the one
+  number §11 exists to keep honest. A continuation line is always a line comment, so where no diagnostic
+  claims the line first, §4.2's form rule bills it to live; and it bills each comment sharing a line by
+  that comment's own form, never by the line. Where the annotation opens a module header
   the header channel claims the line first (§4.1), which is that channel's own attribution and not a
   loss. Two things end a run rather than counting in it: a line the baseline has FROZEN,
   which §4 already says is never a continuation, and a blank line, which is the author's own statement
