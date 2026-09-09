@@ -37,6 +37,18 @@ bin/cm verify        # the repo checks itself with its own checker
 
 Both run in CI on every push and pull request (`.github/workflows/ci.yml`).
 
+Neither of them proves that a mechanism you just added is doing any work: a green corpus says the
+change broke nothing, not that anything pins the new rule. When a change adds one, declare it in
+`tests/mutate.mjs` and run that:
+
+```bash
+node tests/mutate.mjs   # NOT a gate, and not in CI: one full corpus run per mutation, ~42s each
+```
+
+It prints which golden case pins each declared mechanism, with an unmutated control in the same
+table, and fails when a mechanism turns out to be pinned by nothing. Opt-in on purpose — the cost is
+why it is not a gate.
+
 ## Releasing
 
 Consumers pin by tag and the weekly upgrade bot reads that tag stream. Bump `version` in
