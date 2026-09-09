@@ -159,6 +159,8 @@ function conservationCases(check) {
 
   // cm:guard the count above reads CM_IGNORE_RE on BOTH sides, so it holds for any predicate and
   //   cannot see one that widened — this literal is the only oracle left for what a directive is
+  // cm:guard this 54 is the DIRECTIVE's length and the 54 in `want` below is the doc block's — two
+  //   unrelated quantities that happen to match, so reconciling one against the other kills an oracle
   check('mass: the fixture\'s one ignore directive is 54 chars, and they are billed to no channel',
     directives === 54,
     `directives ${directives} != 54 — a widened CM_IGNORE_RE swallows prose the channels should bill`);
@@ -171,6 +173,12 @@ function conservationCases(check) {
   const adjRes = analyzeFile({ relPath: 'adjacent.ts', src: adjacent, reg: DEFAULT_REGISTRY });
   const adj = fileMass({ relPath: 'adjacent.ts', src: adjacent, res: adjRes });
   const adjBilled = adj.annotation + adj.frozen + adj.live + adj.doc + adj.header;
+  const adjWhole = scanComments(adjacent, profileFor('adjacent.ts')).comments
+    .filter((c) => c.text).reduce((n, c) => n + c.text.length, 0);
+  check('mass: the adjacent-directive fixture really carries two directives, 42 chars of them',
+    adjWhole === 42,
+    `adjacent fixture holds ${adjWhole} chars of comment text, not 42 — the check below passes`
+      + ' vacuously if this fixture ever stops producing comments');
   check('mass: two ignore directives on consecutive lines are both billed to no channel',
     adjBilled === 0,
     `adjacent directives billed ${adjBilled} char(s) — a stateful CM_IGNORE_RE leaves lastIndex past`

@@ -33,7 +33,7 @@ const CM_TEXT_RE = /^cm:([a-z][a-z-]*)\b\s*(.*)$/s;
 // cm:guard no flags on this one, ever — it is read by .test() in two modules, by .source just below
 //   and by prof.exempt.some() in every profile, so a /g would carry lastIndex between all of them
 // cm:guard parse.mjs stays import-free: languages.mjs reads this at MODULE scope, so an import back
-//   from here makes whichever of the two a process loads first a ReferenceError
+//   from here is a ReferenceError in any process that reaches parse.mjs first
 // cm:guard it stays a RegExp because COMMON_EXEMPT holds it as one, and widening it must keep working
 //   through IGNORE_RE below, which is why that wraps it in (?:) and reads its captures by name
 export const CM_IGNORE_RE = /^cm:ignore\b/;
