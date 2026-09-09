@@ -528,6 +528,16 @@ export const analyzeCases = [
     annotations: [],
   },
   {
+    // cm:why 200_000 lines is ABOVE the engine's argument limit (~125k on node 22, and lower the
+    //   deeper the stack) by design — a shorter source is analyzed whether the first-code line is
+    //   computed by a spread or by a pass, so it pins nothing (ISS-43)
+    name: 'module header: a source with more code lines than the argument limit is still analyzed (ISS-43)',
+    file: 'hdr-huge.ts',
+    src: ['// One-shot migration runner.', '', ...Array.from({ length: 200000 }, () => 'run();')].join('\n'),
+    codes: [],
+    annotations: [],
+  },
+  {
     name: 'module header: allowed after a "use client" directive prologue (§4.1)',
     file: 'hdr5.tsx',
     src: [

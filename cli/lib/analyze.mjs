@@ -315,7 +315,10 @@ function moduleHeader(lines, comments, codeLines, prof) {
   const billable = run.filter((c) => !isExempt(c))
     .reduce((n, c) => n + (c.endLine - c.line + 1), 0);
 
-  const firstCode = Math.min(...[...codeLines].filter((l) => l > prologueEnd), Infinity);
+  // cm:guard iterate, never spread — codeLines holds one entry per code line, so `Math.min(...codeLines)`
+  //   makes the engine's argument limit decide whether a file can be analyzed at all (ISS-43)
+  let firstCode = Infinity;
+  for (const l of codeLines) if (l > prologueEnd && l < firstCode) firstCode = l;
   if (firstCode <= end) return null;
   if (lines[end] === undefined || lines[end].trim() !== '') return { start, end, glued: true, exemptForm };
 
