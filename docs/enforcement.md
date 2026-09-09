@@ -95,6 +95,7 @@ which case it is reported regardless. A frozen key is dropped only when its text
 | Language | Ordinary comments |
 |---|---|
 | TS/JS | `//` and `/* */` banned; `/** */` doc blocks allowed anywhere (IDE hover docs) |
+| Vue/Svelte | as TS/JS inside `<script>`; a template's `<!-- -->` comment is read for generated-markers but never billed as prose, and cannot carry an annotation |
 | Go | `//` above the package clause and exported declarations exempt (godoc/revive) |
 | PHP | allowed — PHPStan/Psalm/Laravel docblocks are load-bearing |
 | Python | allowed; docstrings are strings, so they are out of scope |

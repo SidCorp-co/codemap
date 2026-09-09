@@ -148,6 +148,10 @@ export function fileMass({ relPath, src, res, frozen }) {
     // cm:why prose an author silenced is still prose — analyzeFile drops the diagnostic, so without this
     //   an ignored CM001 would be billed as a doc comment and read as machine-consumed
     if (ignoredProse(c.line)) { out.live += c.text.length; continue; }
+    // cm:guard a form the profile exempts from prose is still PROSE — it raises no diagnostic, so it
+    //   reaches here and would be billed as machine-consumed doc, hiding SFC template narration from
+    //   the one number §11 exists to keep honest (ISS-28)
+    if (prof.proseExemptBlockOpens?.includes(c.leader)) { out.live += c.text.length; continue; }
     out.doc += c.text.length;
   }
 
