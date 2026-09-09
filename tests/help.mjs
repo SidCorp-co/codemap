@@ -77,27 +77,35 @@ export function helpCases(pluginRoot, check) {
       sixthOverview.includes('the 6 tags'),
       `the blurb read: ${sixthOverview.split('\n').filter((l) => / tags,/.test(l)).join(' | ') || '(no blurb line)'}`);
 
-    // cm:why scoped to "<word> tags", not the bare numeral word: cli/ prose counts other things
-    //   legitimately — "two arms", "three tiers" — and a sweep for those fails on those (ISS-55)
+    // cm:why the noun is `tags` alone and the number is space-separated: CM204's own fix text says
+    //   "two annotations", and "a six-tag overview" names a vocabulary, not this one's size (ISS-55)
     const SPELLED_COUNT = /\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+tags\b/i;
-    const mjsUnder = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const filesUnder = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
       const full = join(dir, e.name);
-      return e.isDirectory() ? mjsUnder(full) : (e.name.endsWith('.mjs') ? [full] : []);
+      return e.isDirectory() ? filesUnder(full) : [full];
     });
-    const spelled = mjsUnder(join(pluginRoot, 'cli'))
+    const spelled = filesUnder(join(pluginRoot, 'cli'))
       .filter((f) => SPELLED_COUNT.test(readFileSync(f, 'utf8')))
       .map((f) => f.slice(pluginRoot.length + 1));
     check('help: no file under cli/ spells the size of the tag vocabulary as a word',
       spelled.length === 0,
       `a numeral no constant derives, in: ${spelled.join(', ')}`);
 
-    // cm:why a golden list, not a count: turning TOPIC_BLURBS into a call could drop or reorder a
-    //   key and a count would still pass (ISS-55)
-    const TOPICS_AT_CB07E5C = ['annotations', 'baseline', 'ci', 'codes', 'config',
+    const TOPIC_KEYS = ['annotations', 'baseline', 'ci', 'codes', 'config',
       'languages', 'principles', 'spec', 'verbs', 'workflow'];
-    check('help: `help topics` lists the same topics it listed before the blurb was derived',
-      JSON.stringify(renderHelp('topics').text.trim().split('\n').map((l) => l.trim())) === JSON.stringify(TOPICS_AT_CB07E5C),
-      `lists [${renderHelp('topics').text.trim().split('\n').map((l) => l.trim())}] against [${TOPICS_AT_CB07E5C}]`);
+    check('help: `help topics` lists exactly these topics',
+      JSON.stringify(renderHelp('topics').text.trim().split('\n').map((l) => l.trim())) === JSON.stringify(TOPIC_KEYS),
+      `lists [${renderHelp('topics').text.trim().split('\n').map((l) => l.trim())}] against [${TOPIC_KEYS}]`);
+
+    // cm:why `help topics` SORTS, so the golden above pins the key set and cannot see a reorder —
+    //   this reads the order out of the rendered table, which is the order a reader chooses from (ISS-55)
+    const TOPIC_ORDER = ['annotations', 'codes', 'baseline', 'languages', 'config',
+      'ci', 'workflow', 'principles', 'spec', 'verbs'];
+    const rendered = overview().slice(overview().indexOf('TOPICS  (cm help <topic>)'))
+      .split('\n').map((l) => l.match(/^ {2}([a-z]+) {2,}\S/)).filter(Boolean).map((m) => m[1]);
+    check('help: the topic table renders in its declared order, not sorted',
+      JSON.stringify(rendered) === JSON.stringify(TOPIC_ORDER),
+      `rendered [${rendered}] against [${TOPIC_ORDER}] — a set check passes a reorder of the table`);
 
     // cm:why the check above passes on the broken row `  cm:sixth  undefined`, so it cannot pin
     //   totality — it asks only whether the string appears somewhere in the text (ISS-53)

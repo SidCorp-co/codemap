@@ -97,8 +97,7 @@ TOPICS  (cm help <topic>)
 ${table(Object.entries(topicBlurbs(tags)).map(([t, d]) => [`  ${t}`, d])).join('\n')}`;
 }
 
-// cm:why the vocabulary reaches the blurb as an argument, not the imported constant, so a six-tag
-//   overview is a corpus case instead of a mutation of TAGS — annotations() below has that seam (ISS-55)
+// cm:why the vocabulary arrives as an argument so a six-tag overview is a corpus case, not a mutation of TAGS (ISS-55)
 function topicBlurbs(tags = TAGS) {
   return {
     annotations: `the ${tags.length} tags, their syntax, and which one to reach for`,
