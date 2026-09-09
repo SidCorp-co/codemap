@@ -224,8 +224,14 @@ export function gitEnvCases(pluginRoot, check) {
     //   tell them apart: scrubbing last deletes the fixture identity it was meant to keep (ISS-39)
     const FIXTURE = { GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
       GIT_COMMITTER_NAME: 'cm', GIT_COMMITTER_EMAIL: 'cm@test' };
-    const authorOf = (root) => execFileSync('git', ['-C', root, 'log', '-1', '--format=%an <%ae>'],
-      { encoding: 'utf8', env: CLEAN_ENV }).trim();
+    // cm:guard it reports the missing commit instead of throwing: when the scrub is broken the
+    //   repository has none, and a throw here loses every case below it in this tier (ISS-39)
+    const authorOf = (root) => {
+      try {
+        return execFileSync('git', ['-C', root, 'log', '-1', '--format=%an <%ae>'],
+          { encoding: 'utf8', stdio: 'pipe', env: CLEAN_ENV }).trim();
+      } catch { return '(no commit)'; }
+    };
 
     const rightOrder = seedRepoWith(
       { ...stripGitEnv(hookEnvAt(makeCanary(roots))), ...FIXTURE }, roots);
