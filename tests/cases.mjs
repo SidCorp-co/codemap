@@ -528,6 +528,24 @@ export const analyzeCases = [
     annotations: [],
   },
   {
+    // cm:guard keep BOTH the header line and a length over the engine's argument limit (~125k on
+    //   node 22, less the deeper the stack) — trimming either lets this pass with the spread restored
+    name: 'module header: a source with more code lines than the argument limit is still analyzed (ISS-43)',
+    file: 'hdr-huge.ts',
+    src: ['// One-shot migration runner.', '', ...Array.from({ length: 200000 }, () => 'run();')].join('\n'),
+    codes: [],
+    annotations: [],
+  },
+  {
+    // cm:guard this is the case that pins `firstCode <= end`, which the huge-source case above leaves
+    //   dead — a firstCode stuck at Infinity makes this trailing comment a module header and loses CM001
+    name: 'module header: a comment trailing the first code line is not a header (ISS-43)',
+    file: 'hdr-trailing.ts',
+    src: ['run(); // a trailing note on the first line of code', '', 'more();'].join('\n'),
+    codes: ['CM001'],
+    annotations: [],
+  },
+  {
     name: 'module header: allowed after a "use client" directive prologue (§4.1)',
     file: 'hdr5.tsx',
     src: [

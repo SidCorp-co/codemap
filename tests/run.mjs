@@ -42,8 +42,16 @@ for (const t of analyzeCases) {
     : DEFAULT_REGISTRY;
   // cm:why a case may declare frozen prose by TEXT — §4's "a frozen line is never a continuation" and
   //   the overflow count that rests on it are otherwise reachable by no case at all (ISS-33)
-  const res = analyzeFile({ relPath: t.file, src: t.src, reg,
-    frozen: t.frozen ? new Set(t.frozen.map(baselineKey)) : undefined });
+  // cm:guard a THROW here is a failing case, never a dead run — without this an analyzer crash
+  //   terminates the process and the remaining suites report nothing at all (ISS-43)
+  let res;
+  try {
+    res = analyzeFile({ relPath: t.file, src: t.src, reg,
+      frozen: t.frozen ? new Set(t.frozen.map(baselineKey)) : undefined });
+  } catch (err) {
+    check(t.name, false, `analyzeFile threw: ${err?.stack ?? err}`);
+    continue;
+  }
 
   if (t.skipped) {
     check(t.name, res.skipped === t.skipped, `expected skipped=${t.skipped}, got ${res.skipped}`);
