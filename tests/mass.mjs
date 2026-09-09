@@ -272,30 +272,37 @@ function channelCases(check) {
     }
   }
 
-  // cm:guard the SET is pinned, not only the channel it feeds — mass.mjs bills the annotation's own
-  //   line and its wrap from `annLines` first, so a member added there moves no figure and fails nothing
+  // cm:guard the orphan is claimed by its own FORM, never by its line number — a line-keyed rescue
+  //   passes every case above and bills a doc block sharing the orphan's line to prose (ISS-48)
   {
-    const memSrc = [
+    const shSrc = [
+      '// cm:guard callers must hold the run lock',
+      '// and release it on every path out',
+      '/** a doc block the tooling parses */ // the orphan text',
+      'export function f() {}',
+    ].join('\n');
+    const shReg = { ...DEFAULT_REGISTRY, enforce: { ...DEFAULT_REGISTRY.enforce, grammar: false } };
+    const shRes = analyzeFile({ relPath: 'shared.ts', src: shSrc, reg: shReg });
+    const sm = fileMass({ relPath: 'shared.ts', src: shSrc, res: shRes });
+    check('mass: a doc block sharing the orphan\'s line keeps its own doc channel',
+      sm.doc === 30,
+      `doc=${sm.doc} live=${sm.live}, expected the 30 chars of the doc block alone — the orphan and the `
+      + 'doc block share line 3, so a rescue keyed on the line claims the block with it');
+    check('mass: the orphan sharing a doc block\'s line is still live prose',
+      sm.live === 15,
+      `live=${sm.live} doc=${sm.doc}, expected the 15 chars of the orphan alone — §4.2's form rule bills `
+      + 'it, so removing the line-keyed rescue must not take the orphan out of prose with it');
+
+    // cm:guard the run stands ALONE in this fixture — the sum is the two orphans, so a prose line under
+    //   no annotation sharing it would move channel under ISS-40 and fail this on a false cause
+    const runSrc = [
       '// cm:guard callers must hold the run lock',
       '// and release it on every path out',
       '// and a third line is the first orphan',
       '// and a fourth line is the second orphan',
       'export function f() {}',
-      '',
-      '// plain narration under no annotation at all',
-      'export const x = 1;',
     ].join('\n');
-    const reg = { ...DEFAULT_REGISTRY, enforce: { ...DEFAULT_REGISTRY.enforce, grammar: false } };
-    const res = analyzeFile({ relPath: 'mem.ts', src: memSrc, reg });
-    check('mass: overflowLines holds every line past the wrap and nothing else',
-      [...res.overflowLines].sort((a, b) => a - b).join(',') === '3,4',
-      `overflowLines=[${[...res.overflowLines]}], expected [3,4] — line 1 is the annotation, line 2 its `
-      + 'adopted wrap, line 7 prose under no annotation, and none of the three is an overflow line');
-
-    // cm:guard the run stands ALONE in this fixture — the sum is the two orphans, so a prose line under
-    //   no annotation sharing it would move channel under ISS-40 and fail this on a false cause
-    const runSrc = memSrc.split('\n').slice(0, 5).join('\n');
-    const runRes = analyzeFile({ relPath: 'run.ts', src: runSrc, reg });
+    const runRes = analyzeFile({ relPath: 'run.ts', src: runSrc, reg: shReg });
     const mm = fileMass({ relPath: 'run.ts', src: runSrc, res: runRes });
     check('mass: every line past the wrap reaches prose, not just the first',
       mm.live === 36 + 38,
