@@ -88,7 +88,9 @@ export function parseAnnotation(text, file, line) {
   }
 
   const m = CM_TEXT_RE.exec(text);
-  if (!m) return null;
+  // cm:edge contract -> cli/lib/analyze.mjs — this /^cm:/ is the same test the caller routes the
+  //   annotation branch on; widen one without the other and prose gets CM002 or the line vanishes (ISS-38)
+  if (!m) return /^cm:/.test(text) ? { diags: [diag('CM002', file, line, text.slice(0, 60))] } : null;
   const [, tag, bodyRaw] = m;
   const body = bodyRaw.trim();
 

@@ -121,7 +121,11 @@ Single recognizer:
 ```
 
 Because the recognizer keys on a line *starting* with `cm:`, prose that happens to wrap onto a line
-beginning with `cm:` parses as a malformed annotation. Reword such a line; do not escape it.
+beginning with `cm:` parses as a malformed annotation, and is `CM002`. That covers a tag outside the
+five and, where the colon is followed by a space, a digit, an upper-case letter or nothing at all, a
+line carrying no tag to read: the `cm:` prefix alone decides that an annotation was attempted, so such
+a line is reported rather than passed over as ordinary prose. Like every malformed annotation it
+forfeits its own wrap. Reword such a line; do not escape it.
 
 ### §4.1 The module header
 

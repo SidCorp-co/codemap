@@ -6,8 +6,8 @@ import { dirname, join } from 'node:path';
 import { analyzeFile } from '../cli/lib/analyze.mjs';
 import { buildGraph, referentialDiags, structuralDiags, orderFlow, impact, annText } from '../cli/lib/graph.mjs';
 import { DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
-import { baselineKey } from '../cli/lib/parse.mjs';
-import { analyzeCases, baselineCases, codeShapeCases, graphCases } from './cases.mjs';
+import { baselineKey, parseAnnotation } from '../cli/lib/parse.mjs';
+import { analyzeCases, baselineCases, codeShapeCases, graphCases, parseCases } from './cases.mjs';
 import { wiringCases } from './wiring.mjs';
 import { cliCases } from './cli.mjs';
 import { installCases } from './install.mjs';
@@ -92,6 +92,20 @@ for (const t of analyzeCases) {
 for (const t of baselineCases) {
   const same = baselineKey(t.a) === baselineKey(t.b);
   check(`baseline: ${t.name}`, same === t.same, `expected same=${t.same}, got ${same}`);
+}
+
+for (const t of parseCases) {
+  const r = parseAnnotation(t.text, 'p.ts', 1);
+  if (t.result === null) {
+    check(t.name, r === null,
+      `expected null, got ${JSON.stringify(r)} — parseAnnotation may not claim text that never began cm:`);
+  } else if (t.codes) {
+    const got = sortedCodes(r?.diags ?? []);
+    const want = [...t.codes].sort();
+    check(t.name, JSON.stringify(got) === JSON.stringify(want), `codes: expected [${want}] got [${got}]`);
+  } else {
+    check(t.name, r?.ann?.tag === t.tag, `tag: expected ${t.tag}, got ${r?.ann?.tag}`);
+  }
 }
 
 for (const t of codeShapeCases) {

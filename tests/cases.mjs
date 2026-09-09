@@ -447,6 +447,22 @@ export const analyzeCases = [
     annotations: [],
   },
   {
+    name: 'a cm: prefix with no parseable tag is a malformed annotation, never a dropped line (§4)',
+    file: 'untagged.ts',
+    src: [
+      '// cm:guard callers must hold the run lock before',
+      '//   cm: the words that moved into a tag are still in the file',
+      '// cm: bare prose after the colon',
+      '// cm:Guard an upper-case tag never matched the recognizer',
+      '// cm:123 a digit never matched it either',
+      '// cm:',
+    ].join('\n'),
+    codes: ['CM002', 'CM002', 'CM002', 'CM002', 'CM002'],
+    annotations: ['guard'],
+    texts: ['callers must hold the run lock before'],
+    proseKeyCount: 0,
+  },
+  {
     name: 'TODO is CM010, not a comment violation',
     file: 'j.ts',
     src: '// TODO: wire the retry',
@@ -1089,6 +1105,29 @@ export const baselineCases = [
   { name: 'whitespace is normalized away', a: '  Load   the config ', b: 'Load the config', same: true },
   { name: 'different text hashes differently', a: 'Load the config', b: 'Load the cache', same: false },
   { name: 'a one-character change is detected', a: 'retry once', b: 'retry twice', same: false },
+];
+
+export const parseCases = [
+  {
+    name: 'parse: text that never began cm: is not an annotation attempt',
+    text: 'ordinary narration about the loop below',
+    result: null,
+  },
+  {
+    name: 'parse: a cm: prefix with no readable tag is an attempt, and is CM002',
+    text: 'cm: the words that moved into a tag are still in the file',
+    codes: ['CM002'],
+  },
+  {
+    name: 'parse: a readable tag outside the five is CM002 as well',
+    text: 'cm:note something',
+    codes: ['CM002'],
+  },
+  {
+    name: 'parse: a known tag carrying a body is an annotation',
+    text: 'cm:guard callers must hold the run lock',
+    tag: 'guard',
+  },
 ];
 
 // cm:why CM013's exemption for reflow IS this identity — a formatter run or a rewrap must leave it
