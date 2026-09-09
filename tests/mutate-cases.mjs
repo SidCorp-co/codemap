@@ -224,17 +224,108 @@ function gitEnvCases(check) {
   }
 }
 
-// cm:guard the CLI half is read as TEXT here, and only for what running it cannot show; a regex over
-//   the call site is gameable, since spawnSync or hoisted options walk past it (ISS-30)
-// cm:guard every text check below reads CODE ONLY, block comments included: with comments left in, a
-//   rule written beside a call site satisfies the check that the call site itself is missing (ISS-30)
+// cm:guard every text check below reads CODE ONLY: with comments left in, a rule written beside a
+//   call site satisfies the check that the call site itself is missing (ISS-30)
+// cm:guard scanned character by character, never by regex: this repository's own corpus holds comment
+//   delimiters inside STRING fixtures, which a block-comment regex reads as a comment start (ISS-30)
+// cm:why the span such a regex swallows reaches from one string-borne delimiter to the next closing
+//   pair anywhere in the file, so the code between them leaves the check entirely (ISS-30)
+// cm:guard a trailing comment counts with no space before it: `,//env: GIT_ENV` slips past a leader
+//   requiring whitespace, one space away from the assignment being pinned (ISS-30)
+// cm:guard cli/lib/scan.mjs is NOT reused for this, though it scans comments for a living: the
+//   declared point `flushopen-block` mutates it, so these checks would judge mutated code (ISS-30)
 function codeOnly(src) {
-  return src.replace(/\/\*[\s\S]*?\*\//g, '')
-    .split('\n').filter((l) => !/^\s*\/\//.test(l))
-    .map((l) => l.replace(/\s+\/\/.*$/, ''))
-    .join('\n');
+  const startsRegex = (prev) => prev === '' || '(,=:[!&|?{};+-*%~^<>'.includes(prev);
+  let out = '';
+  let prev = '';
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    const next = src[i + 1];
+    if (c === '/' && next === '/') {
+      while (i < src.length && src[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && next === '*') {
+      i += 2;
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      out += c;
+      i++;
+      while (i < src.length) {
+        if (src[i] === '\\') { out += src.slice(i, i + 2); i += 2; continue; }
+        out += src[i];
+        i++;
+        if (src[i - 1] === c) break;
+      }
+      prev = c;
+      continue;
+    }
+    if (c === '/' && startsRegex(prev)) {
+      out += c;
+      i++;
+      let inClass = false;
+      while (i < src.length && src[i] !== '\n') {
+        if (src[i] === '\\') { out += src.slice(i, i + 2); i += 2; continue; }
+        if (src[i] === '[') inClass = true;
+        else if (src[i] === ']') inClass = false;
+        out += src[i];
+        i++;
+        if (src[i - 1] === '/' && !inClass) break;
+      }
+      prev = '/';
+      continue;
+    }
+    out += c;
+    if (!/\s/.test(c)) prev = c;
+    i++;
+  }
+  return out;
 }
 
+// cm:guard every fixture below BUILDS the specifier it names, so this file never holds the literal
+//   the importer sweep looks for: test data naming it reads as a real import (ISS-30)
+function codeOnlyCases(check) {
+  const strip = (src) => codeOnly(src).replace(/\s+/g, ' ').trim();
+  const spec = `./${'mut'}${'ate'}.mjs`;
+
+  check('mutate: codeOnly drops a whole-line comment',
+    strip(`  // import("${spec}")\nconst a = 1;`) === 'const a = 1;',
+    `got ${JSON.stringify(strip(`  // import("${spec}")\nconst a = 1;`))}`);
+
+  check('mutate: codeOnly drops a trailing comment with no space before it',
+    !codeOnly('x: 1,//env: GIT_ENV').includes('GIT_ENV'),
+    `one space is the whole difference, so the leader cannot require whitespace: ${JSON.stringify(codeOnly('x: 1,//env: GIT_ENV'))}`);
+
+  check('mutate: codeOnly drops an inline block comment',
+    !codeOnly('a, /* env: GIT_ENV */ b').includes('GIT_ENV'),
+    `got ${JSON.stringify(codeOnly('a, /* env: GIT_ENV */ b'))}`);
+
+  // cm:guard the case this helper exists for: an unclosed block delimiter inside a STRING must not
+  //   swallow the code after it, or a real import there leaves the sweep unseen (ISS-30)
+  const fixture = `const a = '/* oops unterminated';\nimport('${spec}');\nconst b = '/* closed */';`;
+  check('mutate: a comment delimiter inside a string does not blind the code after it',
+    codeOnly(fixture).includes(`import('${spec}')`),
+    `the code after a string-borne "/*" must survive: ${JSON.stringify(codeOnly(fixture))}`);
+
+  check('mutate: codeOnly keeps a URL inside a string intact',
+    codeOnly('const u = "https://example.com/a//b";').includes('https://example.com/a//b'),
+    `a // inside a string is not a comment: ${JSON.stringify(codeOnly('const u = "https://example.com/a//b";'))}`);
+
+  check('mutate: codeOnly keeps a regex literal containing slashes intact',
+    codeOnly('const re = /a\\/\\/b/g; const k = 1;').includes('const k = 1'),
+    `a // inside a regex must not comment out the rest of the line: ${JSON.stringify(codeOnly('const re = /a\\/\\/b/g; const k = 1;'))}`);
+
+  check('mutate: codeOnly keeps an escaped quote from ending a string',
+    codeOnly("const s = 'it\\'s'; const k = 2;").includes('const k = 2'),
+    `got ${JSON.stringify(codeOnly("const s = 'it\\'s'; const k = 2;"))}`);
+}
+
+// cm:guard the CLI half is read as TEXT here, and only for what running it cannot show; a regex over
+//   the call site is gameable, since spawnSync or hoisted options walk past it (ISS-30)
 function wiringCases(pluginRoot, check) {
   const cli = codeOnly(readFileSync(join(pluginRoot, 'tests', 'mutate.mjs'), 'utf8'));
 
@@ -250,7 +341,7 @@ function wiringCases(pluginRoot, check) {
   // cm:guard both children are read, the git wrapper and the corpus spawn: the second inherits this
   //   process's environment for a whole corpus run inside the copy (ISS-30)
   // cm:guard matched against codeOnly, never raw source: commenting the assignment out rather than
-  //   deleting it left both of these checks green (ISS-30)
+  //   deleting it keeps both of these checks green (ISS-30)
   const gitOptions = /execFileSync\(\s*['"]git['"][\s\S]{0,300}?\{([^}]*)\}/.exec(cli);
   const spawnOptions = /spawnSync\(\s*process\.execPath[\s\S]{0,300}?\{([^}]*)\}/.exec(cli);
   check('mutate: the git wrapper passes the scrubbed environment',
@@ -341,6 +432,7 @@ function declaredListCases(check) {
 }
 
 export function mutateCases(pluginRoot, check) {
+  codeOnlyCases(check);
   classifyCases(check);
   parseCases(check);
   anchorCases(check);
