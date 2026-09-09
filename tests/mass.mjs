@@ -158,7 +158,9 @@ function conservationCases(check) {
     `billed ${billed} + directives ${directives} != ${whole} of comment text — ${whole - billed - directives} char(s) counted twice or lost`);
   // cm:guard every channel is pinned EXACTLY — the fixture carries unsilenced prose too, so `live > 0`
   //   passes with the ignored CM001 mis-billed as a doc comment and conservation still holding
-  const want = { annotation: 71, frozen: 0, live: 93, doc: 224, header: 61 };
+  // cm:guard doc is exactly the ONE `/** */` block, 54 chars — §4.2 makes only that form
+  //   documentation, so the 79-char `/* */` block is prose and anything else in doc is ISS-40 again
+  const want = { annotation: 71, frozen: 0, live: 263, doc: 54, header: 61 };
   const got = Object.fromEntries(Object.keys(want).map((k) => [k, m[k]]));
   check('mass: each channel bills exactly what belongs to it, silenced prose included',
     JSON.stringify(got) === JSON.stringify(want),
@@ -191,8 +193,8 @@ function channelCases(check) {
   check('mass: unfrozen prose is live, not frozen',
     m.live > 0 && m.frozen === 0, `live=${m.live} frozen=${m.frozen}`);
 
-  // cm:guard an exempt-form comment raises no diagnostic, so it reaches the doc fallback — billing it
-  //   there reports SFC template narration as machine-consumed and hides it from §11 (ISS-28)
+  // cm:guard template narration is PROSE, never machine-consumed (ISS-28). `<!--` is `kind: block`, so
+  //   §4.2's rule now bills it to live and this pins the outcome rather than the branch above (ISS-48)
   {
     const sfcSrc = [
       '<template>',
@@ -341,6 +343,77 @@ function channelCases(check) {
     check('mass: a sited prose line stays live even when its OWN key is frozen',
       om2.frozen === 0 && om2.live > 0,
       `frozen=${om2.frozen} live=${om2.live}`);
+  }
+
+  // cm:guard the live figure may not move with the prose TIER — the tier decides what is reported,
+  //   never what a comment IS, and a repo at `grammar: false` still has to read its narration (ISS-40)
+  {
+    const plainSrc = ['export const x = 1;', '', '// plain narration with no annotation anywhere near it', 'export const y = 2;'].join('\n');
+    const off = { ...DEFAULT_REGISTRY, enforce: { ...DEFAULT_REGISTRY.enforce, grammar: false } };
+    const mOff = fileMass({ relPath: 'plain.ts', src: plainSrc, res: analyzeFile({ relPath: 'plain.ts', src: plainSrc, reg: off }) });
+    const mOn = fileMass({ relPath: 'plain.ts', src: plainSrc, res: analyzeFile({ relPath: 'plain.ts', src: plainSrc, reg: DEFAULT_REGISTRY }) });
+    check('mass: a line comment bills the same live prose at either prose tier',
+      mOff.live === mOn.live && mOff.live > 0,
+      `grammar:false live=${mOff.live} vs grammar:true live=${mOn.live}`);
+    check('mass: a line comment reaches no doc channel with the prose tier off',
+      mOff.doc === 0, `doc=${mOff.doc} — narration billed as machine-consumed documentation`);
+  }
+
+  // cm:guard a `/* */` BLOCK inverts on the tier exactly as a line comment did — §4.2 makes only
+  //   `/** */` documentation, so billing a bare block to doc is ISS-40 surviving by another form
+  {
+    const blkSrc = ['export const x = 1;', '', '/* plain narration in a block, nobody parses this */', 'export const y = 2;'].join('\n');
+    const off = { ...DEFAULT_REGISTRY, enforce: { ...DEFAULT_REGISTRY.enforce, grammar: false } };
+    const bOff = fileMass({ relPath: 'blk.ts', src: blkSrc, res: analyzeFile({ relPath: 'blk.ts', src: blkSrc, reg: off }) });
+    const bOn = fileMass({ relPath: 'blk.ts', src: blkSrc, res: analyzeFile({ relPath: 'blk.ts', src: blkSrc, reg: DEFAULT_REGISTRY }) });
+    check('mass: a bare block comment bills the same live prose at either prose tier',
+      bOff.live === bOn.live && bOff.live > 0,
+      `grammar:false live=${bOff.live} doc=${bOff.doc} vs grammar:true live=${bOn.live} doc=${bOn.doc}`);
+    check('mass: a bare block comment reaches no doc channel at either tier',
+      bOff.doc === 0 && bOn.doc === 0, `doc off=${bOff.doc} on=${bOn.doc}`);
+  }
+
+  // cm:guard a `/** */` DOC block is the one form that stays documentation — §4.2 exempts it by form,
+  //   so a change that swept every block into prose would pass the case above and break this one
+  {
+    const docSrc = ['export const x = 1;', '', '/** a doc block the tooling parses */', 'export type Row = { id: number };'].join('\n');
+    const off = { ...DEFAULT_REGISTRY, enforce: { ...DEFAULT_REGISTRY.enforce, grammar: false } };
+    const dOff = fileMass({ relPath: 'doc.ts', src: docSrc, res: analyzeFile({ relPath: 'doc.ts', src: docSrc, reg: off }) });
+    check('mass: a doc block is billed to doc, not swept into prose',
+      dOff.doc > 0 && dOff.live === 0, `doc=${dOff.doc} live=${dOff.live}`);
+  }
+
+  // cm:guard a MALFORMED annotation is prose too — CM002 is not prose-family and the comment is not in
+  //   `res.annotations`, so nothing above the fallback claims it and only its form does (ISS-40)
+  for (const [name, line] of [['untagged', '// cm: prose that wrapped onto a cm: line'], ['unknown-tag', '// cm:note prose with a readable but unknown tag']]) {
+    const src2 = ['export const x = 1;', '', line, 'export const y = 2;'].join('\n');
+    const mm = fileMass({ relPath: `${name}.ts`, src: src2, res: analyzeFile({ relPath: `${name}.ts`, src: src2, reg: DEFAULT_REGISTRY }) });
+    check(`mass: a ${name} cm: comment is billed to live, not doc`,
+      mm.live > 0 && mm.doc === 0, `live=${mm.live} doc=${mm.doc}`);
+  }
+
+  // cm:guard a `#` profile sets `enforce: false` in the profile itself, so this is the DEFAULT reading
+  //   for every shell and yaml file in every repo — not a tier somebody chose to turn off (ISS-40)
+  {
+    const shSrc = ['#!/usr/bin/env bash', 'set -e', '', '# the retry count matches the gateway timeout', 'echo hi'].join('\n');
+    const sm2 = fileMass({ relPath: 'deploy.sh', src: shSrc, res: analyzeFile({ relPath: 'deploy.sh', src: shSrc, reg: DEFAULT_REGISTRY }) });
+    check('mass: a shell comment is live prose with no registry override written',
+      sm2.live > 0 && sm2.doc === 0, `live=${sm2.live} doc=${sm2.doc}`);
+  }
+
+  // cm:guard this pins the OUTCOME, not the branch — §4.2's rule bills a silenced block to live by
+  //   itself, so deleting `ignoredProse` leaves this green; its own case is a `doc` form (ISS-48)
+  {
+    const ignSrc = [
+      'export const x = 1;',
+      '',
+      '// cm:ignore CM001 — inherited, and nobody owns this file',
+      '/* silenced narration in a block comment */',
+      'export const y = 2;',
+    ].join('\n');
+    const im = fileMass({ relPath: 'ign.ts', src: ignSrc, res: analyzeFile({ relPath: 'ign.ts', src: ignSrc, reg: DEFAULT_REGISTRY }) });
+    check('mass: a silenced block comment is live prose, not a doc comment',
+      im.live > 0 && im.doc === 0, `live=${im.live} doc=${im.doc}`);
   }
 
   const rolled = massOf([m, { ...m, relPath: 'other.ts', narrative: 10 }]);

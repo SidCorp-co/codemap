@@ -148,15 +148,18 @@ export function fileMass({ relPath, src, res, frozen }) {
       continue;
     }
     if (header && !header.glued && c.line >= header.start && c.endLine <= header.end) { out.header += c.text.length; continue; }
-    // cm:why prose an author silenced is still prose — analyzeFile drops the diagnostic, so without this
-    //   an ignored CM001 would be billed as a doc comment and read as machine-consumed
+    // cm:why prose an author silenced is still prose. Keyed on the LINE and ahead of §4.2's rule, so it
+    //   also takes a `doc` block off a covered line, for a directive that silenced nothing (ISS-48)
     if (ignoredProse(c.line)) { out.live += c.text.length; continue; }
-    // cm:guard a line past the annotation's one wrap is PROSE — CM204 is not prose-family and sits on
-    //   the annotation's line, so under `grammar: false` nothing else rescues it from doc (ISS-36)
+    // cm:guard this matches a LINE, not a comment — a block's close and a line comment can share one,
+    //   so it can still claim a `doc` form the rule below would bill to doc (ISS-36, measured on ISS-40)
     if (res.overflowLines?.has(c.line)) { out.live += c.text.length; continue; }
-    // cm:guard a form the profile exempts from prose is still PROSE — it raises no diagnostic, so it
-    //   reaches here and would be billed as doc, hiding narration from the §11 number (ISS-28)
+    // cm:why a form the profile exempts from prose is still PROSE (ISS-28). §4.2's rule below bills
+    //   every non-doc form to live, so this states the intent and no longer decides the channel (ISS-48)
     if (prof.proseExemptBlockOpens?.includes(c.leader)) { out.live += c.text.length; continue; }
+    // cm:guard §4.2 makes `/** */` documentation BY FORM and every other form prose, `/* */` included,
+    //   so only `doc` is exempt here and a new kind fails toward prose rather than into doc (ISS-40)
+    if (c.kind !== 'doc') { out.live += c.text.length; continue; }
     out.doc += c.text.length;
   }
 
