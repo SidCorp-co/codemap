@@ -14,7 +14,7 @@
 
 import { profileFor } from './languages.mjs';
 import { scanComments } from './scan.mjs';
-import { baselineKey, PROSE_CODES } from './parse.mjs';
+import { baselineKey, PROSE_CODES, CM_IGNORE_RE } from './parse.mjs';
 
 // cm:guard the vocabulary stays CLOSED and past-tense-only, biased toward silence — a present-tense
 //   verb states a rule, and `shipped`/`measured` were dropped because both double as adjectives (§11)
@@ -135,7 +135,7 @@ export function fileMass({ relPath, src, res, frozen }) {
     if (!c.text) continue;
     // cm:why an ignore directive is billed nowhere — it is the escape hatch a code's own fix line
     //   offers, and pricing it would charge an author for taking the way out the checker handed them
-    if (/^cm:ignore\b/.test(c.text)) continue;
+    if (CM_IGNORE_RE.test(c.text)) continue;
     if (annLines.has(c.line)) { out.annotation += c.text.length; continue; }
     const prose = proseAt.get(c.line);
     if (prose) {

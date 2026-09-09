@@ -10,7 +10,7 @@ import { scanComments } from '../cli/lib/scan.mjs';
 import { profileFor } from '../cli/lib/languages.mjs';
 import { buildGraph, advisoryDiags } from '../cli/lib/graph.mjs';
 import { DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
-import { baselineKey } from '../cli/lib/parse.mjs';
+import { baselineKey, CM_IGNORE_RE } from '../cli/lib/parse.mjs';
 import { narrativeOf, retells, fileMass, massOf, narrativeMass, NARRATIVE_MIN } from '../cli/lib/mass.mjs';
 
 const STORY = 'the pool and the registry must stay in step (ISS-9). It was one lock per caller until'
@@ -150,12 +150,39 @@ function conservationCases(check) {
 
   const { comments } = scanComments(src, profileFor('torture.ts'));
   const whole = comments.filter((c) => c.text).reduce((n, c) => n + c.text.length, 0);
-  const directives = comments.filter((c) => /^cm:ignore\b/.test(c.text ?? '')).reduce((n, c) => n + c.text.length, 0);
+  const directives = comments.filter((c) => CM_IGNORE_RE.test(c.text ?? '')).reduce((n, c) => n + c.text.length, 0);
   const billed = m.annotation + m.frozen + m.live + m.doc + m.header;
 
   check('mass: the channels plus the ignore directives are the file\'s whole comment text',
     billed + directives === whole,
     `billed ${billed} + directives ${directives} != ${whole} of comment text — ${whole - billed - directives} char(s) counted twice or lost`);
+
+  // cm:guard the count above reads CM_IGNORE_RE on BOTH sides, so it holds for any predicate and
+  //   cannot see one that widened — this literal is the only oracle left for what a directive is
+  // cm:guard this 54 is the DIRECTIVE's length and the 54 in `want` below is the doc block's — two
+  //   unrelated quantities that happen to match, so reconciling one against the other kills an oracle
+  check('mass: the fixture\'s one ignore directive is 54 chars, and they are billed to no channel',
+    directives === 54,
+    `directives ${directives} != 54 — a widened CM_IGNORE_RE swallows prose the channels should bill`);
+
+  const adjacent = [
+    '// cm:ignore CM001 — one',
+    '// cm:ignore CM301 — two',
+    'export const pair = 6;',
+  ].join('\n');
+  const adjRes = analyzeFile({ relPath: 'adjacent.ts', src: adjacent, reg: DEFAULT_REGISTRY });
+  const adj = fileMass({ relPath: 'adjacent.ts', src: adjacent, res: adjRes });
+  const adjBilled = adj.annotation + adj.frozen + adj.live + adj.doc + adj.header;
+  const adjWhole = scanComments(adjacent, profileFor('adjacent.ts')).comments
+    .filter((c) => c.text).reduce((n, c) => n + c.text.length, 0);
+  check('mass: the adjacent-directive fixture really carries two directives, 42 chars of them',
+    adjWhole === 42,
+    `adjacent fixture holds ${adjWhole} chars of comment text, not 42 — the check below passes`
+      + ' vacuously if this fixture ever stops producing comments');
+  check('mass: two ignore directives on consecutive lines are both billed to no channel',
+    adjBilled === 0,
+    `adjacent directives billed ${adjBilled} char(s) — a stateful CM_IGNORE_RE leaves lastIndex past`
+      + ' the first, so the second stops matching its own anchor and lands in a prose channel');
   // cm:guard every channel is pinned EXACTLY — the fixture carries unsilenced prose too, so `live > 0`
   //   passes with the ignored CM001 mis-billed as a doc comment and conservation still holding
   // cm:guard doc is exactly the ONE `/** */` block, 54 chars — §4.2 makes only that form

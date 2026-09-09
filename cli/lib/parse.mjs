@@ -30,7 +30,14 @@ export const EDGE_KINDS = ['contract', 'ordering', 'lockstep', 'sideeffect', 'na
 //   leader, so never widen this to the full-line `^\s*(//|#|--)\s*cm:` §4 prints: no site could call it
 export const CM_PREFIX_RE = /^cm:/;
 const CM_TEXT_RE = /^cm:([a-z][a-z-]*)\b\s*(.*)$/s;
-const IGNORE_RE = /^cm:ignore\s+(CM\d{3})\s*(?:—|--|-)\s*(\S.*)$/;
+// cm:guard no flags on this one, ever — it is read by .test() in two modules, by .source just below
+//   and by prof.exempt.some() in every profile, so a /g would carry lastIndex between all of them
+// cm:guard parse.mjs stays import-free: languages.mjs reads this at MODULE scope, so an import back
+//   from here is a ReferenceError in any process that reaches parse.mjs first
+// cm:guard it stays a RegExp because COMMON_EXEMPT holds it as one, and widening it must keep working
+//   through IGNORE_RE below, which is why that wraps it in (?:) and reads its captures by name
+export const CM_IGNORE_RE = /^cm:ignore\b/;
+const IGNORE_RE = new RegExp(`(?:${CM_IGNORE_RE.source})\\s+(?<code>CM\\d{3})\\s*(?:—|--|-)\\s*(?<reason>\\S.*)$`);
 // cm:why marker-shaped only — a bare \bXXX\b matched "TC-XXX" in real repos, and a validator that cries wolf gets switched off
 const TODO_RE = /^(TODO|FIXME|HACK)\b|\b(TODO|FIXME)\s*[:(]/;
 const ID = '[a-z0-9][a-z0-9-]*';
@@ -83,8 +90,8 @@ function splitProse(s) {
  */
 export function parseAnnotation(text, file, line) {
   const ig = IGNORE_RE.exec(text);
-  if (ig) return { ignore: { code: ig[1], reason: ig[2] }, };
-  if (/^cm:ignore\b/.test(text)) {
+  if (ig) return { ignore: { code: ig.groups.code, reason: ig.groups.reason }, };
+  if (CM_IGNORE_RE.test(text)) {
     return { diags: [diag('CM008', file, line, 'cm:ignore needs "<CODE> — <reason>"')] };
   }
 
