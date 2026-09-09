@@ -97,10 +97,11 @@ export const analyzeCases = [
     src: [
       '// cm:guard the batch is claimed whole, never row by row',
       '//   a stranger parked this sentence here',
+      '//   and a line below the frozen one, which the refusal must not adopt either',
       'const r = 1;',
     ].join('\n'),
     frozen: ['a stranger parked this sentence here'],
-    codes: ['CM001'],
+    codes: ['CM001', 'CM001'],
     annotations: ['guard'],
     texts: ['the batch is claimed whole, never row by row'],
   },
@@ -149,6 +150,20 @@ export const analyzeCases = [
     annotations: ['guard'],
     texts: ['the batch is claimed whole, never row by row'
       + ' because releasing between rows lets a second dispatcher claim the tail'],
+  },
+  {
+    // cm:guard this pins `firstOnLine` at the OVERFLOW position — `trailing.ts` pins it at the wrap,
+    //   so without this a trailing comment counts as the annotation running on and nothing fails
+    name: 'ts: a trailing comment below the wrap is not the annotation overflowing',
+    file: 'wrap-overflow-trailing.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      'const r = 1; //   a trailing comment, not a standalone line',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: [],
+    annotations: ['guard'],
   },
   {
     name: 'ts: a block comment under the wrap ends the run, so it draws no CM204',

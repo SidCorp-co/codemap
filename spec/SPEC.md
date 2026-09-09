@@ -68,7 +68,7 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
   discipline, so a repo that took the graph without that discipline is still told its annotation reaches
   its reader ending mid-clause, exactly as `CM203` tells it about an unread annotation (§6). What it
   refuses is a SHAPE — two or more continuation lines under one annotation — decided from the run itself
-  and never from a token on the line, so no marker satisfies it and no reformatting clears it. Its
+  and never from a token on the line, so no marker satisfies it and no reindenting or rewrapping clears it. Its
   remedies are to reword, to split one annotation into two, or to move the annotation below prose that
   was never its own. Two things end a run rather than counting in it: a line the baseline has FROZEN,
   which §4 already says is never a continuation, and a blank line, which is the author's own statement
