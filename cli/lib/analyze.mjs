@@ -45,7 +45,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
   const headerMax = reg.enforce?.headerMaxLines ?? 20;
   // cm:guard CM011 is prose-family (PROSE_CODES), so `grammar: false` must silence it too — a repo
   // adopting the graph without the comment discipline was still getting header-length errors
-  if (grammar && header && !header.glued && !header.exemptForm && header.count > headerMax) {
+  if (grammar && header && !header.glued && header.count > headerMax) {
     raw.push({ ...diag('CM011', relPath, header.start, `${header.count} lines (max ${headerMax})`), text: `header:${header.count}` });
   }
   const inHeader = (c) => !!header && !header.glued && c.line >= header.start && c.endLine <= header.end;
@@ -314,7 +314,6 @@ function moduleHeader(lines, comments, codeLines, prof) {
   // cm:guard CM011's count is the BILLABLE lines, never the run's span — a run mixing an exempt form
   //   with a billable one otherwise reports the exempt lines too (§9.1, ISS-28)
   const isExempt = (c) => !!prof?.proseExemptBlockOpens?.includes(c.leader);
-  const exemptForm = run.every(isExempt);
   const billable = run.filter((c) => !isExempt(c))
     .reduce((n, c) => n + (c.endLine - c.line + 1), 0);
 
@@ -323,9 +322,9 @@ function moduleHeader(lines, comments, codeLines, prof) {
   let firstCode = Infinity;
   for (const l of codeLines) if (l > prologueEnd && l < firstCode) firstCode = l;
   if (firstCode <= end) return null;
-  if (lines[end] === undefined || lines[end].trim() !== '') return { start, end, glued: true, exemptForm };
+  if (lines[end] === undefined || lines[end].trim() !== '') return { start, end, glued: true };
 
-  return { start, end, count: billable, exemptForm };
+  return { start, end, count: billable };
 }
 
 function documentsExported(lines, codeLines, fromLine, prof) {

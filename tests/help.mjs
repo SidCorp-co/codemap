@@ -57,6 +57,11 @@ export function helpCases(pluginRoot, check) {
     check('help: every diagnostic in CODE_TABLE appears in `help codes`',
       missingCode.length === 0, `missing: ${missingCode.join(', ')}`);
 
+    // cm:edge lockstep -> cli/lib/parse.mjs — a template has no line leader, as cli/lib/help.mjs
+    //   states, so CM003's remedy must name <script> or it names no destination the file has
+    check('help: CM003 fix names <script>, the only destination an SFC template has',
+      CODE_TABLE.CM003.fix.includes('<script>'), `fix said: ${CODE_TABLE.CM003.fix}`);
+
     const ann = renderHelp('annotations').text;
     const missingTag = TAGS.filter((t) => !ann.includes(`cm:${t}`));
     const missingKind = EDGE_KINDS.filter((k) => !ann.includes(k));
