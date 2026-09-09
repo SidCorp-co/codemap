@@ -40,7 +40,7 @@ Both hooks run two passes over the staged tree, and the split is deliberate:
 
 | Pass | Tier | What it does |
 |---|---|---|
-| first | `structural` | reports `CM201`-`CM203`, of which `CM203` is the one this pass exists for: a file whose block comment is never closed, so every `cm:` annotation below it has stopped being read. No structural code can change the exit code, so this pass never blocks a commit. |
+| first | `structural` | reports `CM201`-`CM204`, of which two are what this pass exists for: `CM203`, a file whose block comment is never closed, so every `cm:` annotation below it has stopped being read; and `CM204`, an annotation running past the one line it may wrap onto, so the lines past it never reach the channel either. Both are ways an annotation stops reaching its reader without the gating tier being able to say so. No structural code can change the exit code, so this pass never blocks a commit. |
 | second | `grammar` | the gate: `CM001`-`CM013` fail the commit — a malformed annotation, but also a new TODO/FIXME (`CM010`), an over-long module header (`CM011`) and unpaid prose debt (`CM013`). |
 
 The **referential** tier (`CM101`-`CM107` — an edge pointing at a path that is not there) is
