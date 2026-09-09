@@ -2,7 +2,7 @@
 // Mutation harness, the half that runs things. Opt-in, never part of the gate.
 //
 // cm:edge contract -> tests/run.mjs — parses its count line and its "  FAIL <name>" lines. Changing
-//   the count line makes every row CRASH, loudly; changing the FAIL line empties the names silently
+//   the count line makes every row CRASH loudly; changing the FAIL line empties the names (ISS-30)
 // cm:edge protocol -> tests/mutate-lib.mjs — the pure half lives there so the corpus can pin it
 //   without importing `main`; nothing under tests/ may import THIS file (ISS-30)
 
@@ -38,6 +38,8 @@ function listFiles(...selectors) {
 
 // cm:why the snapshot comes from the WORKING TREE, not `git archive HEAD`: the mechanism this is
 //   pointed at is usually uncommitted, so the banner names the tree state instead (ISS-30)
+// cm:guard modified tracked files and merely untracked ones are reported SEPARATELY: only the first
+//   makes the table irreproducible from the named commit, so only it warns (ISS-30)
 // cm:guard taken ONCE, before the control, and every row copies from it: re-reading per row let a
 //   save mid-run give a later row a false `pinned` the control could not catch (ISS-30)
 function snapshot() {
@@ -64,6 +66,8 @@ function snapshot() {
     staged: cached.filter((rel) => present.has(rel)),
     // cm:edge contract -> tests/release-tag.mjs — that case disables itself with no `codemap-v*` tag,
     //   so a copy without the tag names runs fewer checks and reads the coupling as DEAD (ISS-30)
+    // cm:why the tag NAMES alone are carried onto the copy's own commit, not real history, because
+    //   existence under that glob is the whole of what the case reads (ISS-30)
     tags: git(ROOT, ['tag', '-l', 'codemap-v*']).split('\n').filter(Boolean),
   };
 }

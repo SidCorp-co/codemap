@@ -236,8 +236,25 @@ function wiringCases(pluginRoot, check) {
     `found ${execGit} execFileSync and ${spawnGit} spawnSync git call sites — every one has to go `
     + 'through the single wrapper that passes the scrubbed environment, or the scrub is bypassable');
 
-  // cm:guard EVERY .mjs under tests/ is read, not a named few, and dynamic imports count: either
-  //   gap lets a new tier import the CLI half unnoticed (ISS-30)
+  // cm:guard counting the call sites is not enough: a scrub that is COMPUTED and never passed leaves
+  //   every one of them on the ambient environment, and nothing else here would notice (ISS-30)
+  // cm:guard both children are read, the git wrapper and the corpus spawn: the second inherits this
+  //   process's environment for a whole corpus run inside the copy (ISS-30)
+  const gitOptions = /execFileSync\(\s*['"]git['"][\s\S]{0,300}?\{([^}]*)\}/.exec(cli);
+  const spawnOptions = /spawnSync\(\s*process\.execPath[\s\S]{0,300}?\{([^}]*)\}/.exec(cli);
+  check('mutate: the git wrapper passes the scrubbed environment',
+    Boolean(gitOptions) && /\benv:\s*GIT_ENV\b/.test(gitOptions[1]),
+    `the one git call site must pass env: GIT_ENV, or GIT_DIR from a hook or a bisect reaches it: `
+    + `options read as ${JSON.stringify(gitOptions && gitOptions[1].trim())}`);
+  check('mutate: the corpus spawn passes the scrubbed environment',
+    Boolean(spawnOptions) && /\benv:\s*GIT_ENV\b/.test(spawnOptions[1]),
+    `the corpus child must pass env: GIT_ENV: options read as `
+    + `${JSON.stringify(spawnOptions && spawnOptions[1].trim())}`);
+
+  // cm:guard EVERY .mjs under tests/ is read, not a named few: a new tier importing the CLI half is
+  //   otherwise unnoticed (ISS-30)
+  // cm:guard the second pattern is for a CONCATENATED specifier, `import('./mutate' + '.mjs')`, which
+  //   a static-only match walks past; it is not dead code (ISS-30)
   const dir = join(pluginRoot, 'tests');
   const importers = readdirSync(dir)
     .filter((f) => f.endsWith('.mjs') && f !== 'mutate.mjs')
@@ -257,7 +274,7 @@ function wiringCases(pluginRoot, check) {
   // cm:guard the entry-point check is the only thing between an import of the CLI half and a corpus
   //   run, so it is exercised: importing must print nothing and spawn nothing (ISS-30)
   // cm:guard the importer is a SCRIPT on disk, never `node -e`: under -e process.argv[1] is undefined
-  //   and the check short-circuits, leaving the path comparison — the real defence — unevaluated
+  //   and the check short-circuits, leaving the path comparison — the real defence — unrun (ISS-30)
   const probeDir = mkdtempSync(join(tmpdir(), 'cm-mutate-entry-'));
   try {
     const script = join(probeDir, 'import-the-cli.mjs');
