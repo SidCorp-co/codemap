@@ -1,6 +1,7 @@
 // codemap/1 — candidate discovery for `cm propose` (ISS-12).
 //
-// Every function here answers "where might a coupling be hiding", never "what is the coupling". A
+// Every function here answers "where might a coupling be hiding", never "what is the coupling" —
+// makeReserved excepted, which builds no candidate but the list they are filtered against. A
 // candidate carries its evidence and nothing else: no kind is asserted unless the source itself
 // defines the kind (lockstep, contract), no `— why` text is ever written (patterns/finding-candidates.md
 // §4: history can propose the pair, but the reason it is bound is what a human's annotation carries),
@@ -9,7 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { PROSE_CODES } from './parse.mjs';
+import { PROSE_CODES, TAGS, CM_IGNORE_RE } from './parse.mjs';
 import { profileFor, ecosystemOf } from './languages.mjs';
 import { connected } from './archmap.mjs';
 
@@ -151,7 +152,14 @@ const TOKEN_RE = /^[A-Za-z][A-Za-z0-9]*(?:[_.:-][A-Za-z0-9]+)+$/;
 const LITERAL_RE = /"([^"\n]{4,80})"|'([^'\n]{4,80})'|`([^`\n]{4,80})`/g;
 // cm:why this tool's own tag vocabulary is quoted all over its help text, tests and docs — excluded,
 //   or a shared "cm:why" would look like a contract between two callers that share nothing (ISS-12)
-const RESERVED = /^cm:(edge|guard|flow|hack|why|ignore)/;
+// cm:guard the two arms differ on the word boundary and both halves are deliberate — the TAGS arm
+//   is unbounded so cm:whyever stays excluded as before, CM_IGNORE_RE's \b means cm:ignored is not
+// cm:why parameterised for its one caller so a test can exercise a tag that is not in TAGS yet —
+//   no assertion over the built constant can tell a derived list from an identical hand-written one
+export function makeReserved(tags, ignoreRe) {
+  return new RegExp(`^cm:(?:${tags.join('|')})|${ignoreRe.source}`);
+}
+export const RESERVED = makeReserved(TAGS, CM_IGNORE_RE);
 
 /**
  * Confidence 3 — a string literal that appears in exactly two files, in two different languages

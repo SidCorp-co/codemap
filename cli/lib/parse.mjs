@@ -1,5 +1,9 @@
 // codemap/1 §3 §4 §7 — grammar, canonical form, diagnostics.
 
+// cm:guard cm:ignore is NOT a member — it is the ignore directive, answered by parseAnnotation
+//   below before this list is ever consulted, and TAGS is the tag vocabulary (ISS-50)
+// cm:edge lockstep -> cli/lib/help.mjs — a new member needs a consumers row and a forms row there
+//   too, or `cm help annotations` renders it as "undefined"
 export const TAGS = ['flow', 'edge', 'guard', 'hack', 'why'];
 
 // cm:why the whole prose family is baselined together, so `cm init` leaves a legacy repo green (§8)
@@ -30,12 +34,14 @@ export const EDGE_KINDS = ['contract', 'ordering', 'lockstep', 'sideeffect', 'na
 //   leader, so never widen this to the full-line `^\s*(//|#|--)\s*cm:` §4 prints: no site could call it
 export const CM_PREFIX_RE = /^cm:/;
 const CM_TEXT_RE = /^cm:([a-z][a-z-]*)\b\s*(.*)$/s;
-// cm:guard no flags on this one, ever — it is read by .test() in two modules, by .source just below
-//   and by prof.exempt.some() in every profile, so a /g would carry lastIndex between all of them
+// cm:guard no flags on this one, ever — .test() in two modules, .source both below and in
+//   propose.mjs, and prof.exempt.some() in every profile would all share a /g's lastIndex
 // cm:guard parse.mjs stays import-free: languages.mjs reads this at MODULE scope, so an import back
 //   from here is a ReferenceError in any process that reaches parse.mjs first
 // cm:guard it stays a RegExp because COMMON_EXEMPT holds it as one, and widening it must keep working
 //   through IGNORE_RE below, which is why that wraps it in (?:) and reads its captures by name
+// cm:guard keep the leading ^ — propose.mjs interpolates this source BARE as one arm of RESERVED, so
+//   an unanchored widening silently excludes every literal merely containing the pattern (ISS-50)
 export const CM_IGNORE_RE = /^cm:ignore\b/;
 const IGNORE_RE = new RegExp(`(?:${CM_IGNORE_RE.source})\\s+(?<code>CM\\d{3})\\s*(?:—|--|-)\\s*(?<reason>\\S.*)$`);
 // cm:why marker-shaped only — a bare \bXXX\b matched "TC-XXX" in real repos, and a validator that cries wolf gets switched off

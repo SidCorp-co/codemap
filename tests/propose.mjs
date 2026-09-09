@@ -9,8 +9,9 @@ import {
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { proseCandidates, lockstepCandidates, contractCandidates } from '../cli/lib/propose.mjs';
+import { proseCandidates, lockstepCandidates, contractCandidates, RESERVED, makeReserved } from '../cli/lib/propose.mjs';
 import { stripGitEnv } from './git-env.mjs';
+import { TAGS, CM_IGNORE_RE } from '../cli/lib/parse.mjs';
 
 function git(root, ...args) {
   execFileSync('git', ['-C', root, ...args], {
@@ -90,11 +91,34 @@ function pureCases(check) {
     check('propose: contract ignores a plain word with no separator (no coincidental "hello")',
       !noSep.some((c) => c.literal === 'hello'), `"hello" should not qualify: ${JSON.stringify(noSep)}`);
 
-    writeFileSync(join(root, 'tag.ts'), '// cm:why this mirrors emit.go\nexport const x = 1;\n');
-    writeFileSync(join(root, 'tag.go'), 'const y = "cm:why"\n');
-    const reserved = contractCandidates(root, ['tag.ts', 'tag.go']);
-    check('propose: contract excludes this tool\'s own reserved tag vocabulary',
-      reserved.length === 0, `cm:why should be excluded, got ${JSON.stringify(reserved)}`);
+    // cm:guard the literal must sit in CODE on BOTH sides or this proves nothing — a cm: token in a
+    //   comment is cut by codeOnly, leaving one file, which "exactly two files" already fails (ISS-50)
+    const vocabulary = [...TAGS.map((t) => `cm:${t}`), 'cm:ignore'];
+    const notExcluded = vocabulary.filter((lit) => {
+      writeFileSync(join(root, 'tag.ts'), `export const t = "${lit}";\n`);
+      writeFileSync(join(root, 'tag.go'), `const t = "${lit}"\n`);
+      return contractCandidates(root, ['tag.ts', 'tag.go']).length !== 0;
+    });
+    check('propose: contract excludes every tag in TAGS, plus cm:ignore (ISS-50)',
+      notExcluded.length === 0,
+      `derived from TAGS + CM_IGNORE_RE, so a new tag is covered on arrival; proposed anyway: ${JSON.stringify(notExcluded)}`);
+
+    // cm:guard the oracle above pins BEHAVIOUR over the tags that exist, which a hand-restated
+    //   list satisfies too — this is the only case that reaches a tag TAGS does not carry yet (ISS-50)
+    const future = makeReserved([...TAGS, 'owner'], CM_IGNORE_RE);
+    check('propose: a tag added to TAGS is excluded on arrival, with no second edit (ISS-50)',
+      future.test('cm:owner') && TAGS.every((t) => future.test(`cm:${t}`)) && future.test('cm:ignore'),
+      `${future.source} must exclude a new tag and keep the old set and cm:ignore`);
+    check('propose: the shipped RESERVED is what the factory builds from TAGS and CM_IGNORE_RE (ISS-50)',
+      RESERVED.source === makeReserved(TAGS, CM_IGNORE_RE).source,
+      `RESERVED.source is ${RESERVED.source}, the factory builds ${makeReserved(TAGS, CM_IGNORE_RE).source}`);
+
+    writeFileSync(join(root, 'tag.ts'), 'export const t = "ERR_TOKEN_SPENT";\n');
+    writeFileSync(join(root, 'tag.go'), 'const t = "ERR_TOKEN_SPENT"\n');
+    const control = contractCandidates(root, ['tag.ts', 'tag.go']);
+    check('propose: the vocabulary exclusion does not swallow an ordinary shared token (ISS-50)',
+      control.length === 1 && control[0].literal === 'ERR_TOKEN_SPENT',
+      `the control must still be proposed, or the case above passes by excluding everything: ${JSON.stringify(control)}`);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
