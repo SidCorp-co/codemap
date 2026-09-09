@@ -1,5 +1,7 @@
 // codemap/1 §3 §4 §7 — grammar, canonical form, diagnostics.
 
+// cm:guard cm:ignore is NOT a member and must never be added — it is the ignore directive, not a
+//   tag, and a member here parses as an annotation (ISS-50)
 export const TAGS = ['flow', 'edge', 'guard', 'hack', 'why'];
 
 // cm:why the whole prose family is baselined together, so `cm init` leaves a legacy repo green (§8)

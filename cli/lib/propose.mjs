@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { PROSE_CODES } from './parse.mjs';
+import { PROSE_CODES, TAGS, CM_IGNORE_RE } from './parse.mjs';
 import { profileFor, ecosystemOf } from './languages.mjs';
 import { connected } from './archmap.mjs';
 
@@ -151,7 +151,7 @@ const TOKEN_RE = /^[A-Za-z][A-Za-z0-9]*(?:[_.:-][A-Za-z0-9]+)+$/;
 const LITERAL_RE = /"([^"\n]{4,80})"|'([^'\n]{4,80})'|`([^`\n]{4,80})`/g;
 // cm:why this tool's own tag vocabulary is quoted all over its help text, tests and docs — excluded,
 //   or a shared "cm:why" would look like a contract between two callers that share nothing (ISS-12)
-const RESERVED = /^cm:(edge|guard|flow|hack|why|ignore)/;
+const RESERVED = new RegExp(`^cm:(?:${TAGS.join('|')})|${CM_IGNORE_RE.source}`);
 
 /**
  * Confidence 3 — a string literal that appears in exactly two files, in two different languages

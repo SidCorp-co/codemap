@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { proseCandidates, lockstepCandidates, contractCandidates } from '../cli/lib/propose.mjs';
 import { stripGitEnv } from './git-env.mjs';
+import { TAGS } from '../cli/lib/parse.mjs';
 
 function git(root, ...args) {
   execFileSync('git', ['-C', root, ...args], {
@@ -90,11 +91,24 @@ function pureCases(check) {
     check('propose: contract ignores a plain word with no separator (no coincidental "hello")',
       !noSep.some((c) => c.literal === 'hello'), `"hello" should not qualify: ${JSON.stringify(noSep)}`);
 
-    writeFileSync(join(root, 'tag.ts'), '// cm:why this mirrors emit.go\nexport const x = 1;\n');
-    writeFileSync(join(root, 'tag.go'), 'const y = "cm:why"\n');
-    const reserved = contractCandidates(root, ['tag.ts', 'tag.go']);
-    check('propose: contract excludes this tool\'s own reserved tag vocabulary',
-      reserved.length === 0, `cm:why should be excluded, got ${JSON.stringify(reserved)}`);
+    // cm:guard the literal must sit in CODE on BOTH sides or this proves nothing — a cm: token in a
+    //   comment is cut by codeOnly, leaving one file, which "exactly two files" already fails (ISS-50)
+    const vocabulary = [...TAGS.map((t) => `cm:${t}`), 'cm:ignore'];
+    const notExcluded = vocabulary.filter((lit) => {
+      writeFileSync(join(root, 'tag.ts'), `export const t = "${lit}";\n`);
+      writeFileSync(join(root, 'tag.go'), `const t = "${lit}"\n`);
+      return contractCandidates(root, ['tag.ts', 'tag.go']).length !== 0;
+    });
+    check('propose: contract excludes every tag in TAGS, plus cm:ignore (ISS-50)',
+      notExcluded.length === 0,
+      `derived from TAGS + CM_IGNORE_RE, so a new tag is covered on arrival; proposed anyway: ${JSON.stringify(notExcluded)}`);
+
+    writeFileSync(join(root, 'tag.ts'), 'export const t = "ERR_TOKEN_SPENT";\n');
+    writeFileSync(join(root, 'tag.go'), 'const t = "ERR_TOKEN_SPENT"\n');
+    const control = contractCandidates(root, ['tag.ts', 'tag.go']);
+    check('propose: the vocabulary exclusion does not swallow an ordinary shared token (ISS-50)',
+      control.length === 1 && control[0].literal === 'ERR_TOKEN_SPENT',
+      `the control must still be proposed, or the case above passes by excluding everything: ${JSON.stringify(control)}`);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
