@@ -153,7 +153,12 @@ const LITERAL_RE = /"([^"\n]{4,80})"|'([^'\n]{4,80})'|`([^`\n]{4,80})`/g;
 //   or a shared "cm:why" would look like a contract between two callers that share nothing (ISS-12)
 // cm:guard the two arms differ on the word boundary and both halves are deliberate — the TAGS arm
 //   is unbounded so cm:whyever stays excluded as before, CM_IGNORE_RE's \b means cm:ignored is not
-export const RESERVED = new RegExp(`^cm:(?:${TAGS.join('|')})|${CM_IGNORE_RE.source}`);
+// cm:why parameterised for its one caller so a test can exercise a tag that is not in TAGS yet —
+//   no assertion over the built constant can tell a derived list from an identical hand-written one
+export function makeReserved(tags, ignoreRe) {
+  return new RegExp(`^cm:(?:${tags.join('|')})|${ignoreRe.source}`);
+}
+export const RESERVED = makeReserved(TAGS, CM_IGNORE_RE);
 
 /**
  * Confidence 3 — a string literal that appears in exactly two files, in two different languages

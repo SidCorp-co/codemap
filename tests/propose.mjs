@@ -9,7 +9,7 @@ import {
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { proseCandidates, lockstepCandidates, contractCandidates, RESERVED } from '../cli/lib/propose.mjs';
+import { proseCandidates, lockstepCandidates, contractCandidates, RESERVED, makeReserved } from '../cli/lib/propose.mjs';
 import { stripGitEnv } from './git-env.mjs';
 import { TAGS, CM_IGNORE_RE } from '../cli/lib/parse.mjs';
 
@@ -103,11 +103,15 @@ function pureCases(check) {
       notExcluded.length === 0,
       `derived from TAGS + CM_IGNORE_RE, so a new tag is covered on arrival; proposed anyway: ${JSON.stringify(notExcluded)}`);
 
-    // cm:guard the case below pins the BEHAVIOUR, which the restated list also satisfies — this pins
-    //   the DERIVATION, and is the only check that fails if someone spells the vocabulary again (ISS-50)
-    check('propose: RESERVED is derived from TAGS and CM_IGNORE_RE, not restated (ISS-50)',
-      RESERVED.source.includes(TAGS.join('|')) && RESERVED.source.includes(CM_IGNORE_RE.source),
-      `RESERVED.source is ${RESERVED.source}, which does not contain TAGS.join('|') and CM_IGNORE_RE.source`);
+    // cm:guard the oracle above pins BEHAVIOUR over the five tags that exist, which a hand-restated
+    //   list satisfies too — this is the only case that reaches a tag TAGS does not carry yet (ISS-50)
+    const future = makeReserved([...TAGS, 'owner'], CM_IGNORE_RE);
+    check('propose: a tag added to TAGS is excluded on arrival, with no second edit (ISS-50)',
+      future.test('cm:owner') && TAGS.every((t) => future.test(`cm:${t}`)) && future.test('cm:ignore'),
+      `${future.source} must exclude a new tag and keep the old set and cm:ignore`);
+    check('propose: the shipped RESERVED is what the factory builds from TAGS and CM_IGNORE_RE (ISS-50)',
+      RESERVED.source === makeReserved(TAGS, CM_IGNORE_RE).source,
+      `RESERVED.source is ${RESERVED.source}, the factory builds ${makeReserved(TAGS, CM_IGNORE_RE).source}`);
 
     writeFileSync(join(root, 'tag.ts'), 'export const t = "ERR_TOKEN_SPENT";\n');
     writeFileSync(join(root, 'tag.go'), 'const t = "ERR_TOKEN_SPENT"\n');
