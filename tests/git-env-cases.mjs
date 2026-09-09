@@ -121,11 +121,22 @@ function sameSet(a, b) {
 //   line number, which sends the reader to a call that is not the offender (ISS-39)
 const REGEX_MAY_START = /[(,=:[!&|?{};+\-*%^~<>]/;
 
-// cm:why a `/` after one of these is ALWAYS a regex, never division, so they are safe to add —
-//   unlike `)` or `]`, where adding them would eat a real division as a regex (ISS-39)
+// cm:why a `/` after one of these is ALWAYS a regex, never division, so they are safe to read as
+//   one — unlike `)` or `]`, where doing so would eat a real division instead (ISS-39)
+const REGEX_KEYWORDS = new Set(['return', 'typeof', 'case', 'in', 'of', 'instanceof', 'new',
+  'delete', 'void', 'do', 'else', 'yield', 'await']);
+
+// cm:guard the whole preceding word is read, never a fixed lookback window: a window that begins
+//   INSIDE an identifier matched `xin` as `in`, the same defect as `obj.in` one door along (ISS-39)
 // cm:guard a preceding `.` excludes it: `obj.in / 2` is a property divided, not a keyword, and
 //   reading it as a regex start consumes live code to the next slash (ISS-39)
-const REGEX_AFTER_WORD = /(?:^|[^\w$.])(?:return|typeof|case|in|of|instanceof|new|delete|void|do|else|yield|await)$/;
+function regexFollowsKeyword(src, at) {
+  let j = at - 1;
+  while (j >= 0 && /\s/.test(src[j])) j -= 1;
+  const end = j;
+  while (j >= 0 && /[\w$]/.test(src[j])) j -= 1;
+  return REGEX_KEYWORDS.has(src.slice(j + 1, end + 1)) && src[j] !== '.';
+}
 
 function blankComments(src) {
   const out = src.split('');
@@ -147,12 +158,13 @@ function blankComments(src) {
       while (i < src.length && src[i] !== c) {
         // cm:guard a quote scan that reaches a newline is a MIS-PARSE, not a string: it means the
         //   scanner desynchronised earlier, and running on blanks live code below it (ISS-39)
+        // cm:why it contains a desync to the line that caused it — that line is still forfeit, so
+        //   this is not a claim that no call can be blanked, only that none below it is (ISS-39)
         if (c !== '`' && src[i] === '\n') { i = open; break; }
         i += src[i] === '\\' ? 2 : 1;
       }
       if (i === open) { lastCode = c; i += 1; } else i += 1;
-    } else if (c === '/' && (REGEX_MAY_START.test(lastCode)
-      || REGEX_AFTER_WORD.test(src.slice(Math.max(0, i - 12), i).trimEnd()))) {
+    } else if (c === '/' && (REGEX_MAY_START.test(lastCode) || regexFollowsKeyword(src, i))) {
       i += 1;
       let klass = false;
       while (i < src.length && (klass || src[i] !== '/')) {
@@ -227,6 +239,11 @@ function sourceCases(check) {
   check('git-env source: a property named for a keyword is not read as a regex start',
     seen(blankComments(`const x = obj.in / 2; // ${CALL}`)) === 0,
     'obj.in was read as the keyword `in`, so the division opened a regex');
+  // cm:guard the spacing is deliberate: a fixed 12-character lookback window began inside `xin`
+  //   and matched it as the keyword `in`, which only a wide gap exposes (ISS-39)
+  check('git-env source: an identifier ENDING in a keyword is not read as a regex start',
+    seen(blankComments(`const a = xin          / b; // ${CALL}`)) === 0,
+    'xin was read as the keyword `in`, so the division opened a regex');
   check('git-env source: a regex after a keyword hides no call below it',
     seen(blankComments([`return /it's/.test(x);`, `const u = 'https://x'; ${CALL}`].join('\n'))) === 1,
     'a regex following a keyword desynchronised the scan and blanked the call below it');
