@@ -10,13 +10,14 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { profileFor, PROFILES, ecosystemOf, advisoryEcosystemOf } from '../cli/lib/languages.mjs';
 import { walk, changedStaged, DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
+import { stripGitEnv } from './git-env.mjs';
 
 const GUARD_TEXT = 'the build stage and the runtime stage must install the same lockfile';
 
 function git(root, ...args) {
   execFileSync('git', ['-C', root, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
+    env: { ...stripGitEnv(process.env), GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
       GIT_COMMITTER_NAME: 'cm', GIT_COMMITTER_EMAIL: 'cm@test' },
   });
 }
@@ -36,7 +37,7 @@ function makeRepo() {
 
 function cm(pluginRoot, root, ...args) {
   const res = spawnSync(process.execPath, [join(pluginRoot, 'cli', 'cm.mjs'), ...args], {
-    cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
+    cwd: root, encoding: 'utf8', env: { ...stripGitEnv(process.env), NO_COLOR: '1' },
   });
   return { ...res, out: `${res.stdout}${res.stderr}` };
 }
@@ -197,7 +198,8 @@ export function profileCases(pluginRoot, check) {
     //   scope reports 0 files and exit 0, which passed before the fix too (ISS-25)
     writeFileSync(join(root, 'Dockerfile'),
       `# syntax=docker/dockerfile:1\n# cm:guard ${GUARD_TEXT}\n# cm:guard the runtime stage installs no build toolchain\nFROM node:22\n`);
-    execFileSync('git', ['-C', root, 'add', 'Dockerfile'], { encoding: 'utf8' });
+    execFileSync('git', ['-C', root, 'add', 'Dockerfile'],
+      { encoding: 'utf8', env: stripGitEnv(process.env) });
 
     check('profiles: changedStaged() reaches a staged Dockerfile',
       changedStaged(root).includes('Dockerfile'),

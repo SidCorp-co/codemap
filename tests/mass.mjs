@@ -12,6 +12,7 @@ import { buildGraph, advisoryDiags } from '../cli/lib/graph.mjs';
 import { DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
 import { baselineKey, CM_IGNORE_RE } from '../cli/lib/parse.mjs';
 import { narrativeOf, retells, fileMass, massOf, narrativeMass, NARRATIVE_MIN } from '../cli/lib/mass.mjs';
+import { stripGitEnv } from './git-env.mjs';
 
 const STORY = 'the pool and the registry must stay in step (ISS-9). It was one lock per caller until'
   + ' 2026-08-30, which let a second writer take the row out from under a live reader, and the six'
@@ -469,11 +470,11 @@ function cliCases(pluginRoot, check, roots) {
   writeFileSync(join(root, 'clean.ts'), `// cm:guard ${RULE}\nexport const b = 2;\n`);
   writeFileSync(join(root, 'ignored.ts'),
     `// cm:ignore CM303 — the past tense IS the invariant here\n// cm:guard ${STORY}\nexport const c = 3;\n`);
-  execFileSync('git', ['-C', root, 'init', '-q']);
+  execFileSync('git', ['-C', root, 'init', '-q'], { env: stripGitEnv(process.env) });
 
   const cm = (...args) => {
     const r = spawnSync(process.execPath, [join(pluginRoot, 'cli', 'cm.mjs'), ...args], {
-      cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
+      cwd: root, encoding: 'utf8', env: { ...stripGitEnv(process.env), NO_COLOR: '1' },
     });
     return { ...r, out: `${r.stdout}${r.stderr}` };
   };

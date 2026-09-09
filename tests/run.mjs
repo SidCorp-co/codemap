@@ -21,8 +21,20 @@ import { prCommentCases } from './prcomment.mjs';
 import { proposeCases } from './propose.mjs';
 import { massCases } from './mass.mjs';
 import { profileCases } from './profiles.mjs';
+import { gitEnvCases } from './git-env-cases.mjs';
+import { stripGitEnv } from './git-env.mjs';
 import { pushCases, pushSourceCases } from './push.mjs';
 import { pushAll } from '../cli/lib/push.mjs';
+
+// cm:guard the corpus neutralises its OWN environment, not merely each child's: tiers call cli/lib
+//   in process (changedStaged, lockstepCandidates, archmap) and those git calls take no env (ISS-39)
+// cm:edge protocol -> tests/git-env.mjs — this REPLACES the run's git environment and must stay
+//   ahead of the first tier, so a variable read before it is read from the hook (ISS-39)
+{
+  const scrubbed = stripGitEnv(process.env);
+  for (const key of Object.keys(process.env)) if (!(key in scrubbed)) delete process.env[key];
+  Object.assign(process.env, scrubbed);
+}
 
 const PLUGIN_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -189,7 +201,7 @@ for (const t of pushCases) {
 
 // cm:guard a suite that THROWS is a failing suite, never a dead run — installCases taking the
 //   process down lost every suite after it, with no count line to say so had happened (ISS-45)
-for (const suite of [pushSourceCases, wiringCases, profileCases, cliCases, installCases, helpCases, metricsCases, releaseTagCases, upgradeWorkflowCases, notifyConsumersCases, mcpCases, prCommentCases, proposeCases, massCases]) {
+for (const suite of [pushSourceCases, gitEnvCases, wiringCases, profileCases, cliCases, installCases, helpCases, metricsCases, releaseTagCases, upgradeWorkflowCases, notifyConsumersCases, mcpCases, prCommentCases, proposeCases, massCases]) {
   try {
     suite(PLUGIN_ROOT, check);
   } catch (err) {

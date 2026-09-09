@@ -11,10 +11,11 @@ import { tmpdir } from 'node:os';
 import { CODE_TABLE, TAGS, EDGE_KINDS } from '../cli/lib/parse.mjs';
 import { PROFILES } from '../cli/lib/languages.mjs';
 import { HELP_TOPICS, VERBS, renderHelp } from '../cli/lib/help.mjs';
+import { stripGitEnv } from './git-env.mjs';
 
 function run(cmd, cwd, ...args) {
   const res = spawnSync(process.execPath, [cmd, ...args], {
-    cwd, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
+    cwd, encoding: 'utf8', env: { ...stripGitEnv(process.env), NO_COLOR: '1' },
   });
   return { ...res, out: `${res.stdout}${res.stderr}` };
 }
@@ -94,7 +95,7 @@ export function helpCases(pluginRoot, check) {
     // cm:why the whole reason it lives in the CLI: it has to work where the plugin does not exist
     const repo = mkdtempSync(join(tmpdir(), 'cm-help-repo-'));
     roots.push(repo);
-    execFileSync('git', ['-C', repo, 'init', '-q']);
+    execFileSync('git', ['-C', repo, 'init', '-q'], { env: stripGitEnv(process.env) });
     writeFileSync(join(repo, 'a.ts'), 'export const a = 1;\n');
     run(cm, repo, 'install');
     const vendored = join(repo, '.forge', 'codemap', 'cm.mjs');

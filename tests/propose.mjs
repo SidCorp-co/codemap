@@ -10,18 +10,19 @@ import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { proseCandidates, lockstepCandidates, contractCandidates } from '../cli/lib/propose.mjs';
+import { stripGitEnv } from './git-env.mjs';
 
 function git(root, ...args) {
   execFileSync('git', ['-C', root, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
+    env: { ...stripGitEnv(process.env), GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
       GIT_COMMITTER_NAME: 'cm', GIT_COMMITTER_EMAIL: 'cm@test' },
   });
 }
 
 function cm(pluginRoot, root, ...args) {
   const res = spawnSync(process.execPath, [join(pluginRoot, 'cli', 'cm.mjs'), ...args], {
-    cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
+    cwd: root, encoding: 'utf8', env: { ...stripGitEnv(process.env), NO_COLOR: '1' },
   });
   return { ...res, out: `${res.stdout}${res.stderr}` };
 }

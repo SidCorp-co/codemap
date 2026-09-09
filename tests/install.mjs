@@ -12,11 +12,12 @@ import { tmpdir } from 'node:os';
 import { isGenerated, profileFor, GENERATED_HEAD_LINES } from '../cli/lib/languages.mjs';
 import { walk, DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
 import { scanComments } from '../cli/lib/scan.mjs';
+import { stripGitEnv } from './git-env.mjs';
 
 function git(root, ...args) {
   execFileSync('git', ['-C', root, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
+    env: { ...stripGitEnv(process.env), GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
       GIT_COMMITTER_NAME: 'cm', GIT_COMMITTER_EMAIL: 'cm@test' },
   });
 }
@@ -32,7 +33,7 @@ function makeRepo() {
 
 function run(cmd, root, ...args) {
   const res = spawnSync(process.execPath, [cmd, ...args], {
-    cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
+    cwd: root, encoding: 'utf8', env: { ...stripGitEnv(process.env), NO_COLOR: '1' },
   });
   return { ...res, out: `${res.stdout}${res.stderr}` };
 }
@@ -44,7 +45,7 @@ function hookCommand(pluginRoot, name) {
 function runHook(pluginRoot, name, { root, file }) {
   const res = spawnSync(process.execPath, [hookCommand(pluginRoot, name)], {
     input: JSON.stringify({ cwd: root, tool_name: 'Edit', tool_input: { file_path: file } }),
-    encoding: 'utf8',
+    encoding: 'utf8', env: stripGitEnv(process.env),
   });
   let json = null;
   try { json = JSON.parse(res.stdout); } catch { json = null; }
@@ -80,7 +81,8 @@ export function installCases(pluginRoot, check) {
     //   name a marker in its own head, and the next one skips itself just as silently (ISS-29)
     // cm:guard scoped to the TRACKED set, never the working tree — an untracked scratch file with a
     //   marker head would otherwise fail this on something the repository does not own (ISS-29)
-    const tracked = new Set(execFileSync('git', ['-C', pluginRoot, 'ls-files'], { encoding: 'utf8' })
+    const tracked = new Set(execFileSync('git', ['-C', pluginRoot, 'ls-files'],
+      { encoding: 'utf8', env: stripGitEnv(process.env) })
       .split('\n').filter(Boolean));
     const skipped = walk(pluginRoot, DEFAULT_REGISTRY).filter((rel) => tracked.has(rel)).filter((rel) => {
       const p = profileFor(rel);
@@ -188,7 +190,7 @@ export function installCases(pluginRoot, check) {
   //   the checker it sets up is the exact artifact class this project keeps finding rotted elsewhere
   {
     const gen = spawnSync(process.execPath, [join(pluginRoot, 'cli', 'cm.mjs'), 'onboard', '--prompt'],
-      { encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } }).stdout;
+      { encoding: 'utf8', env: { ...stripGitEnv(process.env), NO_COLOR: '1' } }).stdout;
     const onDisk = readFileSync(join(pluginRoot, 'adapters', 'ci', 'prompt.md'), 'utf8');
     check('install: adapters/ci/prompt.md matches `cm onboard --prompt`', gen === onDisk,
       'regenerate it: node cli/cm.mjs onboard --prompt > adapters/ci/prompt.md');
@@ -198,7 +200,8 @@ export function installCases(pluginRoot, check) {
   //   on it is gated only on the machines that ran a setup command, which is what does not scale
   {
     const root = mkdtempSync(join(tmpdir(), 'cm-hooks-'));
-    spawnSync(process.execPath, [join(pluginRoot, 'cli', 'cm.mjs'), 'install'], { cwd: root, encoding: 'utf8' });
+    spawnSync(process.execPath, [join(pluginRoot, 'cli', 'cm.mjs'), 'install'],
+      { cwd: root, encoding: 'utf8', env: stripGitEnv(process.env) });
     const hook = join(root, '.forge', 'codemap', 'hooks', 'pre-commit');
     check('install: writes a committed pre-commit hook, executable', existsSync(hook)
       && (statSync(hook).mode & 0o111) !== 0 && /verify --staged/.test(readFileSync(hook, 'utf8')),
@@ -216,7 +219,7 @@ export function installCases(pluginRoot, check) {
       writeFileSync(join(root, name), body);
       git(root, 'add', name);
       const res = spawnSync('sh', [join(root, '.git', 'hooks', 'pre-commit')], {
-        cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
+        cwd: root, encoding: 'utf8', env: { ...stripGitEnv(process.env), NO_COLOR: '1' },
       });
       const out = `${res.stdout}${res.stderr}`;
       git(root, 'rm', '-q', '--cached', name);
@@ -258,7 +261,7 @@ export function installCases(pluginRoot, check) {
       '/* never closed\nexport const a = 1;\n// cm:why a why nothing will read\n');
     git(root, 'add', 'iss35-team.ts');
     const teamHook = spawnSync('sh', [join(root, '.forge', 'codemap', 'hooks', 'pre-commit')], {
-      cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
+      cwd: root, encoding: 'utf8', env: { ...stripGitEnv(process.env), NO_COLOR: '1' },
     });
     const teamOut = `${teamHook.stdout}${teamHook.stderr}`;
     check('install: the committed hook reports CM203 too, not just the per-clone one',
