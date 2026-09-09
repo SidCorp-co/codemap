@@ -1,6 +1,7 @@
 // codemap/1 — candidate discovery for `cm propose` (ISS-12).
 //
-// Every function here answers "where might a coupling be hiding", never "what is the coupling". A
+// Every function here answers "where might a coupling be hiding", never "what is the coupling" —
+// makeReserved excepted, which builds no candidate but the list they are filtered against. A
 // candidate carries its evidence and nothing else: no kind is asserted unless the source itself
 // defines the kind (lockstep, contract), no `— why` text is ever written (patterns/finding-candidates.md
 // §4: history can propose the pair, but the reason it is bound is what a human's annotation carries),

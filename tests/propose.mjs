@@ -103,7 +103,7 @@ function pureCases(check) {
       notExcluded.length === 0,
       `derived from TAGS + CM_IGNORE_RE, so a new tag is covered on arrival; proposed anyway: ${JSON.stringify(notExcluded)}`);
 
-    // cm:guard the oracle above pins BEHAVIOUR over the five tags that exist, which a hand-restated
+    // cm:guard the oracle above pins BEHAVIOUR over the tags that exist, which a hand-restated
     //   list satisfies too — this is the only case that reaches a tag TAGS does not carry yet (ISS-50)
     const future = makeReserved([...TAGS, 'owner'], CM_IGNORE_RE);
     check('propose: a tag added to TAGS is excluded on arrival, with no second edit (ISS-50)',
