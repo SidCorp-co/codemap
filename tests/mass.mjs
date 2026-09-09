@@ -695,6 +695,52 @@ function channelCases(check) {
     `ranked: ${rolled.byNarrative.map((r) => r.relPath).join(', ')}`);
 }
 
+// cm:guard fileMass takes its source from the ANALYSIS, never from a parameter beside it — the mass
+//   path read every path twice, and a file changing between the reads billed frozen 0 in silence (ISS-56)
+function singleReadCases(check) {
+  const analyzed = [
+    'export const a = 1;',
+    '',
+    '// plain narration somebody froze',
+    'export const b = 2;',
+  ].join('\n');
+  const decoy = [
+    'export const a = 1;',
+    '',
+    '// a decoy narration nobody froze, of quite another length than the one analyzed',
+    'export const b = 2;',
+  ].join('\n');
+  const frozen = new Set([baselineKey('plain narration somebody froze')]);
+  const res = analyzeFile({ relPath: 'read.ts', src: analyzed, reg: DEFAULT_REGISTRY, frozen });
+
+  check('mass: the analysis carries the source it was taken from',
+    res.src === analyzed,
+    `res.src is ${res.src === undefined ? 'absent' : JSON.stringify(res.src).slice(0, 40)} — without it `
+    + 'fileMass has no source but the one a caller hands it, which is the second read this closed');
+
+  const m = fileMass({ relPath: 'read.ts', res, frozen });
+  check('mass: the frozen comment of the analyzed source is billed to frozen',
+    m.frozen === 30 && m.live === 0,
+    `frozen=${m.frozen} live=${m.live}, expected the 30 chars of the analyzed comment`);
+
+  // cm:guard the PREMISE: the decoy must bill DIFFERENT figures, or the case below passes on two
+  //   sources that agree and pins nothing at all (ISS-48's constant-right-for-the-wrong-fixture trap)
+  const decoyRes = analyzeFile({ relPath: 'read.ts', src: decoy, reg: DEFAULT_REGISTRY, frozen });
+  const dm = fileMass({ relPath: 'read.ts', res: decoyRes, frozen });
+  check('mass: the decoy source bills figures of its own, so the case below can tell which was read',
+    dm.frozen !== m.frozen && dm.live !== m.live,
+    `decoy frozen=${dm.frozen} live=${dm.live} vs analyzed frozen=${m.frozen} live=${m.live} — the two `
+    + 'sources must disagree for the decoy to be a decoy');
+
+  // cm:guard this is the pin: a source handed in beside the analysis is IGNORED. A fileMass that reads
+  //   one — the shape before ISS-56 — bills the decoy here and fails this case by name
+  const withDecoy = fileMass({ relPath: 'read.ts', src: decoy, res, frozen });
+  check('mass: a source handed in beside the analysis cannot change what fileMass bills',
+    withDecoy.frozen === m.frozen && withDecoy.live === m.live && withDecoy.doc === m.doc,
+    `with a decoy src: frozen=${withDecoy.frozen} live=${withDecoy.live} doc=${withDecoy.doc}, expected `
+    + `frozen=${m.frozen} live=${m.live} doc=${m.doc} — the analysis's own source decides every channel`);
+}
+
 function cliCases(pluginRoot, check, roots) {
   const root = mkdtempSync(join(tmpdir(), 'cm-mass-'));
   roots.push(root);
@@ -765,6 +811,7 @@ export function massCases(pluginRoot, check) {
     agreementCases(check);
     conservationCases(check);
     channelCases(check);
+    singleReadCases(check);
     cliCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });

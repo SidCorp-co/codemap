@@ -223,6 +223,9 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     // cm:edge contract -> cli/lib/mass.mjs — prose an author silenced is still prose, and only this
     //   function knows WHICH comment it silenced; a profile constant there invented the verdict (ISS-51)
     silencedProse,
+    // cm:edge contract -> cli/lib/mass.mjs — §11 bills channels off THIS source, so the analysis
+    //   carries it: a second read at the call site let a mid-run edit zero the frozen channel (ISS-56)
+    src,
     skipped: null,
   };
 }

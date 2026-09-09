@@ -94,13 +94,16 @@ export function narrativeMass(perFile) {
 /**
  * One file's comment characters, by channel.
  *
- * @param res the analysis of THIS source, so the two classifications a reader cannot make from the
- *   text alone — which line is an annotation's wrap, and which comment is prose — are analyze.mjs's
- *   verdict rather than a second implementation of it.
+ * @param res the analysis, carrying the source it was taken from, so the two classifications a
+ *   reader cannot make from the text alone — which line is an annotation's wrap, and which comment
+ *   is prose — are analyze.mjs's verdict rather than a second implementation of it.
  */
 // cm:edge contract -> cli/lib/analyze.mjs — this reads `skipped`, `annotations`, `diags`, `ignores`,
-//   `header` and `silencedProse` off it; deriving any of them from the source again would drift from it
-export function fileMass({ relPath, src, res, frozen }) {
+//   `header`, `silencedProse` and `src` off it; deriving any of them from the source again would drift from it
+// cm:guard the source comes from `res`, never from a parameter beside it — the channels match each
+//   diagnostic to a comment by TEXT, so two reads of one path billed a mid-run edit frozen 0 (ISS-56)
+export function fileMass({ relPath, res, frozen }) {
+  const src = res?.src;
   const prof = profileFor(relPath);
   const out = { relPath, annotation: 0, frozen: 0, live: 0, doc: 0, header: 0, narrative: 0, annotations: 0, retelling: 0 };
   if (!prof || res?.skipped) return out;
