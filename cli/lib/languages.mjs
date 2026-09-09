@@ -81,7 +81,7 @@ const SH_EXEMPT = [/^!/, /^shellcheck\b/];
 const DOCKER_EXEMPT = [/^syntax=/, /^escape=/, /^check=/];
 
 /** How far into a file a generated-marker comment is still the file's own header. */
-const GENERATED_HEAD_LINES = 40;
+export const GENERATED_HEAD_LINES = 40;
 
 /** A file whose head carries one of these is skipped entirely. */
 export const GENERATED_MARKERS = [
