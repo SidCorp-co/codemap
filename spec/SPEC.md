@@ -246,13 +246,22 @@ in a YAML scalar. The scheme vocabulary is closed (principle 3): an unlisted sch
 URL and drops the annotation with no diagnostic — and a missed annotation is the one failure this
 scanner does not permit itself.
 
+A **block comment that is never closed** swallows the rest of the file, so no annotation below its opener
+is read. That is reported once, at the opener, as `CM203`; the text below it stays unread, because
+re-reading it as code would bill every line of it as prose, which is a worse failure than the one being
+fixed. The annotations return when the block is closed. Reporting is what keeps this inside the promise
+above: the loss is loud, not silent.
+
 ## §7 Diagnostics
 
 Tier decides where it runs: **grammar** in `PostToolUse` (blocking), **referential** and
-**structural** in CI, **advisory** only when asked for (§7.1). Only the grammar tier may block an edit:
-the others are judged against the whole graph, and a scoped run cannot tell "broken" from "the other end
-is out of scope". For the same reason the graph is always built from the whole tree even when reporting
-is scoped — a one-file graph made a legal two-step flow report `CM103`/`CM201` against itself.
+**structural** in CI, **advisory** only when asked for (§7.1). A tier says which run reports a code and
+whether it can block, never where the code is computed. Only the grammar tier may block an edit: the
+others are in general judged against the whole graph, and a scoped run cannot tell "broken" from "the
+other end is out of scope". For the same reason the graph is always built from the whole tree even when
+reporting is scoped — a one-file graph made a legal two-step flow report `CM103`/`CM201` against itself.
+`CM203` is the exception that shows the two questions are separate: it is structural, raised per file,
+and correct on a scoped run, and it still does not block; a new rule enters at warn (NORTH-STAR §7).
 
 | Code | Tier | Meaning |
 |---|---|---|
@@ -280,6 +289,7 @@ is scoped — a one-file graph made a legal two-step flow report `CM103`/`CM201`
 | `CM301` | advisory | a `contract`/`lockstep` edge with a `#symbol` where NEITHER file names the other — the coupling may be intention rather than code (§7.1) |
 | `CM201` | structural | flow has a single step — either it is not a flow, or steps are missing |
 | `CM202` | structural | `after:` chain is cyclic or the flow has several roots |
+| `CM203` | structural | a block comment is never closed, so no annotation below its opener is read (§6) |
 | `CM104` | reserved | stale `cm:hack` (issue closed) — requires the Forge integration, tier 3 |
 
 ### §7.1 The advisory tier

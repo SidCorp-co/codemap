@@ -444,7 +444,7 @@ switch (cmd) {
     }
 
     // cm:edge contract -> cli/lib/drain.mjs — CM013 rides the grammar tier from
-    //   here, so `--tier referential` wipes it below with the rest and no second tier test is needed
+    //   here, so the tier filter below drops it on any other --tier and no second tier test is needed
     diags.push(...drainDiags({
       root, reg, baseline, perFile,
       baseRef: drainBase({ since: flagValue('--since'), staged: flags.has('--staged') }),
@@ -464,7 +464,9 @@ switch (cmd) {
     const inRun = new Set(files);
     const scopeGraph = (list) => (scopedRun ? list.filter((d) => inRun.has(d.file)) : list);
 
-    if (tier !== 'all' && tier !== 'grammar') diags = [];
+    // cm:guard the per-file pass raises more than one tier since CM203, so a blanket wipe here left a
+    //   structural code reachable only under `all` and `grammar` — the two tiers it is not (ISS-31)
+    if (tier !== 'all') diags = diags.filter((d) => d.tier === tier);
     if (tier === 'all' || tier === 'referential') diags.push(...scopeGraph(referentialDiags(g, { root, reg })));
     if (tier === 'all' || tier === 'structural') diags.push(...scopeGraph(structuralDiags(g)));
     // cm:edge contract -> cli/lib/archmap.mjs#loadCachedImportGraph — a bare tier=all run (the hook's,

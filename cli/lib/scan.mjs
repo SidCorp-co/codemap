@@ -1,9 +1,11 @@
 // Comment scanner. Line-by-line state machine — enough to keep comment leaders inside string
 // literals from being mistaken for comments, without pretending to be a real lexer.
 //
-// Deliberate limitation: heredocs (PHP/shell) and Rust raw strings are not modelled. Both can only
-// produce a false-positive prose comment, which an author can silence with an ignore directive —
-// never a missed annotation.
+// Deliberate limitation: heredocs (PHP/shell) and Rust raw strings are not modelled. A comment leader
+// inside one reads as a leader, which costs a false-positive prose comment an author can silence with
+// an ignore directive. A BLOCK opener inside one is the exception that is not free: it swallows the
+// rest of the file, and the annotations below it are lost rather than merely mis-billed. That is why
+// the discard reports CM203 instead of passing quietly — the loss is loud, not prevented (ISS-31).
 
 function matchLongest(candidates, line, i) {
   let best = null;
@@ -52,12 +54,13 @@ function findUnescaped(line, delim, from) {
 }
 
 /**
- * @returns {{comments: Array, codeLines: Set<number>}}
+ * @returns {{comments: Array, codeLines: Set<number>, unterminated: ?{line: number, leader: string}}}
  *   comments: { kind: 'line'|'doc'|'block', line, endLine, leader, text, lines, firstOnLine }
  *             line comments also carry { indent, col } — `col` is the 0-based offset of the leader,
  *             which is what lets `cm fmt` rewrite an annotation positionally (see lib/rewrite.mjs)
  *   codeLines: 1-based line numbers that contain code outside comments (used by Go's
  *              required-on-exported policy to find the declaration a comment block documents)
+ *   unterminated: the opener of a block still open at EOF, when it was discarded rather than flushed
  */
 // cm:guard flushOpen exists for isGenerated alone, which hands in a truncated head and needs the
 //   block still open at the cut. Every other caller must leave it false — flushing an unterminated
@@ -174,6 +177,7 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
     }
   }
 
+  let unterminated = null;
   if (block && flushOpen) {
     comments.push({
       kind: block.isDoc ? 'doc' : 'block',
@@ -184,9 +188,13 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
       lines: block.lines,
       firstOnLine: block.firstOnLine,
     });
+  } else if (block) {
+    // cm:guard reported only on the discard path — a block still open at isGenerated's truncated head is
+    //   where the cut fell, not a defect, so flushOpen keeps its silence (ISS-31)
+    unterminated = { line: block.startLine, leader: block.open };
   }
 
-  return { comments, codeLines };
+  return { comments, codeLines, unterminated };
 }
 
 /** First code line at or after `from`, or null. */
