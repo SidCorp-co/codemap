@@ -218,6 +218,8 @@ const P = {
     multiline: [],
     docPolicy: 'allowed',
     enforce: false,
+    // cm:why annotations are parsed here but prose is not policed, and no CM301 measurement
+    //   covers this format — the same reason as sql's, stated where the flag is read
     advisoryTier: false,
     exempt: [...COMMON_EXEMPT, ...SH_EXEMPT],
   },
@@ -231,6 +233,8 @@ const P = {
     multiline: [],
     docPolicy: 'allowed',
     enforce: false,
+    // cm:why annotations are parsed here but prose is not policed, and no CM301 measurement
+    //   covers this format — the same reason as sql's, stated where the flag is read
     advisoryTier: false,
     exempt: COMMON_EXEMPT,
   },
@@ -247,6 +251,8 @@ const P = {
     multiline: [],
     docPolicy: 'allowed',
     enforce: false,
+    // cm:why annotations are parsed here but prose is not policed, and no CM301 measurement
+    //   covers this format — the same reason as sql's, stated where the flag is read
     advisoryTier: false,
     exempt: [...COMMON_EXEMPT, ...DOCKER_EXEMPT],
   },

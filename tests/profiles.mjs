@@ -159,9 +159,16 @@ export function profileCases(pluginRoot, check) {
   check('profiles: no profile opts out through enforce or a colliding key',
     Object.values(PROFILES).every((prof) => prof.advisory === undefined),
     'a profile uses `advisory`, which collides with the registry\'s enforce.advisory');
-  check('profiles: an enforce override cannot move a file in or out of the advisory tier',
-    advisoryEcosystemOf('a.go') === 'go' && PROFILES.go.enforce === undefined,
-    'enforce is per-repo overridable and means prose grammar; the advisory tier must not read it');
+  // cm:guard asserted on the SOURCE, because no profile sets the two independently: every profile
+  //   carrying `enforce: false` also carries `advisoryTier: false`, so restoring the enforce clause
+  //   is behaviourally invisible in today's table and passed the whole suite green (ISS-32)
+  const advisoryBody = /export function advisoryEcosystemOf[\s\S]*?\n}/.exec(
+    readFileSync(join(pluginRoot, 'cli', 'lib', 'languages.mjs'), 'utf8'))?.[0] ?? '';
+  check('profiles: the advisory tier does not read enforce',
+    advisoryBody !== '' && !/\benforce\b/.test(advisoryBody),
+    'enforce is the PROSE-grammar switch and is overridable per repo (enforcementFor reads '
+    + 'perLang.enforce first), while advisoryEcosystemOf takes a path and no registry — so reading '
+    + 'it silently ignores the override and conflates two unrelated settings');
 
   // cm:guard profileFor lowercases the extension and the deleted FAMILY did not, so .PY and .TS are
   //   newly in the tier — pinned because it is part of ISS-32's accounting, not an accident
