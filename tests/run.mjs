@@ -28,8 +28,10 @@ import { pushAll } from '../cli/lib/push.mjs';
 
 // cm:guard the corpus neutralises its OWN environment, not merely each child's: tiers call cli/lib
 //   in process (changedStaged, lockstepCandidates, archmap) and those git calls take no env (ISS-39)
-// cm:edge protocol -> tests/git-env.mjs — this REPLACES the run's git environment and must stay
-//   ahead of the first tier, so a variable read before it is read from the hook (ISS-39)
+// cm:guard ESM hoists every import above this, so it is NOT ahead of load-time reads — it holds only
+//   because no module here touches a GIT_ variable while evaluating; keep it that way (ISS-39)
+// cm:edge protocol -> tests/git-env.mjs — this REPLACES the run's git environment for the process,
+//   so a tier that wants the ambient one has to capture it before this block (ISS-39)
 {
   const scrubbed = stripGitEnv(process.env);
   for (const key of Object.keys(process.env)) if (!(key in scrubbed)) delete process.env[key];
