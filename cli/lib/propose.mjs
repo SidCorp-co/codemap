@@ -201,6 +201,8 @@ export function contractCandidates(root, files) {
     if (a.eco === b.eco) continue;
     out.push({ source: 'contract', literal: lit, files: [a, b] });
   }
-  out.sort((x, y) => x.files[0].localeCompare(y.files[0]) || x.literal.localeCompare(y.literal));
+  // cm:edge contract -> cli/cm.mjs — the printer reads .file and .line off each side, so order this
+  //   pair through .file; lockstepCandidates compares the element itself, its files being bare paths
+  out.sort((x, y) => x.files[0].file.localeCompare(y.files[0].file) || x.literal.localeCompare(y.literal));
   return out;
 }
