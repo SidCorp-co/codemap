@@ -384,13 +384,15 @@ export function leaderFor(filePath, prof = profileFor(filePath)) {
 //   ISS-32 measured at 5 lost extensions, and the caller must still SAY which leader it assumed (ISS-63)
 // cm:why ties break on the leader string, not on iteration order, because the file list arrives from a directory walk whose
 //   order is the filesystem's — an unstable tie would make the same repo print a different template run to run (ISS-63)
+// cm:guard compare the leaders by CODE POINT and never with localeCompare — collation reorders punctuation, so `#` against `//`
+//   came back in whichever order the walk supplied and the tie was not broken at all (ISS-63)
 export function dominantLeader(files) {
   const tally = new Map();
   for (const rel of files) {
     const leader = leaderFor(rel);
     if (leader) tally.set(leader, (tally.get(leader) ?? 0) + 1);
   }
-  const ranked = [...tally].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const ranked = [...tally].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   const profiled = ranked.reduce((n, [, count]) => n + count, 0);
   if (!ranked.length) return { leader: null, files: 0, profiled: 0 };
   return { leader: ranked[0][0], files: ranked[0][1], profiled };
