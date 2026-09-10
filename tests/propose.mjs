@@ -158,19 +158,19 @@ function pureCases(check) {
       !/\/\*|\*\/|<!--|-->/.test(delim) && delim.includes('const a = 1;'),
       `no delimiter may survive the mask: ${JSON.stringify(delim)}`);
 
-    // cm:guard the code literal on the opener's own line must be KEPT — masking the whole opener line
-    //   would pass the comment half of this case while losing a real candidate (ISS-59)
-    writeFileSync(join(root, 'unterm.ts'), 'const y = "KEEP.UNTERM";\n/* never closed\n"ERR_UNTERM.X" here\n');
+    // cm:guard the opener must SHARE its line with the code literal — on a line of its own, masking the
+    //   opener line whole loses nothing and this case cannot see the difference (ISS-59)
+    writeFileSync(join(root, 'unterm.ts'), 'const y = "KEEP.UNTERM"; /* never closed\n"ERR_UNTERM.X" here\n');
     writeFileSync(join(root, 'unterm.go'), 'const a = "KEEP.UNTERM"\nconst b = "ERR_UNTERM.X"\n');
     const unterm = contractCandidates(root, ['unterm.ts', 'unterm.go']);
     check('propose: an unterminated block masks to EOF and keeps the code on its opener line (ISS-59)',
       unterm.length === 1 && unterm[0].literal === 'KEEP.UNTERM',
       `exactly KEEP.UNTERM; the block swallows the file to EOF per lib/scan.mjs: ${JSON.stringify(unterm)}`);
 
-    // cm:guard the block MUST open at end of line and the literal sit left of that column — this is the
-    //   only shape where a start-line offset can leak onto the next line's mask (ISS-59)
-    writeFileSync(join(root, 'eol.ts'), 'const x = 1; /*\n"ERR_LEFT.EDGE" text\n*/\n');
-    writeFileSync(join(root, 'eol.go'), 'const c = "ERR_LEFT.EDGE"\n');
+    // cm:guard the literal must be SHORT and start at column 0 — the opener sits at column 13, and a
+    //   literal reaching past it is merely truncated, which matches nothing either way (ISS-59)
+    writeFileSync(join(root, 'eol.ts'), 'const x = 1; /*\n"ERR.X" text\n*/\n');
+    writeFileSync(join(root, 'eol.go'), 'const c = "ERR.X"\n');
     check('propose: a block opening at end of line masks the next line from its own column 0 (ISS-59)',
       contractCandidates(root, ['eol.ts', 'eol.go']).length === 0,
       `the opener's column belongs to its own line only: ${JSON.stringify(contractCandidates(root, ['eol.ts', 'eol.go']))}`);
