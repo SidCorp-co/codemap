@@ -62,10 +62,11 @@ control**, so the whole list is several minutes. That cost is why it is opt-in. 
 that gate by hand.
 
 The harness is two files on purpose. `tests/mutate-lib.mjs` is the pure half — the declared list,
-the parse, the classification, the git-environment scrub — and the corpus pins all of it through
-`tests/mutate-cases.mjs`. `tests/mutate.mjs` is the half that copies trees and spawns runs, and
-no other file under `tests/` may import it: that import is what would put a corpus run on the
-corpus's own import graph.
+the parse, the classification — and the corpus pins all of it through `tests/mutate-cases.mjs`. The
+git-environment scrub it hands every child is `tests/git-env.mjs`'s, shared with the corpus itself
+and pinned by `tests/git-env-cases.mjs`. `tests/mutate.mjs` is the half that copies trees and spawns
+runs, and no other file under `tests/` may import it: that import is what would put a corpus run on
+the corpus's own import graph.
 
 ## Releasing
 
