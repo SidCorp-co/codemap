@@ -695,6 +695,123 @@ function channelCases(check) {
     `ranked: ${rolled.byNarrative.map((r) => r.relPath).join(', ')}`);
 }
 
+// cm:guard fileMass takes its source from the ANALYSIS, never from a parameter beside it — the mass
+//   path read every path twice, and a file changing between the reads billed frozen 0 in silence (ISS-56)
+function singleReadCases(check) {
+  const analyzed = [
+    'export const a = 1;',
+    '',
+    '// plain narration somebody froze',
+    'export const b = 2;',
+  ].join('\n');
+  const decoy = [
+    'export const a = 1;',
+    '',
+    '// a decoy narration nobody froze, of quite another length than the one analyzed',
+    'export const b = 2;',
+  ].join('\n');
+  const frozen = new Set([baselineKey('plain narration somebody froze')]);
+  const res = analyzeFile({ relPath: 'read.ts', src: analyzed, reg: DEFAULT_REGISTRY, frozen });
+
+  check('mass: the analysis carries the source it was taken from',
+    res.src === analyzed,
+    `res.src is ${res.src === undefined ? 'absent' : JSON.stringify(res.src).slice(0, 40)} — without it `
+    + 'fileMass has no source but the one a caller hands it, which is the second read this closed');
+
+  const m = fileMass({ relPath: 'read.ts', res, frozen });
+  check('mass: the frozen comment of the analyzed source is billed to frozen',
+    m.frozen === 30 && m.live === 0,
+    `frozen=${m.frozen} live=${m.live}, expected the 30 chars of the analyzed comment`);
+
+  // cm:guard the PREMISE: the decoy must bill DIFFERENT figures, or the case below passes on two
+  //   sources that agree and pins nothing at all (ISS-48's constant-right-for-the-wrong-fixture trap)
+  const decoyRes = analyzeFile({ relPath: 'read.ts', src: decoy, reg: DEFAULT_REGISTRY, frozen });
+  const dm = fileMass({ relPath: 'read.ts', res: decoyRes, frozen });
+  check('mass: the decoy source bills figures of its own, so the case below can tell which was read',
+    dm.frozen !== m.frozen && dm.live !== m.live,
+    `decoy frozen=${dm.frozen} live=${dm.live} vs analyzed frozen=${m.frozen} live=${m.live} — the two `
+    + 'sources must disagree for the decoy to be a decoy');
+
+  // cm:guard this is the pin: a source handed in beside the analysis is IGNORED. A fileMass that reads
+  //   one — the shape before ISS-56 — bills the decoy here and fails this case by name
+  const withDecoy = fileMass({ relPath: 'read.ts', src: decoy, res, frozen });
+  check('mass: a source handed in beside the analysis cannot change what fileMass bills',
+    withDecoy.frozen === m.frozen && withDecoy.live === m.live && withDecoy.doc === m.doc,
+    `with a decoy src: frozen=${withDecoy.frozen} live=${withDecoy.live} doc=${withDecoy.doc}, expected `
+    + `frozen=${m.frozen} live=${m.live} doc=${m.doc} — the analysis's own source decides every channel`);
+}
+
+// cm:guard the annotation channel bills the comment the annotation was READ FROM, identified by its
+//   scan index — a text key billed a misplaced block whose text equalled the annotation's beside it (ISS-58)
+function annotationIdentityCases(check) {
+  const ann = 'cm:why callers must hold the run lock';
+  const pairSrc = [`/* ${ann} */ // ${ann}`, 'export function f() {}'].join('\n');
+  const pairRes = analyzeFile({ relPath: 'pair.ts', src: pairSrc, reg: DEFAULT_REGISTRY });
+  const pm = fileMass({ relPath: 'pair.ts', res: pairRes });
+
+  // cm:guard the PREMISE: the block must be a MISPLACED annotation — earning CM003 and absent from
+  //   res.annotations — or the fixture is two annotations and the split below is right for the wrong reason
+  check('mass: the block of the byte-identical pair is a misplaced annotation, not a second one',
+    pairRes.diags.some((d) => d.code === 'CM003') && (pairRes.annotations ?? []).length === 1,
+    `CM003=${pairRes.diags.some((d) => d.code === 'CM003')} annotations=${(pairRes.annotations ?? []).length}`
+    + ' — expected one annotation and a CM003 for the block, which §4.2 bills to live by its form');
+
+  check('mass: a block whose text is byte-identical to the annotation beside it is not billed as annotation',
+    pm.annotation === 37,
+    `annotation=${pm.annotation} live=${pm.live}, expected the 37 chars of the line comment alone — a `
+    + 'channel keyed on `line \0 text` cannot tell the two apart and billed both, 74 and live 0 (ISS-58)');
+  check('mass: the misplaced block of the byte-identical pair is billed to live by its form',
+    pm.live === 37,
+    `live=${pm.live} annotation=${pm.annotation}, expected the 37 chars of the block`);
+
+  // cm:guard the CONTROL: one word changed makes the texts differ, which the text key already got
+  //   right — so this arm must be unmoved by the fix, or the fix is billing on something else
+  const ctlSrc = [`/* cm:why callers must hold the RUN lock */ // ${ann}`, 'export function f() {}'].join('\n');
+  const cm2 = fileMass({ relPath: 'pair.ts', res: analyzeFile({ relPath: 'pair.ts', src: ctlSrc, reg: DEFAULT_REGISTRY }) });
+  check('mass: the one-word-changed control keeps the split the text key already reached',
+    cm2.annotation === 37 && cm2.live === 37,
+    `annotation=${cm2.annotation} live=${cm2.live}, expected 37 / 37 unchanged by ISS-58`);
+
+  // cm:guard the wrap is billed by its OWN index too — dropping that leaves the continuation line to
+  //   §4.2's form rule, which bills it live and takes 32 characters out of the annotation channel
+  const wrapSrc = [`// ${ann}`, '// and release it on every path out', 'export function f() {}'].join('\n');
+  const wrapRes = analyzeFile({ relPath: 'wrap.ts', src: wrapSrc, reg: DEFAULT_REGISTRY });
+  check('mass: an annotation\'s adopted wrap line is billed to the annotation channel',
+    wrapRes.annotations?.[0]?.wrap === 'and release it on every path out',
+    `wrap=${JSON.stringify(wrapRes.annotations?.[0]?.wrap)} — without an adopted wrap the case below `
+    + 'tests a bare annotation and says nothing about the wrap');
+  const wm = fileMass({ relPath: 'wrap.ts', res: wrapRes });
+  check('mass: the annotation channel holds the annotation and its wrap, and nothing reaches live',
+    wm.annotation === 69 && wm.live === 0,
+    `annotation=${wm.annotation} live=${wm.live}, expected 69 — the 37 of the annotation and the 32 of its wrap`);
+}
+
+// cm:guard CM011 carries a header's LENGTH as its text, not a comment's, so the prose map must skip
+//   it — a header whose own text collides with `header:<n>` otherwise pays for it twice (ISS-57)
+function headerCollisionCases(check) {
+  const lines = ['// header:22'];
+  for (let i = 2; i <= 22; i++) lines.push(`// orientation prose line ${i} of the module header here`);
+  lines.push('', 'export function f() {}');
+  const src = lines.join('\n');
+  // cm:guard built from DEFAULT_REGISTRY, never from this checkout's config — .forge/codemap.json here
+  //   sets `grammar: false`, under which CM011 is never raised and the case pins nothing
+  const res = analyzeFile({ relPath: 'collide.ts', src, reg: DEFAULT_REGISTRY });
+
+  // cm:guard the PREMISE: CM011 must actually be raised, carrying the text the comment on line 1
+  //   duplicates. A later headerMaxLines change would otherwise empty this case in silence (ISS-48)
+  const c11 = res.diags.filter((d) => d.code === 'CM011');
+  check('mass: the 22-line header really raises CM011, carrying the text line 1 collides with',
+    c11.length === 1 && c11[0].line === 1 && c11[0].text === 'header:22',
+    `CM011=${JSON.stringify(c11.map((d) => ({ line: d.line, text: d.text })))}, expected one at line 1 `
+    + 'carrying "header:22" — without the collision this fixture is an ordinary long header');
+
+  const m = fileMass({ relPath: 'collide.ts', res });
+  check('mass: a header comment whose text equals CM011\'s own is billed to the header, once',
+    m.header === 1072 && m.live === 0,
+    `header=${m.header} live=${m.live}, expected header=1072 live=0 — dropping the CM011 exclusion from `
+    + 'the prose map bills the 9 chars of "header:22" to live as well, at header=1063 live=9 (ISS-57)');
+}
+
 function cliCases(pluginRoot, check, roots) {
   const root = mkdtempSync(join(tmpdir(), 'cm-mass-'));
   roots.push(root);
@@ -765,6 +882,9 @@ export function massCases(pluginRoot, check) {
     agreementCases(check);
     conservationCases(check);
     channelCases(check);
+    singleReadCases(check);
+    annotationIdentityCases(check);
+    headerCollisionCases(check);
     cliCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });

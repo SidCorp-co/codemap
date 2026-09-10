@@ -785,9 +785,7 @@ switch (cmd) {
 
     const rows = [];
     for (const f of analyzeAll(reg, files, baseline)) {
-      let src;
-      try { src = readFileSync(join(root, f.relPath), 'utf8'); } catch { continue; }
-      rows.push(fileMass({ relPath: f.relPath, src, res: f, frozen: baseline[f.relPath] }));
+      rows.push(fileMass({ relPath: f.relPath, res: f, frozen: baseline[f.relPath] }));
     }
     const m = massOf(rows);
 

@@ -94,13 +94,16 @@ export function narrativeMass(perFile) {
 /**
  * One file's comment characters, by channel.
  *
- * @param res the analysis of THIS source, so the two classifications a reader cannot make from the
- *   text alone — which line is an annotation's wrap, and which comment is prose — are analyze.mjs's
- *   verdict rather than a second implementation of it.
+ * @param res the analysis, carrying the source it was taken from, so the two classifications a
+ *   reader cannot make from the text alone — which line is an annotation's wrap, and which comment
+ *   is prose — are analyze.mjs's verdict rather than a second implementation of it.
  */
 // cm:edge contract -> cli/lib/analyze.mjs — this reads `skipped`, `annotations`, `diags`, `ignores`,
-//   `header` and `silencedProse` off it; deriving any of them from the source again would drift from it
-export function fileMass({ relPath, src, res, frozen }) {
+//   `header`, `silencedProse` and `src` off it; deriving any of them from the source again would drift from it
+// cm:guard the source comes from `res`, never from a parameter beside it — the channels match each
+//   diagnostic to a comment by TEXT, so two reads of one path billed a mid-run edit frozen 0 (ISS-56)
+export function fileMass({ relPath, res, frozen }) {
+  const src = res?.src;
   const prof = profileFor(relPath);
   const out = { relPath, annotation: 0, frozen: 0, live: 0, doc: 0, header: 0, narrative: 0, annotations: 0, retelling: 0 };
   if (!prof || res?.skipped) return out;
@@ -113,17 +116,19 @@ export function fileMass({ relPath, src, res, frozen }) {
     if (story) { out.retelling++; out.narrative += story.chars; }
   }
 
-  // cm:guard the annotation channel is keyed on the COMMENT, never on its line — an annotation and a
-  //   prose comment share a line often, and the line billed that prose as annotation (ISS-51)
+  // cm:guard the annotation channel is keyed on the comment's SCAN INDEX — a line key billed a
+  //   neighbouring prose comment (ISS-51), a text key a block of identical text beside it (ISS-58)
+  // cm:edge contract -> cli/lib/analyze.mjs — `ci` and `wrapCi` are indices into the SAME scan this
+  //   function walks below, which holds because both take `res.src` and profileFor(relPath) (ISS-56)
   const annAt = new Set();
   for (const a of res.annotations ?? []) {
-    annAt.add(`${a.line}\u0000${a.raw}`);
-    if (a.wrap) annAt.add(`${a.line + 1}\u0000${a.wrap}`);
+    if (a.ci !== undefined) annAt.add(a.ci);
+    if (a.wrap && a.wrapCi !== undefined) annAt.add(a.wrapCi);
   }
   const proseAt = new Map();
   for (const d of res.diags ?? []) {
-    // cm:why CM011 measures a header's LENGTH and carries `header:<n>` rather than a comment, so the
-    //   header channel below bills those characters and this map must not bill them again
+    // cm:why CM011 carries a header's LENGTH as its text, not a comment's, so the header channel bills
+    //   it and this map must not again — dropping this moves 9 chars to live on collide.ts (ISS-57)
     if (!PROSE_CODES.has(d.code) || d.code === 'CM011') continue;
     const at = proseAt.get(d.line) ?? [];
     at.push(d);
@@ -149,12 +154,12 @@ export function fileMass({ relPath, src, res, frozen }) {
   const header = res.header;
   // cm:guard every comment carrying text is billed to exactly ONE channel, so the channels plus the
   //   directives below reconcile to the file's whole comment text — a channel is an attribution, never a filter
-  for (const c of scanComments(src, prof).comments) {
+  for (const [ci, c] of scanComments(src, prof).comments.entries()) {
     if (!c.text) continue;
     // cm:why an ignore directive is billed nowhere — it is the escape hatch a code's own fix line
     //   offers, and pricing it would charge an author for taking the way out the checker handed them
     if (CM_IGNORE_RE.test(c.text)) continue;
-    if (annAt.has(`${c.line}\u0000${c.text}`)) { out.annotation += c.text.length; continue; }
+    if (annAt.has(ci)) { out.annotation += c.text.length; continue; }
     const prose = takeProse(c);
     if (prose) {
       // cm:guard no fallback to `.message` here: `takeProse` only ever returns a diagnostic whose `text`
