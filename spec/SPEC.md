@@ -732,9 +732,20 @@ Measured on one consumer repo over exactly that window (2026-08-01 → 2026-09-0
 | line prose | 13,715 | 13,997 | **10,870** |
 | jsdoc lines | 14,504 | 16,460 | **17,699** |
 
-Policed prose fell ~203 KB. Annotations added ~527 KB, jsdoc ~64 KB. **The comments did not go away;
-they changed channel** — into the one loaded into an agent's context before every edit of the file, and
-the one channel no rule prices. That is the whole of why this section exists.
+Re-measured by `cm mass` from codemap `fc2003c` between the window's endpoint commits (`3504e733` →
+`48b6ad76`): the annotation channel rose **1,014 KB**, frozen prose fell **297 KB** and live prose rose
+3 KB, so policed prose fell **294 KB**; doc comments rose 161 KB and module headers 210 KB. The
+repository grew from 1,802 to 2,191 files across the same window, so policed prose fell in absolute
+terms while the tree grew by a fifth. **The comments did not go away; they changed channel** — into the
+one loaded into an agent's context before every edit of the file, and the one channel no rule prices.
+That is the whole of why this section exists.
+
+This section previously reported that fall as ~203 KB against ~527 KB of annotation. **Neither figure
+is reproducible from `cm mass`, and the reason is not the change of attribution** — running the build
+that published them, codemap `bbb1f1f`, over the same two commits returns +1,013 KB and −296 KB, within
+a kilobyte of the figures above. The pair was already not a `cm mass` reading when it was written. The
+direction it was used to argue holds, and holds more strongly than the numbers claimed; the magnitudes
+are the measured ones.
 
 Two mechanisms allowed it, and neither is a bug in isolation. `CM013` fires only on a file the diff
 names (`drainBase` returns `null` without a base revision, which is deliberate — §8), so a file nobody
@@ -772,9 +783,20 @@ A whole-tree `cm verify` prints the narrative total in its footer, computed off 
 already done — so CI sees the number with no second walk and no second step. A scoped run prints nothing:
 it cannot total a tree it did not read.
 
-**Baseline for the next measurement.** Same consumer repo, whole tree, 2026-09-08, `cm mass --json`:
-2,368 files, 4,879 annotations, 3,297 KB of comment in total — annotation channel 1,330 KB (40%), doc
-comments 981 KB (30%), module headers 516 KB (16%), frozen prose 467 KB (14%), live prose 1 KB.
-Narrative: **77 KB across 314 annotations in 226 files**, 5.8% of the annotation channel, the top 20
-files holding 26% of it. A repo making this fall is doing the thing the section is for; a repo whose
-annotation channel grows while the narrative figure stays flat is adding rules, which is the intent.
+**Baseline for the next measurement.** Same consumer repo — `forge-dev` at `9a7c34b9`, whole tree,
+measured by `cm mass --json` from codemap `fc2003c`: 2,370 files, 4,886 annotations, 3,302 KB of
+comment in total — annotation channel 1,332 KB (40%), doc comments 858 KB (26%), module headers
+516 KB (16%), frozen prose 467 KB (14%), live prose 128 KB (4%). Narrative: **77 KB across 314
+annotations in 226 files**, 5.8% of the annotation channel, the top 20 files holding 26% of it. A
+repo making this fall is doing the thing the section is for; a repo whose annotation channel grows
+while the narrative figure stays flat is adding rules, which is the intent.
+
+**Both commits are named because the version cannot carry it.** These figures were re-measured
+under ISS-40's form-based billing, which replaced the earlier rule that attributed a comment by
+whether a prose diagnostic had been raised on it. The same tree under the build that first
+published this section — codemap `bbb1f1f` — returns 2,368 files, 4,879 annotations, 3,297 KB, with
+doc at 981 KB (30%) and live prose at 1 KB. The whole of the difference is 123 KB leaving the doc
+channel and 127 KB arriving in live; frozen prose is byte-identical under the two builds, and so is
+every narrative figure above. Both builds self-report `toolVersion: 0.19.0`, so a reader comparing
+their own output against these numbers cannot tell the two rules apart from the JSON — which is why
+the commit, not the version, is what is written down here.
