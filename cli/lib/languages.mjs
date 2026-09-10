@@ -360,11 +360,10 @@ export function profileFor(filePath) {
   return null;
 }
 
-// cm:guard the SINGLE authority on which leader carries an annotation in a file — ask it, never write
-//   `//` into a suggestion; that was right for ts by coincidence and a syntax error in every
-//   #-leader file, which is what cm propose printed (ISS-62)
-// cm:why the profile is a parameter for its tests alone, as makeReserved's tags are: no profile in
-//   the tree has an empty lineLeaders, so no assertion over the real ones reaches the null branch
+// cm:guard the SINGLE authority on which leader carries an annotation in a file — ask it, never write `//` into a suggestion; that was right
+//   for ts by coincidence and a syntax error in every #-leader file, which is what cm propose printed (ISS-62)
+// cm:why the profile is a parameter for its tests alone, as makeReserved's tags are: no profile in the tree has an empty lineLeaders, so no
+//   assertion over the real ones reaches the null branch (ISS-62)
 export function leaderFor(filePath, prof = profileFor(filePath)) {
   return prof?.lineLeaders?.[0] ?? null;
 }

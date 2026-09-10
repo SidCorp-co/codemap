@@ -1098,9 +1098,8 @@ switch (cmd) {
 
     const limit = numericFlag('--limit', 20);
     const trunc = (s, n) => (s.length > n ? `${s.slice(0, n - 3)}...` : s);
-    // cm:why the leader is the HOST file's, never the target's — the annotation is pasted into the
-    //   file named in each arm's `(in …)` text, and reading it off the pair's other side printed a
-    //   comment that is a syntax error in the file it was meant for (ISS-62)
+    // cm:why the leader is the HOST file's, never the target's — the annotation is pasted into the file each arm's `(in …)` text names, and
+    //   reading it off the pair's other side prints a comment that is a syntax error in the very file it was meant for (ISS-62)
     const suggest = (host, text) => {
       const leader = leaderFor(host);
       if (!leader) return dim(`     ${host} has no line comment — this pair needs a side that has one`);

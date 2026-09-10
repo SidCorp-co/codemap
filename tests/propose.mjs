@@ -521,9 +521,8 @@ function leaderCases(pluginRoot, check) {
       hostMismatch(r.out).length === 0,
       `mismatched: ${JSON.stringify(hostMismatch(r.out))}\n${r.out}`);
 
-    // cm:why the prose host's leader is read dynamically, not asserted as `#` — prose is only
-    //   enforced where a profile bans or requires it (ts, sfc, go), and all three carry `//`, so no
-    //   #-leader file can hold a prose candidate today; what is provable is that the arm asks (ISS-62)
+    // cm:why the prose host's leader is read dynamically, not asserted as `#` — prose is enforced only where a profile bans or requires it
+    //   (ts, sfc, go) and all three carry `//`, so no #-leader file can hold a prose candidate today; what is provable is that the arm asks (ISS-62)
     writeFileSync(join(root, 'wire_note.ts'), '// the retry budget here must match svc_pay.go\nexport const w = 1;\n');
     git(root, 'add', 'wire_note.ts');
     git(root, 'commit', '-qm', 'a prose comment naming another file');
@@ -538,9 +537,8 @@ function leaderCases(pluginRoot, check) {
       Boolean(proseHost) && proseLine.trim().startsWith(`${leaderFor(proseHost)} cm:edge <kind> ->`),
       `host ${proseHost} has leader ${JSON.stringify(leaderFor(proseHost))}; got: ${proseLine}`);
 
-    // cm:why two SHELL files, so the pair's host has a leader that is not `//` — lockstep is the one
-    //   arm whose host is a bare path rather than a candidate side, and a `//` host would pass
-    //   whether the arm read the profile or kept the hard-coded leader (ISS-62)
+    // cm:why two SHELL files, so the pair's host carries a leader that is not `//` — lockstep is the one arm whose host is a bare path rather
+    //   than a candidate side, and a `//` host would pass whether the arm read the profile or kept the hard-coded leader (ISS-62)
     for (let i = 0; i < 6; i++) {
       writeFileSync(join(root, 'ship_left.sh'), `left=${i}\n`);
       writeFileSync(join(root, 'ship_right.sh'), `right=${i}\n`);
