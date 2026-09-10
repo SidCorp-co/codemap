@@ -55,18 +55,24 @@ function findUnescaped(line, delim, from) {
 
 /**
  * @returns {{comments: Array, codeLines: Set<number>, unterminated: ?{line: number, leader: string}}}
- *   comments: { kind: 'line'|'doc'|'block', line, endLine, leader, text, lines, firstOnLine }
+ *   comments: { kind: 'line'|'doc'|'block', line, endLine, leader, text, lines, spans, firstOnLine }
  *             line comments also carry { indent, col } — `col` is the 0-based offset of the leader,
  *             which is what lets `cm fmt` rewrite an annotation positionally (see lib/rewrite.mjs)
+ *             spans: present ONLY under { spans: true }, undefined otherwise — { line, from, to }
+ *             per line the comment occupies, delimiters included, a half-open character range, which
+ *             is what lets a caller blank comment text without moving code (see lib/propose.mjs)
  *   codeLines: 1-based line numbers that contain code outside comments (used by Go's
  *              required-on-exported policy to find the declaration a comment block documents)
- *   unterminated: the opener of a block still open at EOF, when it was discarded rather than flushed
+ *   unterminated: { line, leader, col } — the opener of a block still open at EOF, when it was
+ *                 discarded rather than flushed; `col` is where its text starts swallowing the file
  */
 // cm:guard flushOpen exists for isGenerated alone, which hands in a truncated head and needs the block
 //   still open at the cut; every other caller must leave it false (ISS-26)
+// cm:edge contract -> cli/lib/propose.mjs — `spans` is a half-open [from,to) character range per line
+//   and codeOnly masks exactly it; a span that excluded its delimiters would leave a literal readable (ISS-59)
 // cm:why flushing an unterminated block into the general comment list would turn one missing close
 //   delimiter into prose diagnostics down the rest of the file (ISS-26)
-export function scanComments(src, prof, { flushOpen = false } = {}) {
+export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = false } = {}) {
   const comments = [];
   const codeLines = new Set();
   const lines = src.split('\n');
@@ -87,6 +93,15 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
         const k = line.indexOf(block.close, j);
         const seg = k === -1 ? line.slice(j) : line.slice(j, k);
         block.lines.push({ line: lineNo, text: seg.replace(/^\s*\*?\s?/, '').trim() });
+        // cm:guard openCol belongs to the START line only — a block opening at end of line pushes its
+        //   first span on the NEXT one, where that column masks from the wrong offset (ISS-59)
+        if (wantSpans) {
+          block.spans.push({
+            line: lineNo,
+            from: lineNo === block.startLine ? block.openCol : j,
+            to: k === -1 ? line.length : k + block.close.length,
+          });
+        }
         if (k === -1) { j = line.length; break; }
         j = k + block.close.length;
         comments.push({
@@ -96,6 +111,7 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
           leader: block.open,
           text: block.lines.map((l) => l.text).filter(Boolean).join(' '),
           lines: block.lines,
+          spans: block.spans,
           firstOnLine: block.firstOnLine,
         });
         block = null;
@@ -133,6 +149,7 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
           leader,
           text: line.slice(j + leader.length).trim(),
           lines: [{ line: lineNo, text: line.slice(j + leader.length).trim() }],
+          spans: wantSpans ? [{ line: lineNo, from: j, to: line.length }] : undefined,
           firstOnLine: !sawCode,
           indent: line.slice(0, j),
           col: j,
@@ -150,6 +167,8 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
           isDoc: prof.docBlockOpens.includes(open),
           startLine: lineNo,
           lines: [],
+          spans: wantSpans ? [] : undefined,
+          openCol: j,
           firstOnLine: !sawCode,
         };
         j += open.length;
@@ -175,6 +194,12 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
       codeLines.add(lineNo);
       j++;
     }
+
+    // cm:guard an opener that ENDS its line never reaches the block branch, which runs from the NEXT
+    //   line — without this the start line gets no span and its delimiter survives the mask (ISS-59)
+    if (wantSpans && block && block.startLine === lineNo && block.spans.length === 0) {
+      block.spans.push({ line: lineNo, from: block.openCol, to: line.length });
+    }
   }
 
   let unterminated = null;
@@ -186,12 +211,13 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
       leader: block.open,
       text: block.lines.map((l) => l.text).filter(Boolean).join(' '),
       lines: block.lines,
+      spans: block.spans,
       firstOnLine: block.firstOnLine,
     });
   } else if (block) {
     // cm:guard reported only on the discard path — a block still open at isGenerated's truncated head is
     //   where the cut fell, not a defect, so flushOpen keeps its silence (ISS-31)
-    unterminated = { line: block.startLine, leader: block.open };
+    unterminated = { line: block.startLine, leader: block.open, col: block.openCol };
   }
 
   return { comments, codeLines, unterminated };
