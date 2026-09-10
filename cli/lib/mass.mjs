@@ -2,8 +2,8 @@
 //
 // The prose tiers police where a comment may sit and the graph tiers police what an annotation
 // resolves to. Neither answers the question a repo adopting this asks after five weeks: is there
-// LESS comment now? Measured on one consumer repo over that window, policed prose fell ~203 KB while
-// annotations added ~527 KB — the comments did not go away, they changed channel, into the one loaded
+// LESS comment now? Measured on one consumer repo over that window, policed prose fell 294 KB while
+// annotations added 1,014 KB — the comments did not go away, they changed channel, into the one loaded
 // into an agent's context before every edit of the file.
 //
 // So this counts characters per channel, and inside the annotation channel it counts the part that
@@ -43,7 +43,7 @@ const citationText = (a) => (typeof a === 'string' ? a : [a.raw, a.wrap].filter(
 //   filter reads, so a `cm:ignore CM303` clears the diagnostic and the number it is counted in together
 const silenced = (a, ignores) => Boolean(ignores?.get(a.line)?.has('CM303') || ignores?.get(a.line - 1)?.has('CM303'));
 
-// cm:guard 120 is read OFF the distribution, never chosen — p10=123 across 4,870 annotations, and
+// cm:guard 120 is read OFF the distribution, never chosen — p10=123 across 4,886 annotations, and
 //   under it sits the bare `Measured <date> on <file>.` the doctrine allows as evidence (§11)
 export const NARRATIVE_MIN = 120;
 
@@ -202,8 +202,8 @@ export function massOf(rows) {
   return {
     total,
     files: rows.length,
-    // cm:why the head's SHARE says whether a drain can be targeted at all — on the repo §11 quotes, 100
-    //   of 965 files hold 47% of the debt, so ranking reaches the tail without an edit
+    // cm:why the head's SHARE says whether a drain can be targeted at all — on the repo §11 quotes, the
+    //   top 100 of the 783 files carrying frozen prose hold 48% of it, so ranking reaches the tail without an edit
     headShare: { narrative: share(byNarrative, 20, 'narrative'), annotation: share(byAnnotation, 20, 'annotation') },
     byNarrative,
     byAnnotation,
