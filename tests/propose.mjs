@@ -10,7 +10,7 @@ import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { proseCandidates, lockstepCandidates, contractCandidates, RESERVED, makeReserved, codeOnly } from '../cli/lib/propose.mjs';
-import { profileFor } from '../cli/lib/languages.mjs';
+import { profileFor, leaderFor } from '../cli/lib/languages.mjs';
 import { scanComments } from '../cli/lib/scan.mjs';
 import { stripGitEnv } from './git-env.mjs';
 import { TAGS, CM_IGNORE_RE } from '../cli/lib/parse.mjs';
@@ -475,8 +475,119 @@ function cliCases(pluginRoot, check) {
   }
 }
 
+// ISS-62 — the suggested annotation carries the leader of the file it would be written IN, read from
+// that file's profile. A `//` in a #-leader file is not a comment there at all.
+function leaderCases(pluginRoot, check) {
+  const root = mkdtempSync(join(tmpdir(), 'cm-propose-leader-'));
+  try {
+    mkdirSync(join(root, '.forge'));
+    writeFileSync(join(root, '.forge', 'codemap.json'), '{}\n');
+    writeFileSync(join(root, 'deploy.sh'), '# the payload shape here must match svc_pay.go\nset -- ${f#src/} "ERR.PAY"\n');
+    writeFileSync(join(root, 'pipeline.yml'), 'cmd: run#now "JOB.KICK"\n');
+    writeFileSync(join(root, 'schema.sql'), "CREATE TABLE t (c text DEFAULT 'DDL.SEED');\n");
+    writeFileSync(join(root, 'app.ts'), 'export const x = "TSX.WIRE";\n');
+    writeFileSync(join(root, 'svc_pay.go'), 'package main\n\nconst a = "ERR.PAY"\nconst b = "JOB.KICK"\nconst c = "DDL.SEED"\nconst d = "TSX.WIRE"\n');
+    git(root, 'init', '-q');
+    git(root, 'add', '-A');
+    git(root, 'commit', '-qm', 'seed');
+
+    const r = cm(pluginRoot, root, 'propose', '--source', 'contract');
+    const lineFor = (out, literal) => {
+      const lines = out.split('\n');
+      const at = lines.findIndex((l) => l.includes(`"${literal}"`));
+      return at === -1 ? '' : (lines[at + 1] ?? '');
+    };
+
+    check('propose: a shell host carries its own # leader, not // (ISS-62)',
+      lineFor(r.out, 'ERR.PAY').trim().startsWith('# cm:edge contract ->'),
+      `deploy.sh is a # file; got: ${lineFor(r.out, 'ERR.PAY')}`);
+    check('propose: a YAML host carries its own # leader (ISS-62)',
+      lineFor(r.out, 'JOB.KICK').trim().startsWith('# cm:edge contract ->'),
+      `pipeline.yml is a # file; got: ${lineFor(r.out, 'JOB.KICK')}`);
+    check('propose: a SQL host carries its own -- leader (ISS-62)',
+      lineFor(r.out, 'DDL.SEED').trim().startsWith('-- cm:edge contract ->'),
+      `schema.sql is a -- file; got: ${lineFor(r.out, 'DDL.SEED')}`);
+    check('propose: a ts host still carries // — the profile\'s answer has not changed (ISS-62)',
+      lineFor(r.out, 'TSX.WIRE').trim().startsWith('// cm:edge contract ->'),
+      `app.ts is a // file; got: ${lineFor(r.out, 'TSX.WIRE')}`);
+
+    // cm:guard the host is the side the `(in X;` text names, never the target — asserting the leader
+    //   against that same X is what makes this blind to which side the pair happens to be ordered on
+    const hostMismatch = (out) => out.split('\n')
+      .map((l) => /^\s*(\S+) cm:edge \w+ -> \S+\s+\(in (\S+?);/.exec(l))
+      .filter(Boolean)
+      .filter(([, leader, host]) => leader !== leaderFor(host));
+    check('propose: every suggestion\'s leader is its own host\'s, across sources (ISS-62)',
+      hostMismatch(r.out).length === 0,
+      `mismatched: ${JSON.stringify(hostMismatch(r.out))}\n${r.out}`);
+
+    // cm:why the prose host's leader is read dynamically, not asserted as `#` — prose is only
+    //   enforced where a profile bans or requires it (ts, sfc, go), and all three carry `//`, so no
+    //   #-leader file can hold a prose candidate today; what is provable is that the arm asks (ISS-62)
+    writeFileSync(join(root, 'wire_note.ts'), '// the retry budget here must match svc_pay.go\nexport const w = 1;\n');
+    git(root, 'add', 'wire_note.ts');
+    git(root, 'commit', '-qm', 'a prose comment naming another file');
+    const prose = cm(pluginRoot, root, 'propose', '--source', 'prose');
+    const proseJson = cm(pluginRoot, root, 'propose', '--source', 'prose', '--json');
+    let proseHost;
+    try { proseHost = JSON.parse(proseJson.stdout).candidates.prose[0]?.file; } catch { proseHost = undefined; }
+    const proseLine = prose.out.split('\n').find((l) => /cm:edge <kind>/.test(l)) ?? '';
+    check('propose: the prose arm prints a suggestion for the candidate it found (ISS-62)',
+      Boolean(proseHost) && proseLine !== '', `no prose candidate reached the printer:\n${prose.out}`);
+    check('propose: the prose arm reads the leader of the file the comment is in (ISS-62)',
+      Boolean(proseHost) && proseLine.trim().startsWith(`${leaderFor(proseHost)} cm:edge <kind> ->`),
+      `host ${proseHost} has leader ${JSON.stringify(leaderFor(proseHost))}; got: ${proseLine}`);
+
+    // cm:why two SHELL files, so the pair's host has a leader that is not `//` — lockstep is the one
+    //   arm whose host is a bare path rather than a candidate side, and a `//` host would pass
+    //   whether the arm read the profile or kept the hard-coded leader (ISS-62)
+    for (let i = 0; i < 6; i++) {
+      writeFileSync(join(root, 'ship_left.sh'), `left=${i}\n`);
+      writeFileSync(join(root, 'ship_right.sh'), `right=${i}\n`);
+      git(root, 'add', 'ship_left.sh', 'ship_right.sh');
+      git(root, 'commit', '-qm', `co-change ${i}`);
+    }
+    for (let i = 0; i < 30; i++) {
+      writeFileSync(join(root, `noise${i}.ts`), `export const n = ${i};\n`);
+      git(root, 'add', `noise${i}.ts`);
+      git(root, 'commit', '-qm', `noise ${i}`);
+    }
+    const lock = cm(pluginRoot, root, 'propose', '--source', 'lockstep');
+    const lockLine = lock.out.split('\n').find((l) => /cm:edge lockstep ->/.test(l)) ?? '';
+    check('propose: the lockstep arm reaches a pair of shell files (ISS-62)',
+      /ship_left\.sh/.test(lock.out) && /ship_right\.sh/.test(lock.out),
+      `expected the ship_left/ship_right pair:\n${lock.out}`);
+    check('propose: a lockstep suggestion in a shell host carries #, not // (ISS-62)',
+      lockLine.trim().startsWith('# cm:edge lockstep ->'),
+      `both sides are # files; got: ${lockLine}`);
+    check('propose: the lockstep leader matches the host its own text names (ISS-62)',
+      hostMismatch(lock.out).length === 0,
+      `mismatched: ${JSON.stringify(hostMismatch(lock.out))}\n${lock.out}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+// ISS-62 — a host whose profile carries no line leader must not print a suggestion at all. No profile
+// in the tree is in that state, so the profile is injected, as makeReserved's tags are.
+function leaderProfileCases(check) {
+  check('propose: leaderFor takes the profile\'s first leader (ISS-62)',
+    leaderFor('deploy.sh') === '#' && leaderFor('app.ts') === '//' && leaderFor('schema.sql') === '--',
+    `got ${JSON.stringify([leaderFor('deploy.sh'), leaderFor('app.ts'), leaderFor('schema.sql')])}`);
+  check('propose: leaderFor reads lineLeaders[0] and adds no list of its own (ISS-62)',
+    leaderFor('x.unknownext', profileFor('deploy.sh')) === '#',
+    'an injected profile must decide the leader, so no extension list can be hiding in leaderFor');
+  check('propose: a profile with no line leader yields no leader, never an empty one (ISS-62)',
+    leaderFor('x.ts', { lineLeaders: [] }) === null && leaderFor('x.ts', { }) === null,
+    'an empty lineLeaders must be null, so the printer withholds the suggestion');
+  check('propose: a file no profile claims yields no leader (ISS-62)',
+    leaderFor('README.md') === null, 'an unprofiled file has no leader to carry an annotation');
+}
+
 export function proposeCases(pluginRoot, check) {
   pureCases(check);
   lockstepCases(check);
   cliCases(pluginRoot, check);
+  leaderCases(pluginRoot, check);
+  leaderProfileCases(check);
 }
