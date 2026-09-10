@@ -378,6 +378,24 @@ export function leaderFor(filePath, prof = profileFor(filePath)) {
   return (prof?.lineLeaders ?? []).find((l) => !docs.includes(l)) ?? null;
 }
 
+// cm:guard the leader for a template that belongs to NO file — `cm new` names a registry entry, so there is no host to ask, and
+//   the answer is this tally and never a literal; a repo of `#` files got `//` from all three printers (ISS-63)
+// cm:guard every leader here comes from leaderFor, so this holds no extension table of its own — a second one is the drift
+//   ISS-32 measured at 5 lost extensions, and the caller must still SAY which leader it assumed (ISS-63)
+// cm:why ties break on the leader string, not on iteration order, because the file list arrives from a directory walk whose
+//   order is the filesystem's — an unstable tie would make the same repo print a different template run to run (ISS-63)
+export function dominantLeader(files) {
+  const tally = new Map();
+  for (const rel of files) {
+    const leader = leaderFor(rel);
+    if (leader) tally.set(leader, (tally.get(leader) ?? 0) + 1);
+  }
+  const ranked = [...tally].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const profiled = ranked.reduce((n, [, count]) => n + count, 0);
+  if (!ranked.length) return { leader: null, files: 0, profiled: 0 };
+  return { leader: ranked[0][0], files: ranked[0][1], profiled };
+}
+
 // cm:guard the SINGLE authority on "can these two files import each other" — ask it, never restate it
 //   from a literal; a second extension-keyed table in graph.mjs silently lost 5 extensions (ISS-32)
 export function ecosystemOf(filePath) {
