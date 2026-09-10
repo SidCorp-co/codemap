@@ -90,7 +90,7 @@ DOES switch the tier on, once its graph is cached — see §5 leading indicator 
 **Updated 2026-09-08 (ISS-8):** the tier gains `CM303` — an annotation that cites its incident and
 then retells it — and `cm mass` gives the volume axis its first number: comment characters by channel,
 whole tree, no base revision, so the tail no verb could reach is measurable without anyone editing it.
-Measured on repo `forge`: 77 KB of story across 314 annotations, 6% of a 1,330 KB annotation channel;
+Measured on repo `forge`: 77 KB of story across 314 annotations, 6% of a 1,332 KB annotation channel;
 its false-positive rate is 17-31%, measured by hand on two trees, which is why it only warns.
 `CM303` enters at `advisory` on that measurement and the audit behind it — SPEC §7.1, §11.
 

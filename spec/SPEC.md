@@ -431,7 +431,7 @@ what an annotation's own text carries, and nothing else does either: a `cm:` lin
 comment loop in `analyzeFile` before the `CM001` branch, and `CM011` caps a module *header*. So prose
 banned in one place reappears in the one channel that is loaded into an agent's context before every
 edit of the file — measured on one consumer repo over the five weeks after adoption, policed prose fell
-~203 KB while annotations added ~527 KB (§11).
+294 KB while annotations added 1,014 KB (§11).
 
 The question is not length. A rule with a real consequence keeps its characters however many it takes,
 and a byte cap is paid by shortening the consequence clause into taste, which loses the half that
@@ -446,11 +446,11 @@ Three conditions, each biased toward silence, all of them required:
   recoverable from anywhere else, and deleting it would lose it.
 - some **sentence** of it carries a marker from a closed, past-tense-only vocabulary (`was`, `were`,
   `had been`, `used to`, `turned out`, `until <date>`, `landed on <date>`, `regressed`, `broke`). The
-  unit is the sentence, not the tail after the citation: measured across 1,141 cited annotations in one
+  unit is the sentence, not the tail after the citation: measured across 1,349 cited annotations in one
   consumer repo, the story sits before the citation as often as after it, so a positional rule missed
   every `…six files failed on it (ISS-937)` shape.
 - those sentences together run to **120 characters or more**, a floor read off the distribution rather
-  than chosen: on 4,879 annotations the flagged narrative runs p10=123, median=225. What the floor
+  than chosen: on 4,886 annotations the flagged narrative runs p10=123, median=225. What the floor
   actually throws away was measured rather than assumed — 32 annotations carry narrative under it, of
   which 2 are the bare `Measured 2026-08-14 on <file>.` shape the doctrine allows as evidence and 30
   are short retellings (`Both were removed on 2026-09-02 with 0 projects setting either.`). So the
@@ -493,8 +493,8 @@ that counted narrative the rule leaves alone would ask a repo to make a number f
 it how to reach it.
 
 **Decided 2026-09-08 (ISS-8): `CM303` enters at `advisory`, warning-only, and is not promoted to the
-grammar tier.** Measured on one consumer repo (2,368 files, 4,879 annotations, its own registry and
-baseline): **314 annotations flagged across 226 files, 6% of them, 77 KB of a 1,330 KB annotation
+grammar tier.** Measured on one consumer repo (2,370 files, 4,886 annotations, its own registry and
+baseline): **314 annotations flagged across 226 files, 6% of them, 77 KB of a 1,332 KB annotation
 channel.** Two hand audits, both of them on the flagged set rather than on a sample of the corpus: 40
 evenly-spaced hits there gave 33 genuine retelling and 7 the fused-sentence shape above; all 13 hits in
 codemap's own tree gave 9 and 4. So the false-positive rate is **17–31%**, and it is a property of the
@@ -732,9 +732,20 @@ Measured on one consumer repo over exactly that window (2026-08-01 → 2026-09-0
 | line prose | 13,715 | 13,997 | **10,870** |
 | jsdoc lines | 14,504 | 16,460 | **17,699** |
 
-Policed prose fell ~203 KB. Annotations added ~527 KB, jsdoc ~64 KB. **The comments did not go away;
-they changed channel** — into the one loaded into an agent's context before every edit of the file, and
-the one channel no rule prices. That is the whole of why this section exists.
+Re-measured by `cm mass` from codemap `fc2003c`, between the window's endpoint commits in the repo
+named at the end of this section (`3504e733` → `48b6ad76`): the annotation channel rose **1,014 KB**,
+frozen prose fell **297 KB** and live prose rose 3 KB, so policed prose fell **294 KB**; doc comments
+rose 161 KB and module headers 210 KB. The repository grew from 1,805 to 2,193 files across the same
+window, so policed prose fell in absolute terms while the tree grew by a fifth. **The comments did not go away; they changed channel** — into the
+one loaded into an agent's context before every edit of the file, and the one channel no rule prices.
+That is the whole of why this section exists.
+
+This section previously reported that fall as ~203 KB against ~527 KB of annotation. **Neither figure
+is reproducible from `cm mass`, and the reason is not the change of attribution** — running the build
+that published them, codemap `bbb1f1f`, over the same two commits returns +1,013 KB and −296 KB, within
+two kilobytes of the figures above. The pair was already not a `cm mass` reading when it was written. The
+direction it was used to argue holds, and holds more strongly than the numbers claimed; the magnitudes
+are the measured ones.
 
 Two mechanisms allowed it, and neither is a bug in isolation. `CM013` fires only on a file the diff
 names (`drainBase` returns `null` without a base revision, which is deliberate — §8), so a file nobody
@@ -758,13 +769,16 @@ prose, not annotation and not doc: it is narration the channel never loaded.
   figures move together, because the rule and the number read one function.
 - **Every tag, both escape hatches, one channel each.** Every comment carrying text is billed to exactly
   one channel, so the channels plus the `cm:ignore` directives reconcile to the file's whole comment text
-  — verified across the consumer repo below, 3,378,467 characters with none unexplained. A `cm:ignore
+  — 3,381,330 characters across the repo below. That total is the sum of the five channels by
+  construction (`massOf`), so it evidences nothing on its own; what pins the partition is the corpus,
+  where `tests/mass.mjs` asserts all five channels exactly on a torture fixture and exercises the
+  frozen one in cases of its own. A `cm:ignore
   CM303` clears the diagnostic and the number together, and the directive's own characters are billed
   nowhere: an escape hatch that raised the total it cleared would be a fine for taking it. Files with no
   language profile and generated files are analyzed by nothing and so counted as nothing.
 - **The head's share is the number that says whether a drain can be targeted.** A flat distribution has
   no head to pick off; a top-heavy one is reachable by ranking rather than by editing every file. On the
-  repo above, 100 of 965 files held 47% of the frozen debt.
+  repo and commit named below, 783 files carry frozen prose and the top 100 of them hold 48% of it.
 - **Nothing is sent.** `massOf` never enters `buildPayload`; it is local detail exactly like `cm sweep`'s
   rows and `cm metrics annotations` (§10's shape-not-content rule).
 
@@ -772,9 +786,40 @@ A whole-tree `cm verify` prints the narrative total in its footer, computed off 
 already done — so CI sees the number with no second walk and no second step. A scoped run prints nothing:
 it cannot total a tree it did not read.
 
-**Baseline for the next measurement.** Same consumer repo, whole tree, 2026-09-08, `cm mass --json`:
-2,368 files, 4,879 annotations, 3,297 KB of comment in total — annotation channel 1,330 KB (40%), doc
-comments 981 KB (30%), module headers 516 KB (16%), frozen prose 467 KB (14%), live prose 1 KB.
-Narrative: **77 KB across 314 annotations in 226 files**, 5.8% of the annotation channel, the top 20
-files holding 26% of it. A repo making this fall is doing the thing the section is for; a repo whose
-annotation channel grows while the narrative figure stays flat is adding rules, which is the intent.
+**Baseline for the next measurement.** Same consumer repo — `forge-dev` at `9a7c34b9`, whole tree,
+measured by `cm mass --json` from codemap `fc2003c`: 2,370 files, 4,886 annotations, 3,302 KB of
+comment in total — annotation channel 1,332 KB (40%), doc comments 858 KB (26%), module headers
+517 KB (16%), frozen prose 467 KB (14%), live prose 128 KB (4%). Narrative: **77 KB across 314
+annotations in 226 files**, 5.8% of the annotation channel, the top 20 files holding 26% of it. A
+repo making this fall is doing the thing the section is for; a repo whose annotation channel grows
+while the narrative figure stays flat is adding rules, which is the intent.
+
+**Both commits are named because the version cannot carry it.** These figures were re-measured
+under ISS-40's form-based billing, which replaced the earlier rule that attributed a comment by
+whether a prose diagnostic had been raised on it. The same tree under the build that first
+published this section — codemap `bbb1f1f` — returns 2,368 files, 4,879 annotations, 3,297 KB, with
+doc at 981 KB (30%) and live prose at 1 KB. The difference splits in two, and both halves are given
+in characters, because differencing two rounded channel totals is what hides the smaller one.
+
+**Attribution**, over the 2,368 files both builds read: doc loses 125,908 characters and live gains
+125,789 — a relabelling, near-symmetric as one should be. The 119 characters between them are not a
+leak in the partition: they are shell code the older scanner mis-read as comment text in two files
+(`scripts/upload-image.sh`, `scripts/check-branch-name.sh`), the tails of `[[ $# -gt 0 ]]` and of
+`${#branch}`, where `#` opened a comment mid-word. The older build billed them to doc; ISS-61 made a
+leader begin a word, so to this one they are not comment text and there is nothing to bill.
+Conservation holds under each build on its own scan.
+
+**Two files the older build did not read**, `packages/core/Dockerfile` and
+`packages/web-v2/Dockerfile`, on a profile added between the two commits: 3,715 characters of live
+prose, 1,527 of annotation and 281 of module header. Those two files are also the whole of the
+2,368 → 2,370 and 4,879 → 4,886 counts. Their live prose is the largest single term in the residue
+and it is **not** attribution, so the live channel's total rise of 129,504 characters must not be
+read as the rule change's doing.
+
+**134 commits separate these builds**, so this is the difference between two builds and not the
+isolated effect of one change. Frozen prose is byte-identical under both, and so is every narrative
+figure above.
+
+Both builds self-report `toolVersion: 0.19.0`, so a reader comparing their own output against these
+numbers cannot tell the two rules apart from the JSON — which is why the commit, not the version, is
+what is written down here.

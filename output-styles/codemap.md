@@ -51,7 +51,7 @@ incident — `(ISS-807)`, a date, a measured number — and stop there.
 
 Measured on a consumer repo five weeks after adoption: guards averaged **306 characters**, 65% of
 those characters sitting after the em-dash and a quarter of them past-tense narrative. Over the
-same window policed prose fell ~203 KB while annotations added ~527 KB. The comments did not go
+same window policed prose fell 294 KB while annotations added 1,014 KB. The comments did not go
 away; they changed channel — into the one loaded into your context before every edit of that file.
 
 So write `— a stale kind on a non-waiting issue renders as a live banner (ISS-807)`, not the
