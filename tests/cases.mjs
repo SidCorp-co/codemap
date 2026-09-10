@@ -1156,7 +1156,7 @@ export const analyzeCases = [
     file: 'deploy.sh',
     src: [
       '# cm:guard the unit file and this script must name the same listen port',
-      'set -- ${f#src/} "ERR.PAY"',
+      'set -- ${f#cm:guard this text is code and must never be adopted as a second annotation}',
       'exec ./run "$@"',
     ].join('\n'),
     codes: [],
