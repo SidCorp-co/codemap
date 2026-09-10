@@ -37,6 +37,37 @@ bin/cm verify        # the repo checks itself with its own checker
 
 Both run in CI on every push and pull request (`.github/workflows/ci.yml`).
 
+A green corpus says the change broke nothing. It does **not** say the mechanism the change just
+added is doing any work — in ISS-26 that gap produced dead code twice in one issue, each time with a
+`cm:` annotation crediting the dead half. When a change adds a mechanism to the checker, declare it
+in `tests/mutate-lib.mjs` and run the harness:
+
+```bash
+node tests/mutate.mjs --only <id>   # while iterating on one new point
+node tests/mutate.mjs               # the whole declared list
+```
+
+It removes each declared mechanism in a throwaway copy of the working tree, runs the whole corpus
+against it, and names the checks that failed — with an unmutated control in the same table whose
+result gates every other row. It fails when a mechanism turns out to be pinned by nothing.
+
+The names it prints are **`run.mjs` checks, not golden cases**: one case usually raises several
+checks (a codes check and an annotations check, say), so three names can mean two cases. Read the
+control's check total against `node tests/run.mjs` before trusting a `DEAD` row — a copy that
+quietly ran fewer checks makes every `DEAD` in the table meaningless.
+
+NOT a gate, and in no workflow: it costs one full corpus run per declared point **plus one for the
+control**, so the whole list is several minutes. That cost is why it is opt-in. It answers for
+`node tests/run.mjs` only — a mechanism that only `bin/cm verify` pins reads as dead there, so check
+that gate by hand.
+
+The harness is two files on purpose. `tests/mutate-lib.mjs` is the pure half — the declared list,
+the parse, the classification — and the corpus pins all of it through `tests/mutate-cases.mjs`. The
+git-environment scrub it hands every child is `tests/git-env.mjs`'s, shared with the corpus itself
+and pinned by `tests/git-env-cases.mjs`. `tests/mutate.mjs` is the half that copies trees and spawns
+runs, and no other file under `tests/` may import it: that import is what would put a corpus run on
+the corpus's own import graph.
+
 ## Releasing
 
 Consumers pin by tag and the weekly upgrade bot reads that tag stream. Bump `version` in

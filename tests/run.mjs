@@ -21,6 +21,7 @@ import { prCommentCases } from './prcomment.mjs';
 import { proposeCases } from './propose.mjs';
 import { massCases } from './mass.mjs';
 import { profileCases } from './profiles.mjs';
+import { mutateCases } from './mutate-cases.mjs';
 import { gitEnvCases } from './git-env-cases.mjs';
 import { stripGitEnv } from './git-env.mjs';
 import { pushCases, pushSourceCases } from './push.mjs';
@@ -203,7 +204,7 @@ for (const t of pushCases) {
 
 // cm:guard a suite that THROWS is a failing suite, never a dead run — installCases taking the
 //   process down lost every suite after it, with no count line to say so had happened (ISS-45)
-for (const suite of [pushSourceCases, gitEnvCases, wiringCases, profileCases, cliCases, installCases, helpCases, metricsCases, releaseTagCases, upgradeWorkflowCases, notifyConsumersCases, mcpCases, prCommentCases, proposeCases, massCases]) {
+for (const suite of [pushSourceCases, gitEnvCases, wiringCases, profileCases, cliCases, installCases, helpCases, metricsCases, releaseTagCases, upgradeWorkflowCases, notifyConsumersCases, mcpCases, prCommentCases, proposeCases, massCases, mutateCases]) {
   try {
     suite(PLUGIN_ROOT, check);
   } catch (err) {
