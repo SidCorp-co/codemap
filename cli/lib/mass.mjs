@@ -28,7 +28,7 @@ const MARKERS = [
 //   both listed as evidence by the doctrine, so an annotation carrying neither is never billed here
 const CITATION = /(ISS-\d+|20\d\d-\d\d-\d\d)/i;
 
-// cm:why the unit is a SENTENCE, not the tail after the citation — across 1,141 cited annotations in
+// cm:why the unit is a SENTENCE, not the tail after the citation — across 1,349 cited annotations in
 //   one consumer repo the story sits before the citation as often as after it (§11)
 const sentences = (text) => text.split(/(?<=[.!?])\s+/).filter(Boolean);
 
