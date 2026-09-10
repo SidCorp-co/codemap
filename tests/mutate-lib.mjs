@@ -1,5 +1,5 @@
-// The mutation harness's pure half: the declared list, the environment scrub, the parse and the
-// classification. Nothing here spawns a process or touches a repository.
+// The mutation harness's pure half: the declared list, the parse and the classification. Nothing
+// here spawns a process or touches a repository. The environment scrub is tests/git-env.mjs's.
 //
 // cm:guard this half must never import tests/mutate.mjs: the corpus reaches this file, so that
 //   import would leave only an entry-point check between the corpus and spawning itself (ISS-30)
@@ -39,37 +39,6 @@ export const MUTATIONS = [
     replace: 'if (false) {',
   },
 ];
-
-const GIT_LOCATION_VARS = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
-  'GIT_COMMON_DIR', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_TEMPLATE_DIR', 'GIT_NAMESPACE',
-  'GIT_CEILING_DIRECTORIES', 'GIT_PREFIX'];
-
-// cm:guard these outrank the `-c user.email` the copy's commit passes, so leaving them gives the
-//   throwaway commit whatever identity invoked the harness (ISS-30)
-const GIT_IDENTITY_VARS = ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_AUTHOR_DATE',
-  'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL', 'GIT_COMMITTER_DATE'];
-
-// cm:guard config reaches a child git through the ENVIRONMENT, not only through files, so the
-//   location variables alone are not enough: `git -c core.hooksPath=…` would reach the copy (ISS-30)
-const GIT_CONFIG_VARS = ['GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_COUNT'];
-
-// cm:guard GIT_CONFIG_GLOBAL and GIT_CONFIG_SYSTEM are SET to an empty file, never deleted:
-//   deleting them hands back a user config the caller may be suppressing on purpose (ISS-30)
-export function stripGitEnv(env) {
-  const out = { ...env };
-  for (const k of [...GIT_LOCATION_VARS, ...GIT_CONFIG_VARS, ...GIT_IDENTITY_VARS]) delete out[k];
-  for (const k of Object.keys(out)) {
-    if (/^GIT_CONFIG_(KEY|VALUE)_\d+$/.test(k)) delete out[k];
-  }
-  out.GIT_CONFIG_GLOBAL = '/dev/null';
-  out.GIT_CONFIG_SYSTEM = '/dev/null';
-  out.GIT_CONFIG_NOSYSTEM = '1';
-  return out;
-}
-
-export const GIT_LOCATION_VAR_NAMES = GIT_LOCATION_VARS;
-export const GIT_CONFIG_VAR_NAMES = GIT_CONFIG_VARS;
-export const GIT_IDENTITY_VAR_NAMES = GIT_IDENTITY_VARS;
 
 // cm:guard the corpus a copy runs carries this marker and main refuses when it is set: without it a
 //   copy that reaches main from its own corpus spawns a harness at every level, unbounded (ISS-30)

@@ -1,15 +1,18 @@
-// cm:edge lockstep -> tests/mutate-lib.mjs — its classification, parsing, containment and scrub are
-//   pinned here: a new outcome or a changed parse belongs in the same change as its case (ISS-30)
+// cm:edge lockstep -> tests/mutate-lib.mjs — its classification, parsing and containment are pinned
+//   here: a new outcome or a changed parse belongs in the same change as its case (ISS-30)
+// cm:edge contract -> tests/git-env.mjs — the scrub these tiers assert is that module's, and its own
+//   lists are pinned by tests/git-env-cases.mjs; this tier asserts what the harness needs of it
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import {
-  applyMutation, classify, GIT_CONFIG_VAR_NAMES, GIT_IDENTITY_VAR_NAMES, GIT_LOCATION_VAR_NAMES,
-  MUTATIONS, NESTED_MARKER,
-  parseCorpusOutput, stripGitEnv,
+  applyMutation, classify, MUTATIONS, NESTED_MARKER, parseCorpusOutput,
 } from './mutate-lib.mjs';
+import {
+  GIT_CONFIG_VAR_NAMES, GIT_IDENTITY_VAR_NAMES, GIT_LOCATION_VAR_NAMES, stripGitEnv,
+} from './git-env.mjs';
 
 const COUNT = (p, f) => `codemap golden corpus: ${p} passed, ${f} failed\n`;
 
@@ -176,11 +179,15 @@ function gitEnvCases(check) {
       GIT_CONFIG_PARAMETERS: "'core.hooksPath'='/nonexistent'",
     };
     const scrubbedConfig = stripGitEnv(poisonedConfig);
-    const configSurvivors = Object.keys(scrubbedConfig)
-      .filter((k) => /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+|PARAMETERS)$/.test(k));
-    check('mutate: stripGitEnv removes the environment config channel',
-      configSurvivors.length === 0,
-      `git honours these from the environment, so they reach the copy: ${configSurvivors.join(', ')}`);
+    // cm:guard judged by VALUE, not by key presence: the scrub re-injects safe.directory through
+    //   this same channel, so a surviving GIT_CONFIG_* key is not by itself the caller's (ISS-30)
+    const configResidue = Object.entries(scrubbedConfig)
+      .filter(([k, v]) => /^GIT_CONFIG_(KEY_\d+|VALUE_\d+|PARAMETERS)$/.test(k)
+        && (String(v).includes('core.hooksPath') || String(v).includes('/nonexistent')))
+      .map(([k]) => k);
+    check('mutate: stripGitEnv removes the CALLER config the environment channel carries',
+      configResidue.length === 0,
+      `git honours these from the environment, so they reach the copy: ${configResidue.join(', ')}`);
 
     // cm:guard a FIXED list, never the arrays the scrub iterates: reading those back catches a
     //   broken loop but never a shortened one, so dropping GIT_INDEX_FILE would pass (ISS-30)
@@ -197,9 +204,18 @@ function gitEnvCases(check) {
     everything.GIT_CONFIG_SYSTEM = '/poison';
     everything.GIT_CONFIG_NOSYSTEM = '0';
     const scrubbedAll = stripGitEnv(everything);
-    const survivors = MUST_NOT_SURVIVE.filter((k) => k in scrubbedAll);
-    check('mutate: stripGitEnv removes every location, config and identity variable',
+    // cm:guard GIT_CONFIG_COUNT is on the fixed list yet must NOT be absent: the scrub deletes the
+    //   caller's and re-injects its own for safe.directory, so its test is its VALUE (ISS-30)
+    const RESET_NOT_REMOVED = new Set(['GIT_CONFIG_COUNT']);
+    const survivors = MUST_NOT_SURVIVE
+      .filter((k) => k in scrubbedAll && !RESET_NOT_REMOVED.has(k));
+    check('mutate: stripGitEnv removes every location, config and identity variable it keeps none of',
       survivors.length === 0, `still present after the scrub: ${survivors.join(', ')}`);
+    check('mutate: a variable the scrub RESETS carries its value, never the caller poisoned one',
+      scrubbedAll.GIT_CONFIG_COUNT === '1' && scrubbedAll.GIT_CONFIG_KEY_0 === 'safe.directory'
+      && scrubbedAll.GIT_CONFIG_VALUE_0 === '*',
+      `a reset variable still reads the caller's: COUNT=${scrubbedAll.GIT_CONFIG_COUNT} `
+      + `KEY_0=${scrubbedAll.GIT_CONFIG_KEY_0} VALUE_0=${scrubbedAll.GIT_CONFIG_VALUE_0}`);
 
     const named = new Set([...GIT_LOCATION_VAR_NAMES, ...GIT_CONFIG_VAR_NAMES,
       ...GIT_IDENTITY_VAR_NAMES]);
@@ -415,7 +431,9 @@ function wiringCases(pluginRoot, check) {
   const gitOptions = /execFileSync\(\s*['"]git['"][\s\S]{0,300}?\{([^}]*)\}/.exec(cli);
   // cm:guard the corpus spawn's options are taken as a SLICE, not by matching to the first `}`: its
   //   env is an object literal now, and a brace-terminated match ends inside it (ISS-30)
-  const spawnAt = cli.indexOf('spawnSync(process.execPath');
+  // cm:edge contract -> tests/git-env-cases.mjs — that sweep reads THIS file and matches the call
+  //   shape as text, so the needle is assembled, never written whole, exactly as its own CALL is
+  const spawnAt = cli.indexOf(`${'spawnSync'}(process.execPath`);
   const spawnCall = spawnAt < 0 ? null : cli.slice(spawnAt, spawnAt + 800);
   check('mutate: the git wrapper passes the scrubbed environment',
     Boolean(gitOptions) && /\benv:\s*GIT_ENV\b/.test(gitOptions[1]),

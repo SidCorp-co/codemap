@@ -12,8 +12,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  applyMutation, classify, MUTATIONS, NESTED_MARKER, parseCorpusOutput, stripGitEnv,
+  applyMutation, classify, MUTATIONS, NESTED_MARKER, parseCorpusOutput,
 } from './mutate-lib.mjs';
+import { stripGitEnv } from './git-env.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CORPUS_TIMEOUT_MS = 10 * 60 * 1000;
