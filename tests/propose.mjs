@@ -256,6 +256,63 @@ function pureCases(check) {
       !masked.includes('INVENTED_FORM') && masked.includes('const a = 1;'),
       `the profile is the only authority on the form; masked text was ${JSON.stringify(masked)}`);
 
+    // cm:guard both rows pair against a `.go` side, so ONLY the comment question can decide them —
+    //   an unnarrowed `#` masks the literal away and the pair vanishes with no diagnostic (ISS-61)
+    writeFileSync(join(root, 'expand.sh'), 'set -- ${f#src/} "ERR.PAY"\n');
+    writeFileSync(join(root, 'expand.go'), 'const e = "ERR.PAY"\n');
+    const shExpand = contractCandidates(root, ['expand.sh', 'expand.go']);
+    check('propose: a shell parameter expansion does not eat the literal after it (ISS-61)',
+      shExpand.length === 1 && shExpand[0].literal === 'ERR.PAY',
+      `${'${f#src/}'} is one word, not a comment: ${JSON.stringify(shExpand)}`);
+
+    writeFileSync(join(root, 'run.yml'), 'cmd: run#now "ERR.YML"\n');
+    writeFileSync(join(root, 'run.go'), 'const e = "ERR.YML"\n');
+    const ymlWord = contractCandidates(root, ['run.yml', 'run.go']);
+    check('propose: a YAML scalar containing # does not eat the literal after it (ISS-61)',
+      ymlWord.length === 1 && ymlWord[0].literal === 'ERR.YML',
+      `a YAML comment needs a space before its #: ${JSON.stringify(ymlWord)}`);
+
+    // cm:guard the OTHER direction, and the case that fails if leaderAfter is set too wide — a real
+    //   comment must still be masked, or propose starts proposing pairs out of prose (ISS-61)
+    writeFileSync(join(root, 'cmt.sh'), 'echo ok # "ERR.CMT" is only ever named here\n');
+    writeFileSync(join(root, 'cmt.go'), 'const e = "ERR.CMT"\n');
+    check('propose: a genuine trailing # comment in shell is still masked (ISS-61)',
+      contractCandidates(root, ['cmt.sh', 'cmt.go']).length === 0,
+      `a # after whitespace opens a comment as it always did: ${JSON.stringify(contractCandidates(root, ['cmt.sh', 'cmt.go']))}`);
+
+    // cm:guard docker's arm is otherwise pinned by one scanner assertion alone, and .toml by none at
+    //   the propose tier — these two carry each through the reader that actually lost candidates
+    writeFileSync(join(root, 'Dockerfile'), 'RUN echo a#b "ERR.DOCK"\n');
+    writeFileSync(join(root, 'dock.go'), 'const e = "ERR.DOCK"\n');
+    const dock = contractCandidates(root, ['Dockerfile', 'dock.go']);
+    check('propose: a # inside a Dockerfile argument does not eat the literal after it (ISS-61)',
+      dock.length === 1 && dock[0].literal === 'ERR.DOCK',
+      `a Dockerfile comment is a whole line: ${JSON.stringify(dock)}`);
+
+    writeFileSync(join(root, 'conf.toml'), 'port = 8080# "ERR.TOML" is named only in this comment\n');
+    writeFileSync(join(root, 'conf.go'), 'const e = "ERR.TOML"\n');
+    check('propose: TOML opens a comment with nothing before the # (ISS-61)',
+      contractCandidates(root, ['conf.toml', 'conf.go']).length === 0,
+      `.toml reuses yaml's forms but must NOT reuse its leaderAfter: ${JSON.stringify(contractCandidates(root, ['conf.toml', 'conf.go']))}`);
+
+    // cm:guard py is the control: narrowing it too would make `x=1#c` code and this pair a candidate,
+    //   which is why leaderAfter is per profile and not global (ISS-61)
+    writeFileSync(join(root, 'tight.py'), 'x = 1#"ERR.PY" named only in this comment\n');
+    writeFileSync(join(root, 'tight.go'), 'const e = "ERR.PY"\n');
+    check('propose: a # straight after code in python is still a comment (ISS-61)',
+      contractCandidates(root, ['tight.py', 'tight.go']).length === 0,
+      `python comments need no preceding space: ${JSON.stringify(contractCandidates(root, ['tight.py', 'tight.go']))}`);
+
+    // cm:guard this is the ISS-59 property restated for the new narrowing: one reader, one answer. A
+    //   fix that reached codeOnly without reaching scanComments would pass every case above (ISS-61)
+    for (const [file, src] of [['expand.sh', 'set -- ${f#src/} "ERR.PAY"\n'], ['run.yml', 'cmd: run#now "ERR.YML"\n']]) {
+      const prof = profileFor(file);
+      const scanned = scanComments(src, prof).comments.length;
+      check(`propose: scanComments and codeOnly agree on ${file} (ISS-61)`,
+        scanned === 0 && codeOnly(src, prof) === src,
+        `verify reads ${scanned} comment(s) while propose masks to ${JSON.stringify(codeOnly(src, prof))} — a split here re-opens ISS-59`);
+    }
+
     const noSep = contractCandidates(root, ['emit.go', 'noisy.ts']);
     check('propose: contract ignores a plain word with no separator (no coincidental "hello")',
       !noSep.some((c) => c.literal === 'hello'), `"hello" should not qualify: ${JSON.stringify(noSep)}`);

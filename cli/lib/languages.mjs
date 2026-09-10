@@ -212,6 +212,13 @@ const P = {
   sh: {
     id: 'sh',
     lineLeaders: ['#'],
+    // cm:edge contract -> cli/lib/scan.mjs — every `leaderAfter` in this file is read by beginsWord
+    //   there and nowhere else, as a RegExp over the single character before the leader (ISS-61)
+    // cm:why `${f#src/}` and `a#b` are one word, never a comment — shell ends a word at whitespace
+    //   or a metacharacter, and reading the `#` as a leader masked the rest of the line (ISS-61)
+    // cm:guard the backtick stays written \x60 — regex literals are not lexed here, so a LITERAL one
+    //   opens a template string that swallows every annotation below it in this file (ISS-61)
+    leaderAfter: /[\s;|&()<>\x60]/,
     docLineLeaders: [],
     blockOpens: [],
     docBlockOpens: [],
@@ -227,6 +234,11 @@ const P = {
   yaml: {
     id: 'yaml',
     lineLeaders: ['#'],
+    // cm:why a plain scalar ending in a word character swallows `#`, so `run#now` is one value; a
+    //   QUOTED scalar or flow collection ends the token, and libyaml reads `key: "v"#c` as a comment
+    // cm:guard this profile object also serves .toml, which narrows NOTHING — see the TOML entry in
+    //   the extension map below before widening or reusing this (ISS-61)
+    leaderAfter: /[\s"'\]},]/,
     docLineLeaders: [],
     blockOpens: [],
     docBlockOpens: [],
@@ -244,6 +256,9 @@ const P = {
     //   Docker's parser directives, and `cm ls` prints the id, so reporting as yaml misnames it (ISS-25)
     id: 'docker',
     lineLeaders: ['#'],
+    // cm:why `RUN echo a#b` carries no comment — Docker's own rule is stricter still, a comment being
+    //   a whole line, so whitespace here is the safe half: a trailing `#` is still read as one (ISS-61)
+    leaderAfter: /\s/,
     docLineLeaders: [],
     blockOpens: [],
     docBlockOpens: [],
@@ -258,6 +273,12 @@ const P = {
   },
 };
 
+// cm:why TOML reuses yaml's forms but must NOT reuse its leaderAfter — `port = 8080#c` is a comment
+//   to TOML's own parser, and narrowing it would drop the annotation on that line (ISS-61)
+// cm:edge lockstep -> cli/lib/scan.mjs — `leaderAfter` absent means "leader matches anywhere"; a
+//   scanner that made the field mandatory would silently narrow TOML (ISS-61)
+const TOML = { ...P.yaml, leaderAfter: undefined };
+
 const BY_EXT = {
   ts: P.ts, tsx: P.ts, mts: P.ts, cts: P.ts,
   js: P.ts, jsx: P.ts, mjs: P.ts, cjs: P.ts,
@@ -268,7 +289,7 @@ const BY_EXT = {
   rs: P.rust,
   sql: P.sql,
   sh: P.sh, bash: P.sh, zsh: P.sh,
-  yaml: P.yaml, yml: P.yaml, toml: P.yaml,
+  yaml: P.yaml, yml: P.yaml, toml: TOML,
 };
 
 const BY_BASENAME = {

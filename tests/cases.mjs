@@ -1149,6 +1149,19 @@ export const analyzeCases = [
     codes: ['CM001'],
     annotations: ['guard'],
   },
+  {
+    // cm:guard the annotation and the expansion must be in ONE case — the analyzer is what the hook
+    //   runs, and a narrowing that reached scan.mjs alone could still lose the guard here (ISS-61)
+    name: 'sh: an annotation is read, and the parameter expansion under it opens no comment (ISS-61)',
+    file: 'deploy.sh',
+    src: [
+      '# cm:guard the unit file and this script must name the same listen port',
+      'set -- ${f#cm:guard this text is code and must never be adopted as a second annotation}',
+      'exec ./run "$@"',
+    ].join('\n'),
+    codes: [],
+    annotations: ['guard'],
+  },
 ];
 
 export const baselineCases = [
