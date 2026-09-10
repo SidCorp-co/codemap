@@ -142,6 +142,39 @@ function pureCases(check) {
 
     // cm:guard the pin is the SURVIVING literal, not the count — a codeOnly that blanked the whole line
     //   would drop KEEP_ON_LINE too and every "is not a candidate" case above would still pass (ISS-59)
+    // cm:guard TWO comments on ONE line is the whole point — spans are keyed on a coordinate, so a mask
+    //   that dropped characters would leave the second span's offsets pointing at the wrong text (ISS-59)
+    writeFileSync(join(root, 'two.ts'), 'const a = "KEEP.ONE"; /* "DROP.A" */ const b = "KEEP.TWO"; /* "DROP.B" */\n');
+    writeFileSync(join(root, 'two.go'), 'const a = "KEEP.ONE"\nconst b = "KEEP.TWO"\nconst c = "DROP.A"\nconst d = "DROP.B"\n');
+    const two = contractCandidates(root, ['two.ts', 'two.go']).map((c) => c.literal).sort();
+    check('propose: two comments on one line are both masked, in place (ISS-59)',
+      two.join(',') === 'KEEP.ONE,KEEP.TWO',
+      `both KEEP literals and neither DROP literal, which needs offsets into the UNSHIFTED line: ${JSON.stringify(two)}`);
+
+    // cm:guard the masked text carries no delimiter either — the span covers them, and a consumer
+    //   reading this as code must not meet a stray opener (ISS-59, and ISS-60 will read it)
+    const delim = codeOnly('const a = 1; /* x */\n<!-- y -->\n', profileFor('W.vue'));
+    check('propose: masking covers the comment delimiters themselves (ISS-59)',
+      !/\/\*|\*\/|<!--|-->/.test(delim) && delim.includes('const a = 1;'),
+      `no delimiter may survive the mask: ${JSON.stringify(delim)}`);
+
+    // cm:guard the code literal on the opener's own line must be KEPT — masking the whole opener line
+    //   would pass the comment half of this case while losing a real candidate (ISS-59)
+    writeFileSync(join(root, 'unterm.ts'), 'const y = "KEEP.UNTERM";\n/* never closed\n"ERR_UNTERM.X" here\n');
+    writeFileSync(join(root, 'unterm.go'), 'const a = "KEEP.UNTERM"\nconst b = "ERR_UNTERM.X"\n');
+    const unterm = contractCandidates(root, ['unterm.ts', 'unterm.go']);
+    check('propose: an unterminated block masks to EOF and keeps the code on its opener line (ISS-59)',
+      unterm.length === 1 && unterm[0].literal === 'KEEP.UNTERM',
+      `exactly KEEP.UNTERM; the block swallows the file to EOF per lib/scan.mjs: ${JSON.stringify(unterm)}`);
+
+    // cm:guard the block MUST open at end of line and the literal sit left of that column — this is the
+    //   only shape where a start-line offset can leak onto the next line's mask (ISS-59)
+    writeFileSync(join(root, 'eol.ts'), 'const x = 1; /*\n"ERR_LEFT.EDGE" text\n*/\n');
+    writeFileSync(join(root, 'eol.go'), 'const c = "ERR_LEFT.EDGE"\n');
+    check('propose: a block opening at end of line masks the next line from its own column 0 (ISS-59)',
+      contractCandidates(root, ['eol.ts', 'eol.go']).length === 0,
+      `the opener's column belongs to its own line only: ${JSON.stringify(contractCandidates(root, ['eol.ts', 'eol.go']))}`);
+
     writeFileSync(join(root, 'mixed.ts'), 'export const A = "KEEP_ON_LINE"; // "DROP_ON_LINE" no\n');
     writeFileSync(join(root, 'mixed.go'), 'const a = "KEEP_ON_LINE"\nconst b = "DROP_ON_LINE"\n');
     const mixed = contractCandidates(root, ['mixed.ts', 'mixed.go']);

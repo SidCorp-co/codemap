@@ -63,7 +63,8 @@ function findUnescaped(line, delim, from) {
  *             moving any code around it (see lib/propose.mjs)
  *   codeLines: 1-based line numbers that contain code outside comments (used by Go's
  *              required-on-exported policy to find the declaration a comment block documents)
- *   unterminated: the opener of a block still open at EOF, when it was discarded rather than flushed
+ *   unterminated: { line, leader, col } — the opener of a block still open at EOF, when it was
+ *                 discarded rather than flushed; `col` is where its text starts swallowing the file
  */
 // cm:guard flushOpen exists for isGenerated alone, which hands in a truncated head and needs the block
 //   still open at the cut; every other caller must leave it false (ISS-26)
@@ -92,9 +93,11 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
         const k = line.indexOf(block.close, j);
         const seg = k === -1 ? line.slice(j) : line.slice(j, k);
         block.lines.push({ line: lineNo, text: seg.replace(/^\s*\*?\s?/, '').trim() });
+        // cm:guard openCol belongs to the START line only — a block opening at end of line pushes its
+        //   first span on the NEXT one, where that column masks from the wrong offset (ISS-59)
         block.spans.push({
           line: lineNo,
-          from: block.spans.length === 0 ? block.openCol : j,
+          from: lineNo === block.startLine ? block.openCol : j,
           to: k === -1 ? line.length : k + block.close.length,
         });
         if (k === -1) { j = line.length; break; }
@@ -206,7 +209,7 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
   } else if (block) {
     // cm:guard reported only on the discard path — a block still open at isGenerated's truncated head is
     //   where the cut fell, not a defect, so flushOpen keeps its silence (ISS-31)
-    unterminated = { line: block.startLine, leader: block.open };
+    unterminated = { line: block.startLine, leader: block.open, col: block.openCol };
   }
 
   return { comments, codeLines, unterminated };

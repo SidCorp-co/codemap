@@ -59,11 +59,18 @@ const stem = (p) => p.split('/').pop().replace(/\.\w+$/, '');
 export const codeOnly = (src, prof) => {
   if (!prof) return src;
   const lines = src.split('\n');
-  for (const c of scanComments(src, prof).comments) {
-    for (const sp of c.spans ?? []) {
-      const l = lines[sp.line - 1];
-      if (l === undefined) continue;
-      lines[sp.line - 1] = l.slice(0, sp.from) + ' '.repeat(sp.to - sp.from) + l.slice(sp.to);
+  const mask = (i, from, to) => {
+    const l = lines[i];
+    if (l === undefined) return;
+    lines[i] = l.slice(0, from) + ' '.repeat(Math.max(0, to - from)) + l.slice(to);
+  };
+  const { comments, unterminated } = scanComments(src, prof);
+  for (const c of comments) for (const sp of c.spans ?? []) mask(sp.line - 1, sp.from, sp.to);
+  // cm:guard an unterminated block swallows the file to EOF (lib/scan.mjs header), so its text is masked
+  //   to EOF too — flushOpen is reserved for isGenerated and must stay false here (ISS-26, ISS-59)
+  if (unterminated) {
+    for (let i = unterminated.line - 1; i < lines.length; i++) {
+      mask(i, i === unterminated.line - 1 ? unterminated.col : 0, lines[i]?.length ?? 0);
     }
   }
   return lines.join('\n');
