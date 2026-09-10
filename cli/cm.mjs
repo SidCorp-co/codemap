@@ -16,7 +16,7 @@ import {
   toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
 } from './lib/registry.mjs';
 import { analyzeFile } from './lib/analyze.mjs';
-import { profileFor } from './lib/languages.mjs';
+import { profileFor, leaderFor } from './lib/languages.mjs';
 import { buildGraph, referentialDiags, structuralDiags, advisoryDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
 import { loadImportGraph, loadCachedImportGraph } from './lib/archmap.mjs';
 import { canonical, CODE_TABLE, PROSE_CODES, EDGE_KINDS, baselineKey } from './lib/parse.mjs';
@@ -1098,6 +1098,15 @@ switch (cmd) {
 
     const limit = numericFlag('--limit', 20);
     const trunc = (s, n) => (s.length > n ? `${s.slice(0, n - 3)}...` : s);
+    // cm:why the leader is the HOST file's, never the target's — every arm names its host in its own `(in …)` text, and reading the leader
+    //   off the pair's other side prints a comment that is a syntax error in the very file it was meant for (ISS-62)
+    const suggest = (host, text) => {
+      const leader = leaderFor(host);
+      if (!leader) return dim(`     no line comment reaches ${host}, so it cannot carry this annotation — write it on the other side`);
+      const region = profileFor(host)?.leaderRegion;
+      const where = region ? ` — put it inside ${region}, the only part of ${host} a line comment reaches` : '';
+      return dim(`     ${leader} ${text}${where}`);
+    };
     const LABEL = {
       prose: '1. prose that already names a file (highest confidence — already written, already judged)',
       lockstep: '2. lockstep — co-change far more often than chance, no import evidence between them',
@@ -1115,16 +1124,16 @@ switch (cmd) {
         if (kind === 'prose') {
           console.log(`   ${cand.file}:${cand.line} ${dim('->')} ${cand.target}`);
           console.log(dim(`     "${trunc(cand.evidence, 88)}"`));
-          console.log(dim(`     // cm:edge <kind> -> ${cand.target}   (pick a kind: ${EDGE_KINDS.join(', ')}; add — why by hand)`));
+          console.log(suggest(cand.file, `cm:edge <kind> -> ${cand.target}   (in ${cand.file}; pick a kind: ${EDGE_KINDS.join(', ')}; add — why by hand)`));
         } else if (kind === 'lockstep') {
           const [a, b] = cand.files;
           console.log(`   ${a} ${dim('<->')} ${b}`);
           console.log(dim(`     ${cand.coChanges}/${cand.totalCommits} commits together · alone: ${cand.commitsA} & ${cand.commitsB} · lift ${cand.lift.toFixed(1)}x`));
-          console.log(dim(`     // cm:edge lockstep -> ${b}   (in ${a}; add — why they must move together)`));
+          console.log(suggest(a, `cm:edge lockstep -> ${b}   (in ${a}; add — why they must move together)`));
         } else {
           const [a, b] = cand.files;
           console.log(`   "${cand.literal}" ${dim('in')} ${a.file}:${a.line} ${dim('&')} ${b.file}:${b.line}`);
-          console.log(dim(`     // cm:edge contract -> ${b.file}   (in ${a.file}; add — why both sides must agree)`));
+          console.log(suggest(a.file, `cm:edge contract -> ${b.file}   (in ${a.file}; add — why both sides must agree)`));
         }
       }
       if (cands.length > limit) console.log(dim(`   … and ${cands.length - limit} more (--limit ${cands.length} or --json)`));
