@@ -16,7 +16,7 @@ import {
   toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
 } from './lib/registry.mjs';
 import { analyzeFile } from './lib/analyze.mjs';
-import { profileFor, leaderFor } from './lib/languages.mjs';
+import { profileFor, leaderFor, dominantLeader } from './lib/languages.mjs';
 import { buildGraph, referentialDiags, structuralDiags, advisoryDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
 import { loadImportGraph, loadCachedImportGraph } from './lib/archmap.mjs';
 import { canonical, CODE_TABLE, PROSE_CODES, EDGE_KINDS, baselineKey } from './lib/parse.mjs';
@@ -47,12 +47,24 @@ const yellow = (s) => c('33', s);
 const dim = (s) => c('2', s);
 const bold = (s) => c('1', s);
 
+// cm:why the leader is the HOST file's, never the target's — every arm names its host in its own `(in …)` text, and reading the leader
+//   off the pair's other side prints a comment that is a syntax error in the very file it was meant for (ISS-62)
+// cm:guard the one printer for an annotation line whose host file is known — propose and onboard both come here, because the
+//   summary line onboard printed instead carried a literal `//` for candidates in any language (ISS-63)
+function suggest(host, text) {
+  const leader = leaderFor(host);
+  if (!leader) return dim(`     no line comment reaches ${host}, so it cannot carry this annotation — write it on the other side`);
+  const region = profileFor(host)?.leaderRegion;
+  const where = region ? ` — put it inside ${region}, the only part of ${host} a line comment reaches` : '';
+  return dim(`     ${leader} ${text}${where}`);
+}
+
 const argv = process.argv.slice(2);
 const cmd = argv[0] ?? 'help';
 
 // cm:guard every flag that takes a value MUST be listed here — an unlisted one has its value parsed as a
 // path, which silently narrowed `cm verify --since <ref>` to zero files and made the CI gate a no-op
-const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description', '--endpoint', '--base', '--source']);
+const VALUE_FLAGS = new Set(['--since', '--tier', '--limit', '--description', '--endpoint', '--base', '--source', '--in']);
 const TIERS = new Set(['all', 'grammar', 'referential', 'structural', 'advisory']);
 
 // cm:guard exit 2 is "the gate could not run", exit 1 is "the gate ran and failed" — CI must be able to
@@ -95,6 +107,21 @@ const root = findRoot();
 
 function loadOrDie() {
   try { return loadRegistry(root); } catch (e) { die(e.message); }
+}
+
+// cm:edge contract -> cli/cm.mjs#scopeFromPositional — both resolve a user-supplied path and MUST agree: CWD first, then
+//   root-relative, `..` refused; two answers to "is this path in the repo" is the drift the header warns about (ISS-63)
+function hostFromIn() {
+  if (!flags.has('--in')) return null;
+  const raw = flagValue('--in');
+  if (!raw) die('--in needs a value', 'name the file the annotation will live in');
+  const fromCwd = resolve(raw);
+  const rel = (existsSync(fromCwd) ? relative(root, fromCwd) : raw).split('\\').join('/').replace(/^\.\//, '');
+  if (rel === '' || rel.startsWith('..')) die(`--in "${raw}" is outside the repo root ${root}`, 'cm only reasons about paths inside the tree it onboarded');
+  const abs = join(root, rel);
+  if (!existsSync(abs)) die(`--in "${raw}" is not a file in this repo`, 'name a file the annotation will actually live in');
+  if (!statSync(abs).isFile()) die(`--in "${raw}" is a directory, not a file`, 'an annotation lives in a file, so name the one it goes in');
+  return rel;
 }
 
 /** Positional paths, resolved against the repo root. A path that resolves to nothing is fatal (exit 2). */
@@ -192,7 +219,7 @@ function fixCanonical(perFile) {
     done.push(...applied.map((d) => ({ file: f.relPath, line: d.line })));
     for (const d of failed) {
       console.error(yellow(`${f.relPath}:${d.line} CM009 could not be normalized automatically`));
-      console.error(dim(`  rewrite by hand to: ${d.leader ?? '//'} ${d.canonical}`));
+      console.error(dim(`  rewrite by hand to: ${d.leader} ${d.canonical}`));
     }
   }
   return done;
@@ -978,13 +1005,30 @@ switch (cmd) {
   case 'new': {
     const what = positional[0];
     if (!['flow', 'external'].includes(what) || !positional[1]) {
-      console.error('usage: cm new flow <name> | cm new external <name>   [--description "..."]');
+      console.error('usage: cm new flow <name> | cm new external <name>   [--description "..."] [--in <file>]');
       process.exit(2);
     }
     const name = positional[1];
     const reg = loadOrDie();
     if (reg._missing) { console.error('no .forge/codemap.json — run: cm init'); process.exit(2); }
     if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) { console.error(`"${name}" must be lower-case letters, digits and dashes`); process.exit(2); }
+
+    // cm:guard refuse BEFORE saveRegistry — a --in nobody can resolve must not leave the flow declared (ISS-63)
+    const host = hostFromIn();
+    const tally = host ? null : dominantLeader(allFiles(reg));
+    const leader = host ? leaderFor(host) : tally.leader;
+    const PLACEHOLDER = '<leader>';
+    const paste = (text) => console.log(`  ${leader ?? PLACEHOLDER} ${text}`);
+    // cm:guard an SFC host needs its leaderRegion named as well as its leader — `//` outside <script> renders as visible text and
+    //   cm verify accepts it, so a template with the right leader and no region is still a paste nothing downstream catches (ISS-63)
+    const region = host ? profileFor(host)?.leaderRegion : tally.region;
+    const inRegion = region ? ` — put it inside ${region}, the only part of ${host ?? 'such a file'} a line comment reaches` : '';
+    const assumption = () => {
+      if (host && !leader) return dim(`no line comment reaches ${host}, so replace ${PLACEHOLDER} with the leader of the file you paste this into`);
+      if (host) return dim(`the leader is ${leader}, taken from ${host}${inRegion}`);
+      if (!leader) return dim(`no file here has a line comment leader, so replace ${PLACEHOLDER} yourself — pass --in <file> and this reads it off that file`);
+      return dim(`assuming ${leader}, the leader of ${tally.files} of this repo's ${tally.profiled} files that carry one${inRegion} — pass --in <file> for one file's own`);
+    };
 
     if (what === 'external') {
       const list = reg.externals ?? (reg.externals = []);
@@ -993,7 +1037,8 @@ switch (cmd) {
       list.sort((a, b) => a.name.localeCompare(b.name));
       saveRegistry(root, reg);
       console.log(`declared external "${name}". Target it with:\n`);
-      console.log(`  // cm:edge contract -> external:${name}/<path/inside/it> — <why they are coupled>`);
+      paste(`cm:edge contract -> external:${name}/<path/inside/it> — <why they are coupled>`);
+      console.log(assumption());
       console.log(dim('only the name is checked — nothing in this repo can verify the path inside it (§8)'));
       break;
     }
@@ -1003,8 +1048,9 @@ switch (cmd) {
     reg.flows.sort((a, b) => a.name.localeCompare(b.name));
     saveRegistry(root, reg);
     console.log(`declared flow "${name}". Annotate the first step:\n`);
-    console.log(`  // cm:flow ${name}/<step> — <what this step does>`);
-    console.log(`  // cm:flow ${name}/<next> after:<step> — <...>`);
+    paste(`cm:flow ${name}/<step> — <what this step does>`);
+    paste(`cm:flow ${name}/<next> after:<step> — <...>`);
+    console.log(assumption());
     break;
   }
 
@@ -1049,9 +1095,9 @@ switch (cmd) {
       for (const l of latent.slice(0, 8)) {
         console.log(`   ${l.file}:${l.line} ${dim('->')} ${l.target}`);
         console.log(dim(`     "${l.text.slice(0, 78)}"`));
+        console.log(suggest(l.file, `cm:edge <kind> -> ${l.target}[#symbol] — <why they are coupled>`));
       }
       if (latent.length > 8) console.log(dim(`   … ${latent.length - 8} more (cm onboard --json)`));
-      console.log(dim('   each becomes: // cm:edge <kind> -> <that path>[#symbol] — <why they are coupled>'));
     } else {
       console.log(dim('   none found — start from what breaks in review: what must two people remember together?'));
     }
@@ -1096,15 +1142,6 @@ switch (cmd) {
 
     const limit = numericFlag('--limit', 20);
     const trunc = (s, n) => (s.length > n ? `${s.slice(0, n - 3)}...` : s);
-    // cm:why the leader is the HOST file's, never the target's — every arm names its host in its own `(in …)` text, and reading the leader
-    //   off the pair's other side prints a comment that is a syntax error in the very file it was meant for (ISS-62)
-    const suggest = (host, text) => {
-      const leader = leaderFor(host);
-      if (!leader) return dim(`     no line comment reaches ${host}, so it cannot carry this annotation — write it on the other side`);
-      const region = profileFor(host)?.leaderRegion;
-      const where = region ? ` — put it inside ${region}, the only part of ${host} a line comment reaches` : '';
-      return dim(`     ${leader} ${text}${where}`);
-    };
     const LABEL = {
       prose: '1. prose that already names a file (highest confidence — already written, already judged)',
       lockstep: '2. lockstep — co-change far more often than chance, no import evidence between them',

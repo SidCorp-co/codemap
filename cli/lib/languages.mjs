@@ -378,6 +378,33 @@ export function leaderFor(filePath, prof = profileFor(filePath)) {
   return (prof?.lineLeaders ?? []).find((l) => !docs.includes(l)) ?? null;
 }
 
+// cm:guard the leader for a template that belongs to NO file — `cm new` names a registry entry, so there is no host to ask, and
+//   the answer is this tally and never a literal; a repo of `#` files got `//` from all three printers (ISS-63)
+// cm:guard `region` is reported only when EVERY file carrying the winning leader agrees on it — an SFC repo needs the annotation
+//   inside <script>, and a region claimed from a mixed set would send a plain .ts annotation in there too (ISS-63)
+// cm:guard every leader here comes from leaderFor, so this holds no extension table of its own — a second one is the drift
+//   ISS-32 measured at 5 lost extensions, and the caller must still SAY which leader it assumed (ISS-63)
+// cm:why ties break on the leader string, not on iteration order, because the file list arrives from a directory walk whose
+//   order is the filesystem's — an unstable tie would make the same repo print a different template run to run (ISS-63)
+// cm:guard compare by CODE POINT, never localeCompare — collation reorders punctuation, leaving the tie unbroken (ISS-63)
+export function dominantLeader(files) {
+  const tally = new Map();
+  const regions = new Map();
+  for (const rel of files) {
+    const prof = profileFor(rel);
+    const leader = leaderFor(rel, prof);
+    if (!leader) continue;
+    tally.set(leader, (tally.get(leader) ?? 0) + 1);
+    const seen = regions.get(leader);
+    if (seen === undefined) regions.set(leader, prof?.leaderRegion ?? null);
+    else if (seen !== (prof?.leaderRegion ?? null)) regions.set(leader, null);
+  }
+  const ranked = [...tally].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+  if (!ranked.length) return { leader: null, files: 0, profiled: 0, region: null };
+  const profiled = ranked.reduce((n, [, count]) => n + count, 0);
+  return { leader: ranked[0][0], files: ranked[0][1], profiled, region: regions.get(ranked[0][0]) ?? null };
+}
+
 // cm:guard the SINGLE authority on "can these two files import each other" — ask it, never restate it
 //   from a literal; a second extension-keyed table in graph.mjs silently lost 5 extensions (ISS-32)
 export function ecosystemOf(filePath) {
