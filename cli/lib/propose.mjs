@@ -91,6 +91,8 @@ const readCache = (root, cache) => (rel) => {
  * so a miss here costs a false positive we would rather not risk, never a false negative that just
  * stays unproposed (§ precision over recall, this issue's own business rule).
  */
+// cm:why "its own CODE" became true here at ISS-59 — the mask is the profile's, so a stem named only
+//   in a comment no longer drops the pair, and that pair is now proposed where it was silently cut
 function looksWired(root, a, b, importGraph, cache) {
   if (importGraph && connected(importGraph, a, b)) return true;
   const read = readCache(root, cache);

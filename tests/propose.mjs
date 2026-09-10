@@ -290,6 +290,16 @@ function lockstepCases(check) {
     check('propose: lockstep drops a pair once one side visibly imports the other',
       afterImport.length === 0, `import evidence should exclude the pair, got ${JSON.stringify(afterImport)}`);
 
+    // cm:guard the mention must sit in a TRAILING comment — one that OPENS its line was cut by the old
+    //   leader test too, so it cannot tell the profile-driven mask from what it replaced (ISS-59)
+    writeFileSync(join(root, 'lock_a.ts'), 'export const a = 1; // keep in step with lock_b\n');
+    git(root, 'add', 'lock_a.ts');
+    git(root, 'commit', '-qm', 'lock_a mentions lock_b in a trailing comment only');
+    const commentOnly = lockstepCandidates(root, files);
+    check('propose: a stem named only in a comment is not import evidence, so the pair still shows (ISS-59)',
+      commentOnly.length === 1 && commentOnly[0].files.includes('lock_a.ts'),
+      `looksWired reads a file's own CODE, as its docblock says; a comment mention dropped this pair before ISS-59: ${JSON.stringify(commentOnly)}`);
+
     const strict = lockstepCandidates(root, files, { minCoChanges: 1000 });
     check('propose: lockstep respects a caller-supplied minCoChanges', strict.length === 0,
       'an unreachable threshold must return nothing');
