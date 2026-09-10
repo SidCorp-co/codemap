@@ -58,9 +58,9 @@ function findUnescaped(line, delim, from) {
  *   comments: { kind: 'line'|'doc'|'block', line, endLine, leader, text, lines, spans, firstOnLine }
  *             line comments also carry { indent, col } — `col` is the 0-based offset of the leader,
  *             which is what lets `cm fmt` rewrite an annotation positionally (see lib/rewrite.mjs)
- *             spans: { line, from, to } per line the comment occupies, delimiters included — the
- *             half-open character range, which is what lets a caller blank comment text without
- *             moving any code around it (see lib/propose.mjs)
+ *             spans: present ONLY under { spans: true }, undefined otherwise — { line, from, to }
+ *             per line the comment occupies, delimiters included, a half-open character range, which
+ *             is what lets a caller blank comment text without moving code (see lib/propose.mjs)
  *   codeLines: 1-based line numbers that contain code outside comments (used by Go's
  *              required-on-exported policy to find the declaration a comment block documents)
  *   unterminated: { line, leader, col } — the opener of a block still open at EOF, when it was
@@ -167,7 +167,7 @@ export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = 
           isDoc: prof.docBlockOpens.includes(open),
           startLine: lineNo,
           lines: [],
-          spans: [],
+          spans: wantSpans ? [] : undefined,
           openCol: j,
           firstOnLine: !sawCode,
         };

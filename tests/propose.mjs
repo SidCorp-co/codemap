@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { proseCandidates, lockstepCandidates, contractCandidates, RESERVED, makeReserved, codeOnly } from '../cli/lib/propose.mjs';
 import { profileFor } from '../cli/lib/languages.mjs';
+import { scanComments } from '../cli/lib/scan.mjs';
 import { stripGitEnv } from './git-env.mjs';
 import { TAGS, CM_IGNORE_RE } from '../cli/lib/parse.mjs';
 
@@ -94,6 +95,16 @@ function pureCases(check) {
     runOn.length === 1 && runOn[0].target === 'cli/lib/scan.mjs',
     `the greedy shape match reads "scan.mjs.The"; the retry drops one trailing word at a time: ${JSON.stringify(runOn)}`);
 
+  // cm:guard a dot in a DIRECTORY component is not strippable, so this is the case that pins the
+  //   loop ending on no progress — under the first fix it did not fail, it hung the runner (ISS-59)
+  const dotted = proseCandidates(
+    [{ relPath: 'notes.ts', diags: [{ code: 'CM001', line: 3, text: 'see docs/v1.2/guide.ts for the rules' }] }],
+    ['notes.ts'],
+  );
+  check('propose: resolution terminates on a dotted directory that resolves to nothing (ISS-59)',
+    dotted.length === 0,
+    `must return, not spin: ${JSON.stringify(dotted)}`);
+
   // cm:guard the longer real file must be in `files` too, or "longest first" is untested and a plain
   //   shortest-prefix rule would pass this (ISS-59)
   const longest = proseCandidates(
@@ -173,6 +184,13 @@ function pureCases(check) {
 
     // cm:guard the masked text carries no delimiter either — the span covers them, and a consumer
     //   reading this as code must not meet a stray opener (ISS-59, and ISS-60 will read it)
+    // cm:guard spans are OPT-IN — analyze, mass and isGenerated never read them, and building them
+    //   for every caller cost 43% heap on the scanner; nothing else pins that they stay off (ISS-59)
+    const noSpans = scanComments('// a\n/* b */\n', profileFor('x.ts')).comments;
+    check('propose: scanComments builds no spans unless asked (ISS-59)',
+      noSpans.length === 2 && noSpans.every((c) => c.spans === undefined),
+      `both comments must carry spans === undefined by default: ${JSON.stringify(noSpans.map((c) => c.spans))}`);
+
     const delim = codeOnly('const a = 1; /* x */\n<!-- y -->\n', profileFor('W.vue'));
     check('propose: masking covers the comment delimiters themselves (ISS-59)',
       !/\/\*|\*\/|<!--|-->/.test(delim) && delim.includes('const a = 1;'),
@@ -188,7 +206,9 @@ function pureCases(check) {
 
     // cm:guard masking must be IDEMPOTENT — a surviving opener re-opens a block on a second pass and
     //   swallows real code, which is what a consumer re-reading this output would hit (ISS-59, ISS-60)
-    const once = codeOnly('const a = 1; /*\n c\n*/\nconst K = "K.1";\n', profileFor('x.ts'));
+    // cm:guard the trailing `"*/"` STRING is what gives this teeth — without it a leaked opener makes
+    //   an unterminated block, which is left alone, and the second pass is a no-op anyway (ISS-59)
+    const once = codeOnly('const a = 1; /*\n c\n*/\nconst K = "K.1"; const t = "*/";\n', profileFor('x.ts'));
     check('propose: masking the masked text changes nothing (ISS-59)',
       codeOnly(once, profileFor('x.ts')) === once && once.includes('"K.1"'),
       `a second pass must be a no-op and must not eat K.1: ${JSON.stringify(once)}`);

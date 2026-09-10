@@ -28,11 +28,15 @@ const PATH_RE = /[\w./-]+\.[A-Za-z0-9]+\b/g;
 // cm:why longest first, then one trailing `.word` at a time — the shape match is greedy, so a sentence
 //   with no space after its full stop reads `scan.mjs.The` and resolved to nothing before (ISS-59)
 function resolve(cand, files) {
-  for (let c = cand; c.includes('.'); c = c.replace(/\.[^./]*$/, '')) {
+  // cm:guard the loop ends on NO PROGRESS, never on "still has a dot" — a dot in a directory
+  //   component is not strippable, so `docs/v1.2/guide.ts` spun forever and hung the verb (ISS-59)
+  for (let c = cand; ;) {
     const hit = files.find((f) => f === c || f.endsWith(`/${c.replace(/^\.\//, '')}`));
     if (hit) return hit;
+    const next = c.replace(/\.[^./]*$/, '');
+    if (next === c) return undefined;
+    c = next;
   }
-  return undefined;
 }
 
 export function proseCandidates(perFile, files) {
@@ -76,8 +80,8 @@ export const codeOnly = (src, prof) => {
     if (l === undefined || to <= from) return;
     lines[i] = l.slice(0, from) + ' '.repeat(to - from) + l.slice(to);
   };
-  // cm:guard an UNTERMINATED block is left alone on purpose — masking it to EOF turned every shape
-  //   scan.mjs cannot lex, `/**` included, into whole-file candidate loss (ISS-59, ISS-61)
+  // cm:guard an unterminated block is left alone, so its text is READ AS CODE here while analyzeFile
+  //   discards it — masking it to EOF cost whole files wherever scan.mjs mis-lexed (ISS-59, ISS-61)
   for (const c of scanComments(src, prof, { spans: true }).comments) {
     for (const sp of c.spans ?? []) mask(sp.line - 1, sp.from, sp.to);
   }
