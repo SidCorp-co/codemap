@@ -743,7 +743,7 @@ That is the whole of why this section exists.
 This section previously reported that fall as ~203 KB against ~527 KB of annotation. **Neither figure
 is reproducible from `cm mass`, and the reason is not the change of attribution** — running the build
 that published them, codemap `bbb1f1f`, over the same two commits returns +1,013 KB and −296 KB, within
-a kilobyte of the figures above. The pair was already not a `cm mass` reading when it was written. The
+two kilobytes of the figures above. The pair was already not a `cm mass` reading when it was written. The
 direction it was used to argue holds, and holds more strongly than the numbers claimed; the magnitudes
 are the measured ones.
 
