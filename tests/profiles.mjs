@@ -50,13 +50,14 @@ function fileCount(out) {
 export function profileCases(pluginRoot, check) {
   // cm:guard both columns are required — a `leaderAfter` set too wide reads a real comment as code and
   //   loses the annotations in it, which is the one failure scan.mjs's header forbids (ISS-61)
-  // cm:edge contract -> cli/lib/scan.mjs — `leaderAfter` is a RegExp tested against the ONE character
-  //   before the leader, so a profile storing an array or a string throws on the first leader it meets
+  // cm:edge contract -> cli/lib/scan.mjs — `leaderAfter` is a RegExp tested against the character
+  //   before the leader, so a wrong-typed one throws on the first leader past column 0, never at it
   const leaderRows = [
     ['a.sh', 'set -- ${f#src/} "ERR.PAY"', 0, 'a shell parameter expansion is one word'],
     ['a.sh', '# cm:guard the unit file and this script must name the same port', 1, 'a shell comment on its own line'],
     ['a.sh', 'echo ok # trailing', 1, 'a shell comment after whitespace'],
     ['a.sh', 'echo ok;# after a separator', 1, 'shell ends a word at ; so a comment opens there'],
+    ['a.sh', 'echo `#x`', 1, 'a backtick opens command substitution, so the # after it is a comment'],
     ['a.yml', 'cmd: run#now "ERR.PAY"', 0, 'a YAML scalar containing #'],
     ['a.yml', '# a yaml comment', 1, 'a YAML comment at column 0'],
     ['a.yml', 'key: v # trailing', 1, 'a YAML comment after whitespace'],
@@ -64,7 +65,7 @@ export function profileCases(pluginRoot, check) {
     ['a.yml', "key: 'v'#c", 1, 'the same for a single-quoted scalar'],
     ['a.yml', 'key: [a, b]#c', 1, 'a flow sequence ends the token too'],
     ['a.yml', 'key: {a: 1}#c', 1, 'and a flow mapping'],
-    ['a.yml', 'key: v#c', 0, 'a PLAIN scalar swallows the # instead'],
+    ['a.yml', 'key: v#c', 0, 'a PLAIN scalar ending in a word character swallows the # instead'],
     // cm:guard .toml resolves through the yaml profile object but must narrow NOTHING — tomllib reads
     //   every row below as a comment, and losing one would drop the annotation on it (ISS-61)
     ['a.toml', 'port = 8080#c', 1, 'TOML opens a comment with nothing before the #'],

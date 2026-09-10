@@ -292,13 +292,14 @@ same for a **bare URL** outside one — the `//` in JSX text (`<a>https://x.dev<
 in a YAML scalar. A profile may also declare that its leader **must begin a word**, so `${f#src/}`
 in shell and `run#now` in YAML are code rather than comments. Shell ends a word at whitespace or a
 metacharacter; YAML ends one at whitespace or at the close of a quoted scalar or flow collection.
-`py`, `php` and **TOML** declare no such rule, because in all three a `#` with nothing before it
-still opens a comment — which is why TOML does not share YAML's, though it shares its forms. A
-leader read wrongly here costs more than a diagnostic: `cm propose` masks the line and loses the
-literal on it silently, having no directive to be silenced by. The scheme vocabulary is closed
-(principle 3): an unlisted scheme costs a false `CM001` its author can silence, whereas a general
-`<ident>:` rule reads `{ key://cm:guard … }` as a URL and drops the annotation with no diagnostic —
-and a missed annotation is the one failure this scanner does not permit itself.
+`py`, `php` and **TOML** declare no such rule, because in all three a `#` immediately after code,
+with no space before it, still opens a comment — which is why TOML does not share YAML's
+`leaderAfter` though it shares its comment forms. A leader read wrongly here costs more than a
+diagnostic: `cm propose` masks the line and loses the literal on it silently, having no directive
+to be silenced by. The scheme vocabulary is closed (principle 3): an unlisted scheme costs a false
+`CM001` its author can silence, whereas a general `<ident>:` rule reads `{ key://cm:guard … }` as a
+URL and drops the annotation with no diagnostic — and a missed annotation is the one failure this
+scanner does not permit itself.
 
 A **block comment that is never closed** swallows the rest of the file, so no annotation below its opener
 is read. That is reported once, at the opener, as `CM203`; the text below it stays unread, because
