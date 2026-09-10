@@ -771,7 +771,8 @@ prose, not annotation and not doc: it is narration the channel never loaded.
   one channel, so the channels plus the `cm:ignore` directives reconcile to the file's whole comment text
   — 3,381,330 characters across the repo below. That total is the sum of the five channels by
   construction (`massOf`), so it evidences nothing on its own; what pins the partition is the corpus,
-  where `tests/mass.mjs` bills a fixture exercising every channel and asserts each one exactly. A `cm:ignore
+  where `tests/mass.mjs` asserts all five channels exactly on a torture fixture and exercises the
+  frozen one in cases of its own. A `cm:ignore
   CM303` clears the diagnostic and the number together, and the directive's own characters are billed
   nowhere: an escape hatch that raised the total it cleared would be a fine for taking it. Files with no
   language profile and generated files are analyzed by nothing and so counted as nothing.
@@ -797,13 +798,24 @@ while the narrative figure stays flat is adding rules, which is the intent.
 under ISS-40's form-based billing, which replaced the earlier rule that attributed a comment by
 whether a prose diagnostic had been raised on it. The same tree under the build that first
 published this section — codemap `bbb1f1f` — returns 2,368 files, 4,879 annotations, 3,297 KB, with
-doc at 981 KB (30%) and live prose at 1 KB. Attribution accounts for almost all of the difference:
-123 KB leaves the doc channel and 127 KB arrives in live. It does not account for the rest, and the
-rest is named here rather than rounded away — 1.5 KB of annotation and 0.3 KB of module header
-arrive with two Dockerfiles that the older build did not read at all, a profile added between the
-two commits, which is also the whole of the 2,368 → 2,370 and 4,879 → 4,886 counts. **134 commits
-separate these builds**, so this is the difference between two builds and not the isolated effect of
-one change. Frozen prose is byte-identical under both, and so is every narrative figure above.
+doc at 981 KB (30%) and live prose at 1 KB. The difference splits in two, and both halves are given
+in characters, because differencing two rounded channel totals is what hides the smaller one.
+
+**Attribution**, over the 2,368 files both builds read: doc loses 125,908 characters and live gains
+125,789 — a relabelling, near-symmetric as one should be. The 119 characters between them are two
+shell scripts (`scripts/upload-image.sh`, `scripts/check-branch-name.sh`) that the older build
+billed to doc and this one bills to no channel at all.
+
+**Two files the older build did not read**, `packages/core/Dockerfile` and
+`packages/web-v2/Dockerfile`, on a profile added between the two commits: 3,715 characters of live
+prose, 1,527 of annotation and 281 of module header. Those two files are also the whole of the
+2,368 → 2,370 and 4,879 → 4,886 counts. Their live prose is the largest single term in the residue
+and it is **not** attribution, so the live channel's total rise of 129,504 characters must not be
+read as the rule change's doing.
+
+**134 commits separate these builds**, so this is the difference between two builds and not the
+isolated effect of one change. Frozen prose is byte-identical under both, and so is every narrative
+figure above.
 
 Both builds self-report `toolVersion: 0.19.0`, so a reader comparing their own output against these
 numbers cannot tell the two rules apart from the JSON — which is why the commit, not the version, is
