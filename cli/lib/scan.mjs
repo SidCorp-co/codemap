@@ -3,8 +3,8 @@
 //
 // A leader is narrowed by the text before it in two ways, both here rather than in any caller: a bare
 // URL or a `<scheme>:` prefix (insideUrl), and, where the profile sets `leaderAfter`, a leader that
-// must begin a word — `#` in sh, yaml and docker, where `${f#src/}` and `a#b` are one word and never a
-// comment. py and php set no `leaderAfter` on purpose: there `x = 1#c` IS a comment (ISS-61).
+// must begin a word — `#` in sh, yaml and docker, where `${f#src/}` and `run#now` are one token. py,
+// php and toml set none on purpose: in all three `x = 1#c` IS a comment (ISS-61).
 //
 // Deliberate limitation: heredocs (PHP/shell) and Rust raw strings are not modelled. A comment leader
 // inside one reads as a leader. That costs a false-positive prose comment where prose is policed, which
@@ -52,6 +52,8 @@ function insideUrl(line, j, leader) {
   return insideBareUrl(line, j) || (leader === '//' && schemeEndsAt(line, j));
 }
 
+// cm:edge contract -> cli/lib/languages.mjs — `leaderAfter` is a RegExp `.test`ed against the ONE
+//   character before the leader, and omitting it keeps the match-anywhere reading .toml needs
 /** Where the profile requires a leader to begin a word, does one begin at j? */
 function beginsWord(line, j, prof) {
   return !prof.leaderAfter || j === 0 || prof.leaderAfter.test(line[j - 1]);

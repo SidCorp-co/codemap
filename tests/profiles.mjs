@@ -51,7 +51,7 @@ export function profileCases(pluginRoot, check) {
   // cm:guard both columns are required — a `leaderAfter` set too wide reads a real comment as code and
   //   loses the annotations in it, which is the one failure scan.mjs's header forbids (ISS-61)
   // cm:edge contract -> cli/lib/scan.mjs — `leaderAfter` is a RegExp tested against the ONE character
-  //   before the leader; a profile that stored a character list instead would silently match nothing
+  //   before the leader, so a profile storing an array or a string throws on the first leader it meets
   const leaderRows = [
     ['a.sh', 'set -- ${f#src/} "ERR.PAY"', 0, 'a shell parameter expansion is one word'],
     ['a.sh', '# cm:guard the unit file and this script must name the same port', 1, 'a shell comment on its own line'],
@@ -60,6 +60,16 @@ export function profileCases(pluginRoot, check) {
     ['a.yml', 'cmd: run#now "ERR.PAY"', 0, 'a YAML scalar containing #'],
     ['a.yml', '# a yaml comment', 1, 'a YAML comment at column 0'],
     ['a.yml', 'key: v # trailing', 1, 'a YAML comment after whitespace'],
+    ['a.yml', 'key: "v"#c', 1, 'libyaml ends a QUOTED scalar, so the # after it opens a comment'],
+    ['a.yml', "key: 'v'#c", 1, 'the same for a single-quoted scalar'],
+    ['a.yml', 'key: [a, b]#c', 1, 'a flow sequence ends the token too'],
+    ['a.yml', 'key: {a: 1}#c', 1, 'and a flow mapping'],
+    ['a.yml', 'key: v#c', 0, 'a PLAIN scalar swallows the # instead'],
+    // cm:guard .toml resolves through the yaml profile object but must narrow NOTHING — tomllib reads
+    //   every row below as a comment, and losing one would drop the annotation on it (ISS-61)
+    ['a.toml', 'port = 8080#c', 1, 'TOML opens a comment with nothing before the #'],
+    ['a.toml', '  1,# cm:guard x', 1, 'TOML does so inside an array too'],
+    ['a.toml', 'k = "v"#c', 1, 'and straight after a quoted TOML value'],
     ['Dockerfile', 'RUN echo a#b', 0, 'a # inside a Dockerfile argument'],
     ['Dockerfile', '# cm:guard both stages install the same lockfile', 1, 'a Dockerfile comment at column 0'],
     ['a.py', 'x = 1#c', 1, 'python takes a # straight after code'],

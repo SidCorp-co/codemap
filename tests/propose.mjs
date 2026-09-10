@@ -280,6 +280,21 @@ function pureCases(check) {
       contractCandidates(root, ['cmt.sh', 'cmt.go']).length === 0,
       `a # after whitespace opens a comment as it always did: ${JSON.stringify(contractCandidates(root, ['cmt.sh', 'cmt.go']))}`);
 
+    // cm:guard docker's arm is otherwise pinned by one scanner assertion alone, and .toml by none at
+    //   the propose tier — these two carry each through the reader that actually lost candidates
+    writeFileSync(join(root, 'Dockerfile'), 'RUN echo a#b "ERR.DOCK"\n');
+    writeFileSync(join(root, 'dock.go'), 'const e = "ERR.DOCK"\n');
+    const dock = contractCandidates(root, ['Dockerfile', 'dock.go']);
+    check('propose: a # inside a Dockerfile argument does not eat the literal after it (ISS-61)',
+      dock.length === 1 && dock[0].literal === 'ERR.DOCK',
+      `a Dockerfile comment is a whole line: ${JSON.stringify(dock)}`);
+
+    writeFileSync(join(root, 'conf.toml'), 'port = 8080# "ERR.TOML" is named only in this comment\n');
+    writeFileSync(join(root, 'conf.go'), 'const e = "ERR.TOML"\n');
+    check('propose: TOML opens a comment with nothing before the # (ISS-61)',
+      contractCandidates(root, ['conf.toml', 'conf.go']).length === 0,
+      `.toml reuses yaml's forms but must NOT reuse its leaderAfter: ${JSON.stringify(contractCandidates(root, ['conf.toml', 'conf.go']))}`);
+
     // cm:guard py is the control: narrowing it too would make `x=1#c` code and this pair a candidate,
     //   which is why leaderAfter is per profile and not global (ISS-61)
     writeFileSync(join(root, 'tight.py'), 'x = 1#"ERR.PY" named only in this comment\n');

@@ -289,15 +289,16 @@ template comment, and under TS's forms alone it was analyzed rather than skipped
 
 The scanner keeps comment leaders inside string literals from being read as comments, and does the
 same for a **bare URL** outside one — the `//` in JSX text (`<a>https://x.dev</a>`) or a `#fragment`
-in a YAML scalar. A profile may also declare that its leader **must begin a word**: `#` opens a
-comment in `sh`, `yaml` and `docker` only at the start of a line or after whitespace — after a shell
-metacharacter too, in `sh` — so `${f#src/}` and `run#now` are code. `py` and `php` declare no such
-rule, because a `#` immediately after code is a comment in both. A leader read wrongly here costs
-more than a diagnostic: `cm propose` masks the line and loses the literal on it silently, having no
-directive to be silenced by. The scheme vocabulary is closed (principle 3): an unlisted scheme costs a false
-`CM001` its author can silence, whereas a general `<ident>:` rule reads `{ key://cm:guard … }` as a
-URL and drops the annotation with no diagnostic — and a missed annotation is the one failure this
-scanner does not permit itself.
+in a YAML scalar. A profile may also declare that its leader **must begin a word**, so `${f#src/}`
+in shell and `run#now` in YAML are code rather than comments. Shell ends a word at whitespace or a
+metacharacter; YAML ends one at whitespace or at the close of a quoted scalar or flow collection.
+`py`, `php` and **TOML** declare no such rule, because in all three a `#` with nothing before it
+still opens a comment — which is why TOML does not share YAML's, though it shares its forms. A
+leader read wrongly here costs more than a diagnostic: `cm propose` masks the line and loses the
+literal on it silently, having no directive to be silenced by. The scheme vocabulary is closed
+(principle 3): an unlisted scheme costs a false `CM001` its author can silence, whereas a general
+`<ident>:` rule reads `{ key://cm:guard … }` as a URL and drops the annotation with no diagnostic —
+and a missed annotation is the one failure this scanner does not permit itself.
 
 A **block comment that is never closed** swallows the rest of the file, so no annotation below its opener
 is read. That is reported once, at the opener, as `CM203`; the text below it stays unread, because

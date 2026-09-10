@@ -212,9 +212,13 @@ const P = {
   sh: {
     id: 'sh',
     lineLeaders: ['#'],
+    // cm:edge contract -> cli/lib/scan.mjs — every `leaderAfter` below is read by beginsWord there and
+    //   nowhere else; the two must agree it is a RegExp over the single preceding character (ISS-61)
     // cm:why `${f#src/}` and `a#b` are one word, never a comment — shell ends a word at whitespace
     //   or a metacharacter, and reading the `#` as a leader masked the rest of the line (ISS-61)
-    leaderAfter: /[\s;|&()<>]/,
+    // cm:guard the backtick stays written \x60 — regex literals are not lexed here, so a LITERAL one
+    //   opens a template string that swallows every annotation below it in this file (ISS-61)
+    leaderAfter: /[\s;|&()<>\x60]/,
     docLineLeaders: [],
     blockOpens: [],
     docBlockOpens: [],
@@ -230,9 +234,11 @@ const P = {
   yaml: {
     id: 'yaml',
     lineLeaders: ['#'],
-    // cm:why YAML requires a space before a `#` comment, so `run#now` is one scalar — without this the
-    //   leader masked the rest of the line and cost cm propose the literal on it (ISS-61)
-    leaderAfter: /\s/,
+    // cm:why a plain scalar swallows `#`, so `run#now` is one value — but a QUOTED scalar or a flow
+    //   collection ends the token, and libyaml reads `key: "v"#c` as a comment; both are in the class
+    // cm:guard this profile object also serves .toml, which narrows NOTHING — see the TOML entry in
+    //   the extension map below before widening or reusing this (ISS-61)
+    leaderAfter: /[\s"'\]},]/,
     docLineLeaders: [],
     blockOpens: [],
     docBlockOpens: [],
@@ -266,6 +272,12 @@ const P = {
   },
 };
 
+// cm:why TOML reuses yaml's forms but must NOT reuse its leaderAfter — `port = 8080#c` is a comment
+//   to TOML's own parser, and narrowing it would drop the annotation on that line (ISS-61)
+// cm:edge lockstep -> cli/lib/scan.mjs — `leaderAfter` absent means "leader matches anywhere"; a
+//   scanner that made the field mandatory would silently narrow TOML (ISS-61)
+const TOML = { ...P.yaml, leaderAfter: undefined };
+
 const BY_EXT = {
   ts: P.ts, tsx: P.ts, mts: P.ts, cts: P.ts,
   js: P.ts, jsx: P.ts, mjs: P.ts, cjs: P.ts,
@@ -276,7 +288,7 @@ const BY_EXT = {
   rs: P.rust,
   sql: P.sql,
   sh: P.sh, bash: P.sh, zsh: P.sh,
-  yaml: P.yaml, yml: P.yaml, toml: P.yaml,
+  yaml: P.yaml, yml: P.yaml, toml: TOML,
 };
 
 const BY_BASENAME = {
