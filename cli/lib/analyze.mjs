@@ -36,7 +36,6 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
   const annAt = new Map();
   const chainAt = new Map();
   const overflow = new Map();
-  const overflowLines = new Set();
 
   // cm:guard never gated on `grammar` — a repo that took the graph without the comment discipline still
   //   needs its annotations READ, so losing them silently is not a prose-discipline matter (ISS-31)
@@ -46,7 +45,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
   const headerMax = reg.enforce?.headerMaxLines ?? 20;
   // cm:guard CM011 is prose-family (PROSE_CODES), so `grammar: false` must silence it too — a repo
   // adopting the graph without the comment discipline was still getting header-length errors
-  if (grammar && header && !header.glued && !header.exemptForm && header.count > headerMax) {
+  if (grammar && header && !header.glued && header.count > headerMax) {
     raw.push({ ...diag('CM011', relPath, header.start, `${header.count} lines (max ${headerMax})`), text: `header:${header.count}` });
   }
   const inHeader = (c) => !!header && !header.glued && c.line >= header.start && c.endLine <= header.end;
@@ -139,7 +138,6 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
       : undefined;
     if (chain && chain.leader === c.leader) {
       overflow.set(chain.ann, (overflow.get(chain.ann) ?? 0) + 1);
-      overflowLines.add(c.line);
       chainAt.set(c.line, chain);
     }
 
@@ -160,10 +158,15 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     raw.push(diag('CM204', relPath, ann.line, `${lost} line${lost === 1 ? ' is' : 's are'} not loaded`));
   }
 
+  // cm:guard a silenced prose diagnostic is KEPT here, not just dropped — it is the only record of which
+  //   COMMENT the author silenced, and mass bills that comment by its text (ISS-51)
+  const silencedProse = [];
   const diags = raw.filter((d) => {
     const above = ignores.get(d.line - 1);
     const same = ignores.get(d.line);
-    return !(above?.has(d.code) || same?.has(d.code));
+    const hushed = above?.has(d.code) || same?.has(d.code);
+    if (hushed && PROSE_CODES.has(d.code) && d.code !== 'CM011') silencedProse.push(d);
+    return !hushed;
   });
 
   // cm:why a whole orientation run reported line-by-line with "delete it" reads as a verdict on the prose
@@ -214,12 +217,12 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     // cm:edge contract -> cli/lib/drain.mjs — CM013 compares this across two
     //   revisions to tell a code edit from a reflow, so it must ignore everything a reflow can change
     codeShape: codeShape(lines, comments),
-    // cm:edge contract -> cli/lib/mass.mjs — §11 bills these to prose unless the module header
-    //   claims them first (§4.1), because an overflow line raises no CM001 when `grammar` is false (ISS-36)
-    overflowLines,
     // cm:edge contract -> cli/lib/mass.mjs — §11 bills the header as its own
     //   channel, and only this function knows where one ends: a glued run is not a header at all
     header,
+    // cm:edge contract -> cli/lib/mass.mjs — prose an author silenced is still prose, and only this
+    //   function knows WHICH comment it silenced; a profile constant there invented the verdict (ISS-51)
+    silencedProse,
     skipped: null,
   };
 }
@@ -311,7 +314,6 @@ function moduleHeader(lines, comments, codeLines, prof) {
   // cm:guard CM011's count is the BILLABLE lines, never the run's span — a run mixing an exempt form
   //   with a billable one otherwise reports the exempt lines too (§9.1, ISS-28)
   const isExempt = (c) => !!prof?.proseExemptBlockOpens?.includes(c.leader);
-  const exemptForm = run.every(isExempt);
   const billable = run.filter((c) => !isExempt(c))
     .reduce((n, c) => n + (c.endLine - c.line + 1), 0);
 
@@ -320,9 +322,9 @@ function moduleHeader(lines, comments, codeLines, prof) {
   let firstCode = Infinity;
   for (const l of codeLines) if (l > prologueEnd && l < firstCode) firstCode = l;
   if (firstCode <= end) return null;
-  if (lines[end] === undefined || lines[end].trim() !== '') return { start, end, glued: true, exemptForm };
+  if (lines[end] === undefined || lines[end].trim() !== '') return { start, end, glued: true };
 
-  return { start, end, count: billable, exemptForm };
+  return { start, end, count: billable };
 }
 
 function documentsExported(lines, codeLines, fromLine, prof) {

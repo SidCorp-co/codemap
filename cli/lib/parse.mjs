@@ -1,5 +1,11 @@
 // codemap/1 §3 §4 §7 — grammar, canonical form, diagnostics.
 
+// cm:guard cm:ignore is NOT a member — it is the ignore directive, answered by parseAnnotation
+//   below before this list is ever consulted, and TAGS is the tag vocabulary (ISS-50)
+// cm:edge lockstep -> cli/lib/help.mjs — a new member needs a COMPLETE TAG_HELP row there too; a
+//   row absent, or short of a field, drops from the guide and makes `cm help annotations` exit 2 (ISS-53)
+// cm:guard the CLI derives this size but prose hand-types it, and `cm help spec` PRINTS SPEC.md's
+//   copy — sweep a member in with `grep -rniE '\b(five|six|seven|eight)\b'`, broad because SPEC.md:139 wraps the count off its noun (ISS-55)
 export const TAGS = ['flow', 'edge', 'guard', 'hack', 'why'];
 
 // cm:why the whole prose family is baselined together, so `cm init` leaves a legacy repo green (§8)
@@ -30,7 +36,16 @@ export const EDGE_KINDS = ['contract', 'ordering', 'lockstep', 'sideeffect', 'na
 //   leader, so never widen this to the full-line `^\s*(//|#|--)\s*cm:` §4 prints: no site could call it
 export const CM_PREFIX_RE = /^cm:/;
 const CM_TEXT_RE = /^cm:([a-z][a-z-]*)\b\s*(.*)$/s;
-const IGNORE_RE = /^cm:ignore\s+(CM\d{3})\s*(?:—|--|-)\s*(\S.*)$/;
+// cm:guard no flags on this one, ever — .test() in two modules, .source both below and in
+//   propose.mjs, and prof.exempt.some() in every profile would all share a /g's lastIndex
+// cm:guard parse.mjs stays import-free: languages.mjs reads this at MODULE scope, so an import back
+//   from here is a ReferenceError in any process that reaches parse.mjs first
+// cm:guard it stays a RegExp because COMMON_EXEMPT holds it as one, and widening it must keep working
+//   through IGNORE_RE below, which is why that wraps it in (?:) and reads its captures by name
+// cm:guard keep the leading ^ — propose.mjs interpolates this source BARE as one arm of RESERVED, so
+//   an unanchored widening silently excludes every literal merely containing the pattern (ISS-50)
+export const CM_IGNORE_RE = /^cm:ignore\b/;
+const IGNORE_RE = new RegExp(`(?:${CM_IGNORE_RE.source})\\s+(?<code>CM\\d{3})\\s*(?:—|--|-)\\s*(?<reason>\\S.*)$`);
 // cm:why marker-shaped only — a bare \bXXX\b matched "TC-XXX" in real repos, and a validator that cries wolf gets switched off
 const TODO_RE = /^(TODO|FIXME|HACK)\b|\b(TODO|FIXME)\s*[:(]/;
 const ID = '[a-z0-9][a-z0-9-]*';
@@ -38,7 +53,7 @@ const ID = '[a-z0-9][a-z0-9-]*';
 const CODES = {
   CM001: { tier: 'grammar', section: '§1.1', message: 'prose comment is not allowed here', fix: 'if it records something the compiler, the types, the path and the LSP cannot state, keep it as cm:why (rationale) or cm:guard (something whoever edits this must know); if it restates the code, delete it' },
   CM002: { tier: 'grammar', section: '§3', message: 'unknown cm: tag', fix: `use one of: ${TAGS.join(', ')}` },
-  CM003: { tier: 'grammar', section: '§4', message: 'cm: annotation inside a block or doc comment', fix: 'move it to a line comment — block/doc comments are parsed by TSDoc, PHPStan, Psalm and rustdoc' },
+  CM003: { tier: 'grammar', section: '§4', message: 'cm: annotation inside a block or doc comment', fix: 'move it to a line comment — block/doc comments are parsed by TSDoc, PHPStan, Psalm and rustdoc; a single-file component template has no line leader, so move it into <script>' },
   CM004: { tier: 'grammar', section: '§5', message: 'cm:edge needs a known kind', fix: `kind must be one of: ${EDGE_KINDS.join(', ')}` },
   CM005: { tier: 'grammar', section: '§4', message: 'cm:edge needs "-> <repo-relative-target>"', fix: 'write: cm:edge <kind> -> path/to/file.ts[#symbol] — <why they are coupled>; if this is rationale rather than a coupling, use cm:why' },
   CM006: { tier: 'grammar', section: '§4', message: 'cm:flow needs "<flow>/<step>"', fix: 'write: cm:flow <flow>/<step> [after:<step>] — <what this step does>' },
@@ -83,8 +98,8 @@ function splitProse(s) {
  */
 export function parseAnnotation(text, file, line) {
   const ig = IGNORE_RE.exec(text);
-  if (ig) return { ignore: { code: ig[1], reason: ig[2] }, };
-  if (/^cm:ignore\b/.test(text)) {
+  if (ig) return { ignore: { code: ig.groups.code, reason: ig.groups.reason }, };
+  if (CM_IGNORE_RE.test(text)) {
     return { diags: [diag('CM008', file, line, 'cm:ignore needs "<CODE> — <reason>"')] };
   }
 

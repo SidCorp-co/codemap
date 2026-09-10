@@ -926,8 +926,8 @@ export const analyzeCases = [
     annotations: [],
   },
   {
-    // cm:guard this is the case that decides `every` over `some` — under `some` one leading HTML line
-    //   would exempt the whole run and a 25-line narration header in an SFC would go unreported
+    // cm:guard this pins CM011's count to the BILLABLE half of a mixed header — count the whole
+    //   span instead, and a 25-line narration behind a short HTML banner goes unreported
     name: 'sfc: a mixed header whose BILLABLE half is over the max is still CM011 (ISS-28)',
     file: 'mixed-over.vue',
     src: ['<!--', ...Array(3).fill(' a short banner'), '-->', '/*', ...Array(23).fill(' * narration'), '*/', '',
@@ -1068,6 +1068,33 @@ export const analyzeCases = [
     annotations: [],
   },
   {
+    // cm:edge lockstep -> spec/SPEC.md — §6 states this reach as the profile's one consumer-visible
+    //   cost, and a change that silences it has to fail a case rather than merely outdate the prose
+    name: 'sfc: a cm: annotation in a template HTML comment is CM003 and is not read (ISS-28)',
+    file: 'tmpl-annotation.vue',
+    src: [
+      '<template>',
+      '  <!-- cm:edge contract -> src/bus.ts \u2014 the topic string both sides spell -->',
+      '  <div/>',
+      '</template>',
+    ].join('\n'),
+    codes: ['CM003'],
+    annotations: [],
+  },
+  {
+    name: 'sfc: a template CM003 survives grammar: false, as losing an annotation is not prose (ISS-28)',
+    file: 'tmpl-annotation-nogrammar.vue',
+    src: [
+      '<template>',
+      '  <!-- cm:guard this must never be lost -->',
+      '  <div/>',
+      '</template>',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM003'],
+    annotations: [],
+  },
+  {
     name: 'sfc: an unclosed HTML comment is reported the same way as an unclosed /* (§6)',
     file: 'unterminated.vue',
     src: [
@@ -1120,6 +1147,19 @@ export const analyzeCases = [
       'const c = 3;',
     ].join('\n'),
     codes: ['CM001'],
+    annotations: ['guard'],
+  },
+  {
+    // cm:guard the annotation and the expansion must be in ONE case — the analyzer is what the hook
+    //   runs, and a narrowing that reached scan.mjs alone could still lose the guard here (ISS-61)
+    name: 'sh: an annotation is read, and the parameter expansion under it opens no comment (ISS-61)',
+    file: 'deploy.sh',
+    src: [
+      '# cm:guard the unit file and this script must name the same listen port',
+      'set -- ${f#cm:guard this text is code and must never be adopted as a second annotation}',
+      'exec ./run "$@"',
+    ].join('\n'),
+    codes: [],
     annotations: ['guard'],
   },
 ];

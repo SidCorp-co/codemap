@@ -50,6 +50,9 @@ export const VERBS = [
 const pad = (s, n) => String(s).padEnd(n);
 
 function table(rows, gap = 2) {
+  // cm:guard zero rows is reachable: annotations() renders only the tags whose help row is sound,
+  //   and every row can be broken at once — rows[0] there is exit 1 with no guidebook (ISS-43)
+  if (rows.length === 0) return [];
   const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => String(r[i]).length)));
   return rows.map((r) => r.map((c, i) => (i === r.length - 1 ? String(c) : pad(c, widths[i]))).join(' '.repeat(gap)).trimEnd());
 }
@@ -66,7 +69,7 @@ function verbs() {
   ].join('\n');
 }
 
-function overview() {
+export function overview(tags = TAGS) {
   return `cm — codemap/${SPEC_VERSION.split('/')[1]}
 
 Carries the couplings NO tool can derive — cross-language contracts, cross-process flows, edit-time
@@ -91,55 +94,98 @@ ${verbs()}
 
 TOPICS  (cm help <topic>)
 
-${table(Object.entries(TOPIC_BLURBS).map(([t, d]) => [`  ${t}`, d])).join('\n')}`;
+${table(Object.entries(topicBlurbs(tags)).map(([t, d]) => [`  ${t}`, d])).join('\n')}`;
 }
 
-const TOPIC_BLURBS = {
-  annotations: 'the five tags, their syntax, and which one to reach for',
-  codes: 'every diagnostic: tier, section, cause, fix',
-  baseline: 'how legacy prose is frozen, and how the total is allowed to fall',
-  languages: 'per-language comment policy — why this survives a Go or Laravel repo',
-  config: '.forge/codemap.json: every knob, and the three adoption modes',
-  ci: 'exit codes, scoping a run, gating a commit',
-  workflow: 'what to do before an edit, and how to answer a block',
-  principles: 'when an annotation is earned, and what not to do',
-  spec: 'the contract itself — cm help spec [§N] slices SPEC.md',
-  verbs: 'the verb table on its own',
+// cm:why the vocabulary arrives as an argument so a six-tag overview is a corpus case, not a mutation of TAGS (ISS-55)
+function topicBlurbs(tags = TAGS) {
+  return {
+    annotations: `the ${tags.length} tags, their syntax, and which one to reach for`,
+    codes: 'every diagnostic: tier, section, cause, fix',
+    baseline: 'how legacy prose is frozen, and how the total is allowed to fall',
+    languages: 'per-language comment policy — why this survives a Go or Laravel repo',
+    config: '.forge/codemap.json: every knob, and the three adoption modes',
+    ci: 'exit codes, scoping a run, gating a commit',
+    workflow: 'what to do before an edit, and how to answer a block',
+    principles: 'when an annotation is earned, and what not to do',
+    spec: 'the contract itself — cm help spec [§N] slices SPEC.md',
+    verbs: 'the verb table on its own',
+  };
+}
+
+const TAG_HELP_FIELDS = ['consumer', 'syntax', 'pick'];
+
+// cm:guard the key set is exactly TAGS and every row carries all three fields — a row that is
+//   merely present still renders "undefined", so tagHelpGaps decides both (ISS-53)
+// cm:guard key order is the order WHICH ONE teaches the tags in, which is NOT TAGS order — a
+//   reorder here rewrites the section a reader chooses a tag from (ISS-53)
+const TAG_HELP = {
+  guard: {
+    consumer: 'PreToolUse -> injected before an edit',
+    syntax: '<text>',
+    pick: 'whoever edits this must obey a condition',
+  },
+  edge: {
+    consumer: 'cm impact -> blast radius',
+    syntax: '<kind> -> <target> [— <text>]',
+    pick: 'a coupling nothing links',
+  },
+  flow: {
+    consumer: 'cm flow -> ordered trace + mermaid',
+    syntax: '<flow>/<step> [after:<step>] [— <text>]',
+    pick: 'this code is a step of a named runtime flow',
+  },
+  hack: {
+    consumer: 'cm verify -> stale-workaround check',
+    syntax: 'ISS-<n> until:<condition> — <text>',
+    pick: 'a live workaround with an exit condition',
+  },
+  why: {
+    consumer: 'none — read in place',
+    syntax: '<text>',
+    pick: 'non-obvious rationale, no tool consumes it',
+  },
 };
 
-function annotations() {
-  const consumers = {
-    flow: 'cm flow -> ordered trace + mermaid',
-    edge: 'cm impact -> blast radius',
-    guard: 'PreToolUse -> injected before an edit',
-    hack: 'cm verify -> stale-workaround check',
-    why: 'none — read in place',
+// cm:why parameterised for its one caller so a test can exercise a vocabulary and a table this
+//   repo does not ship, rather than mutating either shared constant (ISS-50's shape)
+export function tagHelpGaps(tags = TAGS, help = TAG_HELP) {
+  const rows = Object.keys(help);
+  return {
+    missing: tags.filter((t) => !rows.includes(t)),
+    partial: tags.filter((t) => help[t] && TAG_HELP_FIELDS.some((f) => !help[t][f])),
+    extra: rows.filter((t) => !tags.includes(t)),
   };
-  const forms = {
-    flow: '<leader> cm:flow  <flow>/<step> [after:<step>] [— <text>]',
-    edge: '<leader> cm:edge  <kind> -> <target> [— <text>]',
-    guard: '<leader> cm:guard <text>',
-    hack: '<leader> cm:hack  ISS-<n> until:<condition> — <text>',
-    why: '<leader> cm:why   <text>',
-  };
-  const pick = [
-    ['  whoever edits this must obey a condition', 'cm:guard'],
-    ['  a coupling nothing links', 'cm:edge'],
-    ['  this code is a step of a named runtime flow', 'cm:flow'],
-    ['  a live workaround with an exit condition', 'cm:hack'],
-    ['  non-obvious rationale, no tool consumes it', 'cm:why'],
-  ];
+}
 
-  return `ANNOTATIONS
+// cm:guard a gap returns ok:false and renders the guide without the broken rows — never a throw:
+//   exit 1 is "the gate found violations" to CI, and a guidebook that dies is unreadable (ISS-43)
+export function annotations(tags = TAGS) {
+  const gaps = tagHelpGaps(tags);
+  const gapLines = [
+    gaps.missing.length ? `  no help row for: ${gaps.missing.join(', ')}` : '',
+    gaps.partial.length ? `  help row missing ${TAG_HELP_FIELDS.join('/')} for: ${gaps.partial.join(', ')}` : '',
+    gaps.extra.length ? `  help row for a tag TAGS does not carry: ${gaps.extra.join(', ')}` : '',
+  ].filter(Boolean);
+  const notice = gapLines.length === 0 ? '' : `TAG_HELP in cli/lib/help.mjs is not total over TAGS, so the rows below are incomplete:
+${gapLines.join('\n')}
 
-Exactly ${TAGS.length} tags. The set is the size of the set of distinct consumers — a tag exists only if
+`;
+  const sound = tags.filter((t) => !gaps.missing.includes(t) && !gaps.partial.includes(t));
+  const tagWidth = sound.length === 0 ? 0 : Math.max(...sound.map((t) => `cm:${t}`.length));
+
+  return {
+    ok: gapLines.length === 0,
+    text: `${notice}ANNOTATIONS
+
+Exactly ${tags.length} tags. The set is the size of the set of distinct consumers — a tag exists only if
 something consumes it and the payoff lands in the same session.
 
-${table(TAGS.map((t) => [`  cm:${t}`, consumers[t]])).join('\n')}
+${table(sound.map((t) => [`  cm:${t}`, TAG_HELP[t].consumer])).join('\n')}
 
 FORM
 
-${TAGS.map((t) => `  ${forms[t]}`).join('\n')}
+${sound.map((t) => `  <leader> ${pad(`cm:${t}`, tagWidth)} ${TAG_HELP[t].syntax}`).join('\n')}
 
   <leader>  the language's line-comment leader: // , # or --  (line comments ONLY — inside a
             /* */, /** */ or <!-- --> block it is CM003, so no other toolchain ever parses a
@@ -162,7 +208,7 @@ ${TAGS.map((t) => `  ${forms[t]}`).join('\n')}
 
 WHICH ONE
 
-${table(pick).join('\n')}
+${table(Object.entries(TAG_HELP).filter(([t]) => sound.includes(t)).map(([t, v]) => [`  ${v.pick}`, `cm:${t}`])).join('\n')}
 
   Multi-line rationale goes in the MODULE HEADER (first comment run, followed by a blank line,
   before any code — a shebang and a "use client"/"use server"/"use strict" directive may precede it).
@@ -170,7 +216,8 @@ ${table(pick).join('\n')}
   work; file an issue at draft instead (CM010).
 
   cm:flow needs its flow declared first: cm new flow <name>. Steps are never declared — they are
-  derived from the code.`;
+  derived from the code.`,
+  };
 }
 
 function codes() {
@@ -475,15 +522,16 @@ const TOPICS = {
 export function renderHelp(topic, arg) {
   if (!topic) return { text: overview(), ok: true };
   if (topic === 'spec') return { text: spec(arg), ok: true };
-  if (topic === 'topics') return { text: Object.keys(TOPIC_BLURBS).sort().join('\n'), ok: true };
+  if (topic === 'topics') return { text: Object.keys(topicBlurbs()).sort().join('\n'), ok: true };
   const fn = TOPICS[topic];
   if (!fn) {
     return {
-      text: `no help topic "${topic}". Topics: ${Object.keys(TOPIC_BLURBS).sort().join(', ')}`,
+      text: `no help topic "${topic}". Topics: ${Object.keys(topicBlurbs()).sort().join(', ')}`,
       ok: false,
     };
   }
-  return { text: fn(), ok: true };
+  const out = fn();
+  return typeof out === 'string' ? { text: out, ok: true } : out;
 }
 
-export const HELP_TOPICS = Object.keys(TOPIC_BLURBS);
+export const HELP_TOPICS = Object.keys(topicBlurbs());

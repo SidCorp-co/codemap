@@ -6,9 +6,11 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { compareVersions } from '../cli/lib/registry.mjs';
+import { stripGitEnv } from './git-env.mjs';
 
 function git(repoRoot, args) {
-  return execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8' }).trim();
+  return execFileSync('git', args,
+    { cwd: repoRoot, encoding: 'utf8', env: stripGitEnv(process.env) }).trim();
 }
 
 export function releaseTagCases(pluginRoot, check) {

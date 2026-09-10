@@ -12,11 +12,12 @@ import { blockingDiags } from '../cli/lib/blocking.mjs';
 import {
   reconcile, eventCounts, buildPayload, metricsPaths, registryFlips, annotationEffect, annotationEffectSummary,
 } from '../cli/lib/metrics.mjs';
+import { stripGitEnv } from './git-env.mjs';
 
 function git(root, ...args) {
   execFileSync('git', ['-C', root, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
+    env: { ...stripGitEnv(process.env), GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
       GIT_COMMITTER_NAME: 'cm', GIT_COMMITTER_EMAIL: 'cm@test' },
   });
 }
@@ -41,7 +42,7 @@ function events(root) {
 function runHook(pluginRoot, root, file) {
   const res = spawnSync(process.execPath, [join(pluginRoot, 'cli', 'hooks', 'hook-post-edit.mjs')], {
     input: JSON.stringify({ cwd: root, tool_name: 'Edit', tool_input: { file_path: file } }),
-    encoding: 'utf8',
+    encoding: 'utf8', env: stripGitEnv(process.env),
   });
   let json = null;
   try { json = JSON.parse(res.stdout); } catch { json = null; }
@@ -50,7 +51,7 @@ function runHook(pluginRoot, root, file) {
 
 function runCm(pluginRoot, root, ...args) {
   const res = spawnSync(process.execPath, [join(pluginRoot, 'cli', 'cm.mjs'), ...args],
-    { cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } });
+    { cwd: root, encoding: 'utf8', env: { ...stripGitEnv(process.env), NO_COLOR: '1' } });
   return { ...res, out: `${res.stdout}${res.stderr}` };
 }
 

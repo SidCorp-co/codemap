@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { install } from '../cli/lib/install.mjs';
 import { vendoredVersion } from '../cli/lib/registry.mjs';
+import { stripGitEnv } from './git-env.mjs';
 
 function installStepScript(pluginRoot) {
   const lines = readFileSync(join(pluginRoot, 'adapters', 'ci', 'codemap-upgrade.yml'), 'utf8').split('\n');
@@ -35,7 +36,7 @@ export function upgradeWorkflowCases(pluginRoot, check) {
   const clone = mkdtempSync(join(tmpdir(), 'cm-upgrade-clone-'));
   const consumer = mkdtempSync(join(tmpdir(), 'cm-upgrade-consumer-'));
   try {
-    execFileSync('git', ['clone', '-q', pluginRoot, clone]);
+    execFileSync('git', ['clone', '-q', pluginRoot, clone], { env: stripGitEnv(process.env) });
     // cm:why HEAD stands in for "${{ steps.latest.outputs.tag }}" — this asserts the *cwd* the install runs with, not tag resolution (release-tag.mjs owns that)
     //   and a tag cut before the current layout would test a tree this checker no longer ships
     const tag = 'HEAD';
@@ -47,7 +48,8 @@ export function upgradeWorkflowCases(pluginRoot, check) {
     const rendered = script
       .split('/tmp/codemap').join(clone)
       .split('${{ steps.latest.outputs.tag }}').join(tag);
-    const res = spawnSync('bash', ['-c', rendered], { cwd: consumer, encoding: 'utf8' });
+    const res = spawnSync('bash', ['-c', rendered],
+      { cwd: consumer, encoding: 'utf8', env: stripGitEnv(process.env) });
 
     check('upgrade-workflow: install step exits clean',
       res.status === 0, `status=${res.status}\nstdout: ${res.stdout}\nstderr: ${res.stderr}`);

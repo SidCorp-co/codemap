@@ -71,10 +71,12 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
   and never from a token on the line, so no marker satisfies it and no reindenting or rewrapping clears it. Its
   remedies are to reword, to split one annotation into two, or to move the annotation below prose that
   was never its own. A line the run counts is narration, so `cm mass` bills it as **live prose, never as a
-  doc comment**, and does so on the run itself rather than on the `CM001` it raises only under the prose
-  tier — otherwise a repo at `grammar: false`, which for `sh`, `sql`, `yaml` and `docker` is every repo
-  that has not overridden the tier per language, reports the overflow as machine-consumed documentation
-  and hides it from the one number §11 exists to keep honest. Where the annotation opens a module header
+  doc comment**, and it does not depend on the `CM001` that only the prose tier raises — otherwise a repo
+  at `grammar: false`, which for `sh`, `sql`, `yaml` and `docker` is every repo that has not overridden
+  the tier per language, reports the overflow as machine-consumed documentation and hides it from the one
+  number §11 exists to keep honest. A continuation line is always a line comment, so where no diagnostic
+  claims the line first, §4.2's form rule bills it to live; and it bills each comment sharing a line by
+  that comment's own form, never by the line. Where the annotation opens a module header
   the header channel claims the line first (§4.1), which is that channel's own attribution and not a
   loss. Two things end a run rather than counting in it: a line the baseline has FROZEN,
   which §4 already says is never a continuation, and a blank line, which is the author's own statement
@@ -254,10 +256,23 @@ comment in that form, not a list of directive names that would need keeping curr
 The cost is stated rather than hidden: template narration is not policed at all, and no registry
 value makes it billable — the exemption is unconditional. `<!-- TODO -->` in a template is
 consequently silent where `/* TODO */` in `.ts` is not, against §3's stance on TODOs. Both are
-accepted so that adding this profile adds no diagnostic to any existing tree; making the exemption
-registry-reachable, and giving a template a per-site escape, are the two ways out and neither is
-built. `cm mass` still bills the text as live prose, not as a doc comment, so it remains visible in
-the one number §11 exists to keep honest.
+accepted so that adding this profile adds no *prose* diagnostic to any existing tree; making the
+exemption registry-reachable, and giving a template a per-site escape, are the two ways out and
+neither is built. `cm mass` still bills the text as live prose, not as a doc comment, so it remains
+visible in the one number §11 exists to keep honest — except where the comment is the file's module header
+(§4.1), which goes to the `header` channel, as every profile's header does.
+
+The exemption is about prose, and two diagnostics do newly reach a template, because the HTML form
+is comment text under this profile where it was not text at all before. A `cm:` line written inside
+`<!-- -->` is `CM003` (§4), and an unterminated `<!--` is `CM203` (§6), which discards every
+annotation below it. Neither is a new rule — both hold for every block form in every profile — but
+their reach into single-file components is new, and the two land differently on the gate. `CM003` is
+grammar, so a template carrying one starts failing where it passed and `cm verify` exits 1. `CM203`
+is structural, so it is a warning and the gate stays green (§9.1's exit table), while every
+annotation below the opener goes unread — the quieter cost of the two, and the one a consumer is
+least likely to notice. That is the profile's consumer-visible cost, and it is the reason `CM003`'s
+fix line names `<script>` as the destination: a template has no line leader to move the annotation
+to.
 
 A file whose first lines mark it generated (`Code generated ... DO NOT EDIT`, `@generated`,
 drizzle/`_ide_helper` markers) is skipped entirely. The marker counts only where it is
@@ -274,7 +289,14 @@ template comment, and under TS's forms alone it was analyzed rather than skipped
 
 The scanner keeps comment leaders inside string literals from being read as comments, and does the
 same for a **bare URL** outside one — the `//` in JSX text (`<a>https://x.dev</a>`) or a `#fragment`
-in a YAML scalar. The scheme vocabulary is closed (principle 3): an unlisted scheme costs a false
+in a YAML scalar. A profile may also declare that its leader **must begin a word**, so `${f#src/}`
+in shell and `run#now` in YAML are code rather than comments. Shell ends a word at whitespace or a
+metacharacter; YAML ends one at whitespace or at the close of a quoted scalar or flow collection.
+`py`, `php` and **TOML** declare no such rule, because in all three a `#` immediately after code,
+with no space before it, still opens a comment — which is why TOML does not share YAML's
+`leaderAfter` though it shares its comment forms. A leader read wrongly here costs more than a
+diagnostic: `cm propose` masks the line and loses the literal on it silently, having no directive
+to be silenced by. The scheme vocabulary is closed (principle 3): an unlisted scheme costs a false
 `CM001` its author can silence, whereas a general `<ident>:` rule reads `{ key://cm:guard … }` as a
 URL and drops the annotation with no diagnostic — and a missed annotation is the one failure this
 scanner does not permit itself.

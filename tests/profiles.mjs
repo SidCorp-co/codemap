@@ -9,14 +9,16 @@ import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { profileFor, PROFILES, ecosystemOf, advisoryEcosystemOf } from '../cli/lib/languages.mjs';
+import { scanComments } from '../cli/lib/scan.mjs';
 import { walk, changedStaged, DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
+import { stripGitEnv } from './git-env.mjs';
 
 const GUARD_TEXT = 'the build stage and the runtime stage must install the same lockfile';
 
 function git(root, ...args) {
   execFileSync('git', ['-C', root, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
+    env: { ...stripGitEnv(process.env), GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
       GIT_COMMITTER_NAME: 'cm', GIT_COMMITTER_EMAIL: 'cm@test' },
   });
 }
@@ -36,7 +38,7 @@ function makeRepo() {
 
 function cm(pluginRoot, root, ...args) {
   const res = spawnSync(process.execPath, [join(pluginRoot, 'cli', 'cm.mjs'), ...args], {
-    cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
+    cwd: root, encoding: 'utf8', env: { ...stripGitEnv(process.env), NO_COLOR: '1' },
   });
   return { ...res, out: `${res.stdout}${res.stderr}` };
 }
@@ -46,6 +48,40 @@ function fileCount(out) {
 }
 
 export function profileCases(pluginRoot, check) {
+  // cm:guard both columns are required — a `leaderAfter` set too wide reads a real comment as code and
+  //   loses the annotations in it, which is the one failure scan.mjs's header forbids (ISS-61)
+  // cm:edge contract -> cli/lib/scan.mjs — `leaderAfter` is a RegExp tested against the character
+  //   before the leader, so a wrong-typed one throws on the first leader past column 0, never at it
+  const leaderRows = [
+    ['a.sh', 'set -- ${f#src/} "ERR.PAY"', 0, 'a shell parameter expansion is one word'],
+    ['a.sh', '# cm:guard the unit file and this script must name the same port', 1, 'a shell comment on its own line'],
+    ['a.sh', 'echo ok # trailing', 1, 'a shell comment after whitespace'],
+    ['a.sh', 'echo ok;# after a separator', 1, 'shell ends a word at ; so a comment opens there'],
+    ['a.sh', 'echo `#x`', 1, 'a backtick opens command substitution, so the # after it is a comment'],
+    ['a.yml', 'cmd: run#now "ERR.PAY"', 0, 'a YAML scalar containing #'],
+    ['a.yml', '# a yaml comment', 1, 'a YAML comment at column 0'],
+    ['a.yml', 'key: v # trailing', 1, 'a YAML comment after whitespace'],
+    ['a.yml', 'key: "v"#c', 1, 'libyaml ends a QUOTED scalar, so the # after it opens a comment'],
+    ['a.yml', "key: 'v'#c", 1, 'the same for a single-quoted scalar'],
+    ['a.yml', 'key: [a, b]#c', 1, 'a flow sequence ends the token too'],
+    ['a.yml', 'key: {a: 1}#c', 1, 'and a flow mapping'],
+    ['a.yml', 'key: v#c', 0, 'a PLAIN scalar ending in a word character swallows the # instead'],
+    // cm:guard .toml resolves through the yaml profile object but must narrow NOTHING — tomllib reads
+    //   every row below as a comment, and losing one would drop the annotation on it (ISS-61)
+    ['a.toml', 'port = 8080#c', 1, 'TOML opens a comment with nothing before the #'],
+    ['a.toml', '  1,# cm:guard x', 1, 'TOML does so inside an array too'],
+    ['a.toml', 'k = "v"#c', 1, 'and straight after a quoted TOML value'],
+    ['Dockerfile', 'RUN echo a#b', 0, 'a # inside a Dockerfile argument'],
+    ['Dockerfile', '# cm:guard both stages install the same lockfile', 1, 'a Dockerfile comment at column 0'],
+    ['a.py', 'x = 1#c', 1, 'python takes a # straight after code'],
+    ['a.php', '<?php $x = 1;#c', 1, 'php takes a # straight after code'],
+  ];
+  for (const [file, line, want, why] of leaderRows) {
+    const got = scanComments(`${line}\n`, profileFor(file)).comments.length;
+    check(`profiles: ${why} -> ${want} comment(s) in ${file} (ISS-61)`, got === want,
+      `expected ${want}, got ${got} for ${JSON.stringify(line)} — verify and propose both read this`);
+  }
+
   const resolves = [
     ['Dockerfile', 'docker'],
     ['Dockerfile.preview', 'docker'],
@@ -197,7 +233,8 @@ export function profileCases(pluginRoot, check) {
     //   scope reports 0 files and exit 0, which passed before the fix too (ISS-25)
     writeFileSync(join(root, 'Dockerfile'),
       `# syntax=docker/dockerfile:1\n# cm:guard ${GUARD_TEXT}\n# cm:guard the runtime stage installs no build toolchain\nFROM node:22\n`);
-    execFileSync('git', ['-C', root, 'add', 'Dockerfile'], { encoding: 'utf8' });
+    execFileSync('git', ['-C', root, 'add', 'Dockerfile'],
+      { encoding: 'utf8', env: stripGitEnv(process.env) });
 
     check('profiles: changedStaged() reaches a staged Dockerfile',
       changedStaged(root).includes('Dockerfile'),

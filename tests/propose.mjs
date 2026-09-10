@@ -9,19 +9,23 @@ import {
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { proseCandidates, lockstepCandidates, contractCandidates } from '../cli/lib/propose.mjs';
+import { proseCandidates, lockstepCandidates, contractCandidates, RESERVED, makeReserved, codeOnly } from '../cli/lib/propose.mjs';
+import { profileFor } from '../cli/lib/languages.mjs';
+import { scanComments } from '../cli/lib/scan.mjs';
+import { stripGitEnv } from './git-env.mjs';
+import { TAGS, CM_IGNORE_RE } from '../cli/lib/parse.mjs';
 
 function git(root, ...args) {
   execFileSync('git', ['-C', root, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
+    env: { ...stripGitEnv(process.env), GIT_AUTHOR_NAME: 'cm', GIT_AUTHOR_EMAIL: 'cm@test',
       GIT_COMMITTER_NAME: 'cm', GIT_COMMITTER_EMAIL: 'cm@test' },
   });
 }
 
 function cm(pluginRoot, root, ...args) {
   const res = spawnSync(process.execPath, [join(pluginRoot, 'cli', 'cm.mjs'), ...args], {
-    cwd: root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' },
+    cwd: root, encoding: 'utf8', env: { ...stripGitEnv(process.env), NO_COLOR: '1' },
   });
   return { ...res, out: `${res.stdout}${res.stderr}` };
 }
@@ -55,6 +59,62 @@ function pureCases(check) {
   check('propose: prose drops a path that does not resolve to a real file', noHit.length === 0,
     `expected 0, got ${JSON.stringify(noHit)}`);
 
+  // cm:guard the .ts control must stay beside it — PATH_RE recognising a path SHAPE is only correct
+  //   because the registry's file list decides what exists, and a case for .vue alone cannot see that (ISS-59)
+  const sfcProse = proseCandidates(
+    [{ relPath: 'notes.ts', diags: [{ code: 'CM001', line: 3, text: 'see src/Widget.vue for the pair' }] }],
+    ['notes.ts', 'src/Widget.vue'],
+  );
+  check('propose: prose naming a .vue resolves to a prose candidate (ISS-59)',
+    sfcProse.length === 1 && sfcProse[0].target === 'src/Widget.vue',
+    `.vue has a profile, so the proposer must be able to see it named: ${JSON.stringify(sfcProse)}`);
+
+  const sveProse = proseCandidates(
+    [{ relPath: 'notes.ts', diags: [{ code: 'CM001', line: 3, text: 'see src/App.svelte for the pair' }] }],
+    ['notes.ts', 'src/App.svelte'],
+  );
+  check('propose: prose naming a .svelte resolves to a prose candidate (ISS-59)',
+    sveProse.length === 1 && sveProse[0].target === 'src/App.svelte',
+    `.svelte resolves to the same profile as .vue: ${JSON.stringify(sveProse)}`);
+
+  const unscannable = proseCandidates(
+    [{ relPath: 'notes.ts', diags: [{ code: 'CM001', line: 3, text: 'see docs/guide.md for the pair' }] }],
+    ['notes.ts'],
+  );
+  check('propose: prose naming a file the registry does not carry yields nothing (ISS-59)',
+    unscannable.length === 0,
+    `the registry's file list is what decides, not the path shape: ${JSON.stringify(unscannable)}`);
+
+  // cm:guard the sentence must have NO space after the full stop — with one, the shape match stops at
+  //   the extension and the case passes without the longest-first retry (ISS-59)
+  const runOn = proseCandidates(
+    [{ relPath: 'notes.ts', diags: [{ code: 'CM001', line: 3, text: 'see cli/lib/scan.mjs.The mask is half-open' }] }],
+    ['notes.ts', 'cli/lib/scan.mjs'],
+  );
+  check('propose: a path followed straight by a sentence still resolves (ISS-59)',
+    runOn.length === 1 && runOn[0].target === 'cli/lib/scan.mjs',
+    `the greedy shape match reads "scan.mjs.The"; the retry drops one trailing word at a time: ${JSON.stringify(runOn)}`);
+
+  // cm:guard a dot in a DIRECTORY component is not strippable, so this is the case that pins the
+  //   loop ending on no progress — under the first fix it did not fail, it hung the runner (ISS-59)
+  const dotted = proseCandidates(
+    [{ relPath: 'notes.ts', diags: [{ code: 'CM001', line: 3, text: 'see docs/v1.2/guide.ts for the rules' }] }],
+    ['notes.ts'],
+  );
+  check('propose: resolution terminates on a dotted directory that resolves to nothing (ISS-59)',
+    dotted.length === 0,
+    `must return, not spin: ${JSON.stringify(dotted)}`);
+
+  // cm:guard the longer real file must be in `files` too, or "longest first" is untested and a plain
+  //   shortest-prefix rule would pass this (ISS-59)
+  const longest = proseCandidates(
+    [{ relPath: 'notes.ts', diags: [{ code: 'CM001', line: 3, text: 'schema.prisma.bak is stale' }] }],
+    ['notes.ts', 'schema.prisma.bak', 'schema.prisma'],
+  );
+  check('propose: resolution prefers the longest path that exists (ISS-59)',
+    longest.length === 1 && longest[0].target === 'schema.prisma.bak',
+    `the full match must win where it resolves: ${JSON.stringify(longest)}`);
+
   const goSrc = 'const code = "ERR_PAYMENT_DECLINED"\n';
   const tsSrc = 'if (c === "ERR_PAYMENT_DECLINED") throw e;\n';
   const root = mkdtempSync(join(tmpdir(), 'cm-propose-pure-'));
@@ -85,15 +145,224 @@ function pureCases(check) {
       sfcPair.length === 0,
       `an SFC/.ts pair is one ecosystem, not two languages; got ${JSON.stringify(sfcPair)}`);
 
+    // cm:guard every arm below pairs its SFC or TS side against a `.go` side, so only the comment
+    //   question can decide it — an sfc/.ts pair ISS-28 drops would pass with the fix removed (ISS-59)
+    writeFileSync(join(root, 'Tpl.vue'), '<template>\n  <!-- "ONLY_IN_TEMPLATE" handled elsewhere -->\n  <div/>\n</template>\n');
+    writeFileSync(join(root, 'tpl.go'), 'const c = "ONLY_IN_TEMPLATE"\n');
+    check('propose: a literal only inside an SFC template comment is not a contract candidate (ISS-59)',
+      contractCandidates(root, ['Tpl.vue', 'tpl.go']).length === 0,
+      `the template comment is a comment form of the sfc profile, so propose must not read it as code: ${JSON.stringify(contractCandidates(root, ['Tpl.vue', 'tpl.go']))}`);
+
+    writeFileSync(join(root, 'inner.ts'), '/*\n "ONLY_BLOCK_INTERIOR" only here\n*/\nexport const y = 2;\n');
+    writeFileSync(join(root, 'inner.go'), 'const c = "ONLY_BLOCK_INTERIOR"\n');
+    check('propose: a literal on a block comment INTERIOR line is not a contract candidate (ISS-59)',
+      contractCandidates(root, ['inner.ts', 'inner.go']).length === 0,
+      `an interior line opens with no leader, and this is the plain ts profile, not sfc: ${JSON.stringify(contractCandidates(root, ['inner.ts', 'inner.go']))}`);
+
+    writeFileSync(join(root, 'trail.ts'), 'export const z = 3; // "ONLY_TRAILING_LINE" not real\n');
+    writeFileSync(join(root, 'trail.go'), 'const c = "ONLY_TRAILING_LINE"\n');
+    check('propose: a literal in a TRAILING line comment is not a contract candidate (ISS-59)',
+      contractCandidates(root, ['trail.ts', 'trail.go']).length === 0,
+      `a trailing comment does not open its line, which is all the old leader test asked: ${JSON.stringify(contractCandidates(root, ['trail.ts', 'trail.go']))}`);
+
+    writeFileSync(join(root, 'tblock.ts'), 'export const q = 4; /* "ONLY_TRAILING_BLOCK" nope */\n');
+    writeFileSync(join(root, 'tblock.go'), 'const c = "ONLY_TRAILING_BLOCK"\n');
+    check('propose: a literal in a TRAILING block comment is not a contract candidate (ISS-59)',
+      contractCandidates(root, ['tblock.ts', 'tblock.go']).length === 0,
+      `this is the one shape analyze.mjs's codeShape leaves whole, so spans are what decide it: ${JSON.stringify(contractCandidates(root, ['tblock.ts', 'tblock.go']))}`);
+
+    // cm:guard the pin is the SURVIVING literal, not the count — a codeOnly that blanked the whole line
+    //   would drop KEEP_ON_LINE too and every "is not a candidate" case above would still pass (ISS-59)
+    // cm:guard TWO comments on ONE line is the whole point — spans are keyed on a coordinate, so a mask
+    //   that dropped characters would leave the second span's offsets pointing at the wrong text (ISS-59)
+    writeFileSync(join(root, 'two.ts'), 'const a = "KEEP.ONE"; /* "DROP.A" */ const b = "KEEP.TWO"; /* "DROP.B" */\n');
+    writeFileSync(join(root, 'two.go'), 'const a = "KEEP.ONE"\nconst b = "KEEP.TWO"\nconst c = "DROP.A"\nconst d = "DROP.B"\n');
+    const two = contractCandidates(root, ['two.ts', 'two.go']).map((c) => c.literal).sort();
+    check('propose: two comments on one line are both masked, in place (ISS-59)',
+      two.join(',') === 'KEEP.ONE,KEEP.TWO',
+      `both KEEP literals and neither DROP literal, which needs offsets into the UNSHIFTED line: ${JSON.stringify(two)}`);
+
+    // cm:guard the masked text carries no delimiter either — the span covers them, and a consumer
+    //   reading this as code must not meet a stray opener (ISS-59, and ISS-60 will read it)
+    // cm:guard spans are OPT-IN — analyze, mass and isGenerated never read them, and building them
+    //   for every caller cost 43% heap on the scanner; nothing else pins that they stay off (ISS-59)
+    const noSpans = scanComments('// a\n/* b */\n', profileFor('x.ts')).comments;
+    check('propose: scanComments builds no spans unless asked (ISS-59)',
+      noSpans.length === 2 && noSpans.every((c) => c.spans === undefined),
+      `both comments must carry spans === undefined by default: ${JSON.stringify(noSpans.map((c) => c.spans))}`);
+
+    const delim = codeOnly('const a = 1; /* x */\n<!-- y -->\n', profileFor('W.vue'));
+    check('propose: masking covers the comment delimiters themselves (ISS-59)',
+      !/\/\*|\*\/|<!--|-->/.test(delim) && delim.includes('const a = 1;'),
+      `no delimiter may survive the mask: ${JSON.stringify(delim)}`);
+
+    // cm:guard the opener must END its line — that shape leaves the inner scanner loop before the block
+    //   branch runs, so it is the only one where the START line can go unmasked (ISS-59)
+    const eolOpen = codeOnly('const a = 1; /*\n text\n*/\nconst b = 2;\n', profileFor('x.ts'));
+    const eolLines = eolOpen.split('\n');
+    check('propose: an opener that ends its line is itself masked (ISS-59)',
+      !/\/\*|\*\//.test(eolOpen) && eolLines[0].startsWith('const a = 1;') && eolLines[3] === 'const b = 2;',
+      `the start line keeps its code, loses its opener, and no line moves: ${JSON.stringify(eolOpen)}`);
+
+    // cm:guard masking must be IDEMPOTENT — a surviving opener re-opens a block on a second pass and
+    //   swallows real code, which is what a consumer re-reading this output would hit (ISS-59, ISS-60)
+    // cm:guard the trailing `"*/"` STRING is what gives this teeth — without it a leaked opener makes
+    //   an unterminated block, which is left alone, and the second pass is a no-op anyway (ISS-59)
+    const once = codeOnly('const a = 1; /*\n c\n*/\nconst K = "K.1"; const t = "*/";\n', profileFor('x.ts'));
+    check('propose: masking the masked text changes nothing (ISS-59)',
+      codeOnly(once, profileFor('x.ts')) === once && once.includes('"K.1"'),
+      `a second pass must be a no-op and must not eat K.1: ${JSON.stringify(once)}`);
+
+    // cm:guard an unterminated block is NOT masked, and this is the case that says so — masking it to
+    //   EOF made every shape scan.mjs cannot lex cost the whole rest of the file (ISS-59, ISS-61)
+    // cm:guard this is also the only case that separates flushOpen true from false here, since a
+    //   flushed block WOULD be masked — lib/scan.mjs reserves that flag for isGenerated (ISS-26)
+    writeFileSync(join(root, 'unterm.ts'), 'const y = "KEEP.UNTERM"; /* never closed\n"STILL.READ" here\n');
+    writeFileSync(join(root, 'unterm.go'), 'const a = "KEEP.UNTERM"\nconst b = "STILL.READ"\n');
+    const unterm = contractCandidates(root, ['unterm.ts', 'unterm.go']).map((c) => c.literal).sort();
+    check('propose: an unterminated block is left readable rather than masked to EOF (ISS-59)',
+      unterm.join(',') === 'KEEP.UNTERM,STILL.READ',
+      `both survive: the checker reports CM203 for this file, and propose loses no candidate to it: ${JSON.stringify(unterm)}`);
+
+    // cm:guard the literal must be SHORT and start at column 0 — the opener sits at column 13, and a
+    //   literal reaching past it is merely truncated, which matches nothing either way (ISS-59)
+    writeFileSync(join(root, 'eol.ts'), 'const x = 1; /*\n"ERR.X" text\n*/\n');
+    writeFileSync(join(root, 'eol.go'), 'const c = "ERR.X"\n');
+    check('propose: a block opening at end of line masks the next line from its own column 0 (ISS-59)',
+      contractCandidates(root, ['eol.ts', 'eol.go']).length === 0,
+      `the opener's column belongs to its own line only: ${JSON.stringify(contractCandidates(root, ['eol.ts', 'eol.go']))}`);
+
+    writeFileSync(join(root, 'mixed.ts'), 'export const A = "KEEP_ON_LINE"; // "DROP_ON_LINE" no\n');
+    writeFileSync(join(root, 'mixed.go'), 'const a = "KEEP_ON_LINE"\nconst b = "DROP_ON_LINE"\n');
+    const mixed = contractCandidates(root, ['mixed.ts', 'mixed.go']);
+    check('propose: code on a line survives while that line\'s trailing comment is masked (ISS-59)',
+      mixed.length === 1 && mixed[0].literal === 'KEEP_ON_LINE',
+      `exactly KEEP_ON_LINE, masked in place rather than by blanking the line: ${JSON.stringify(mixed)}`);
+
+    // cm:guard the reported line must be the literal's line in the ORIGINAL file — masking that dropped
+    //   or shifted lines would report 1 here and no "not a candidate" case above could see it (ISS-59)
+    writeFileSync(join(root, 'num.ts'), '// header\n/* block\n   spanning */\nexport const E = "ON_LINE_FOUR";\n');
+    writeFileSync(join(root, 'num.go'), 'const c = "ON_LINE_FOUR"\n');
+    const num = contractCandidates(root, ['num.ts', 'num.go']);
+    check('propose: masking a comment moves no line number under the literal (ISS-59)',
+      num.length === 1 && num[0].files[0].line === 4,
+      `ON_LINE_FOUR sits on line 4 after three comment lines: ${JSON.stringify(num)}`);
+
+    // cm:guard reaches a comment form NO profile carries today, so no hard-coded list — however long —
+    //   can pass it; only reading the resolved profile's own forms does (ISS-59)
+    const invented = { ...profileFor('x.ts'), id: 'invented', blockOpens: [['(*', '*)']], docBlockOpens: [] };
+    const masked = codeOnly('const a = 1; (* "INVENTED_FORM" *)\n', invented);
+    check('propose: a comment form a profile gains later is honoured with no second edit (ISS-59)',
+      !masked.includes('INVENTED_FORM') && masked.includes('const a = 1;'),
+      `the profile is the only authority on the form; masked text was ${JSON.stringify(masked)}`);
+
+    // cm:guard both rows pair against a `.go` side, so ONLY the comment question can decide them —
+    //   an unnarrowed `#` masks the literal away and the pair vanishes with no diagnostic (ISS-61)
+    writeFileSync(join(root, 'expand.sh'), 'set -- ${f#src/} "ERR.PAY"\n');
+    writeFileSync(join(root, 'expand.go'), 'const e = "ERR.PAY"\n');
+    const shExpand = contractCandidates(root, ['expand.sh', 'expand.go']);
+    check('propose: a shell parameter expansion does not eat the literal after it (ISS-61)',
+      shExpand.length === 1 && shExpand[0].literal === 'ERR.PAY',
+      `${'${f#src/}'} is one word, not a comment: ${JSON.stringify(shExpand)}`);
+
+    writeFileSync(join(root, 'run.yml'), 'cmd: run#now "ERR.YML"\n');
+    writeFileSync(join(root, 'run.go'), 'const e = "ERR.YML"\n');
+    const ymlWord = contractCandidates(root, ['run.yml', 'run.go']);
+    check('propose: a YAML scalar containing # does not eat the literal after it (ISS-61)',
+      ymlWord.length === 1 && ymlWord[0].literal === 'ERR.YML',
+      `a YAML comment needs a space before its #: ${JSON.stringify(ymlWord)}`);
+
+    // cm:guard the OTHER direction, and the case that fails if leaderAfter is set too wide — a real
+    //   comment must still be masked, or propose starts proposing pairs out of prose (ISS-61)
+    writeFileSync(join(root, 'cmt.sh'), 'echo ok # "ERR.CMT" is only ever named here\n');
+    writeFileSync(join(root, 'cmt.go'), 'const e = "ERR.CMT"\n');
+    check('propose: a genuine trailing # comment in shell is still masked (ISS-61)',
+      contractCandidates(root, ['cmt.sh', 'cmt.go']).length === 0,
+      `a # after whitespace opens a comment as it always did: ${JSON.stringify(contractCandidates(root, ['cmt.sh', 'cmt.go']))}`);
+
+    // cm:guard docker's arm is otherwise pinned by one scanner assertion alone, and .toml by none at
+    //   the propose tier — these two carry each through the reader that actually lost candidates
+    writeFileSync(join(root, 'Dockerfile'), 'RUN echo a#b "ERR.DOCK"\n');
+    writeFileSync(join(root, 'dock.go'), 'const e = "ERR.DOCK"\n');
+    const dock = contractCandidates(root, ['Dockerfile', 'dock.go']);
+    check('propose: a # inside a Dockerfile argument does not eat the literal after it (ISS-61)',
+      dock.length === 1 && dock[0].literal === 'ERR.DOCK',
+      `a Dockerfile comment is a whole line: ${JSON.stringify(dock)}`);
+
+    writeFileSync(join(root, 'conf.toml'), 'port = 8080# "ERR.TOML" is named only in this comment\n');
+    writeFileSync(join(root, 'conf.go'), 'const e = "ERR.TOML"\n');
+    check('propose: TOML opens a comment with nothing before the # (ISS-61)',
+      contractCandidates(root, ['conf.toml', 'conf.go']).length === 0,
+      `.toml reuses yaml's forms but must NOT reuse its leaderAfter: ${JSON.stringify(contractCandidates(root, ['conf.toml', 'conf.go']))}`);
+
+    // cm:guard py is the control: narrowing it too would make `x=1#c` code and this pair a candidate,
+    //   which is why leaderAfter is per profile and not global (ISS-61)
+    writeFileSync(join(root, 'tight.py'), 'x = 1#"ERR.PY" named only in this comment\n');
+    writeFileSync(join(root, 'tight.go'), 'const e = "ERR.PY"\n');
+    check('propose: a # straight after code in python is still a comment (ISS-61)',
+      contractCandidates(root, ['tight.py', 'tight.go']).length === 0,
+      `python comments need no preceding space: ${JSON.stringify(contractCandidates(root, ['tight.py', 'tight.go']))}`);
+
+    // cm:guard this is the ISS-59 property restated for the new narrowing: one reader, one answer. A
+    //   fix that reached codeOnly without reaching scanComments would pass every case above (ISS-61)
+    for (const [file, src] of [['expand.sh', 'set -- ${f#src/} "ERR.PAY"\n'], ['run.yml', 'cmd: run#now "ERR.YML"\n']]) {
+      const prof = profileFor(file);
+      const scanned = scanComments(src, prof).comments.length;
+      check(`propose: scanComments and codeOnly agree on ${file} (ISS-61)`,
+        scanned === 0 && codeOnly(src, prof) === src,
+        `verify reads ${scanned} comment(s) while propose masks to ${JSON.stringify(codeOnly(src, prof))} — a split here re-opens ISS-59`);
+    }
+
     const noSep = contractCandidates(root, ['emit.go', 'noisy.ts']);
     check('propose: contract ignores a plain word with no separator (no coincidental "hello")',
       !noSep.some((c) => c.literal === 'hello'), `"hello" should not qualify: ${JSON.stringify(noSep)}`);
 
-    writeFileSync(join(root, 'tag.ts'), '// cm:why this mirrors emit.go\nexport const x = 1;\n');
-    writeFileSync(join(root, 'tag.go'), 'const y = "cm:why"\n');
-    const reserved = contractCandidates(root, ['tag.ts', 'tag.go']);
-    check('propose: contract excludes this tool\'s own reserved tag vocabulary',
-      reserved.length === 0, `cm:why should be excluded, got ${JSON.stringify(reserved)}`);
+    // cm:guard the literal must sit in CODE on BOTH sides or this proves nothing — a cm: token in a
+    //   comment is cut by codeOnly, leaving one file, which "exactly two files" already fails (ISS-50)
+    const vocabulary = [...TAGS.map((t) => `cm:${t}`), 'cm:ignore'];
+    const notExcluded = vocabulary.filter((lit) => {
+      writeFileSync(join(root, 'tag.ts'), `export const t = "${lit}";\n`);
+      writeFileSync(join(root, 'tag.go'), `const t = "${lit}"\n`);
+      return contractCandidates(root, ['tag.ts', 'tag.go']).length !== 0;
+    });
+    check('propose: contract excludes every tag in TAGS, plus cm:ignore (ISS-50)',
+      notExcluded.length === 0,
+      `derived from TAGS + CM_IGNORE_RE, so a new tag is covered on arrival; proposed anyway: ${JSON.stringify(notExcluded)}`);
+
+    // cm:guard the oracle above pins BEHAVIOUR over the tags that exist, which a hand-restated
+    //   list satisfies too — this is the only case that reaches a tag TAGS does not carry yet (ISS-50)
+    const future = makeReserved([...TAGS, 'owner'], CM_IGNORE_RE);
+    check('propose: a tag added to TAGS is excluded on arrival, with no second edit (ISS-50)',
+      future.test('cm:owner') && TAGS.every((t) => future.test(`cm:${t}`)) && future.test('cm:ignore'),
+      `${future.source} must exclude a new tag and keep the old set and cm:ignore`);
+    check('propose: the shipped RESERVED is what the factory builds from TAGS and CM_IGNORE_RE (ISS-50)',
+      RESERVED.source === makeReserved(TAGS, CM_IGNORE_RE).source,
+      `RESERVED.source is ${RESERVED.source}, the factory builds ${makeReserved(TAGS, CM_IGNORE_RE).source}`);
+
+    writeFileSync(join(root, 'tag.ts'), 'export const t = "ERR_TOKEN_SPENT";\n');
+    writeFileSync(join(root, 'tag.go'), 'const t = "ERR_TOKEN_SPENT"\n');
+    const control = contractCandidates(root, ['tag.ts', 'tag.go']);
+    check('propose: the vocabulary exclusion does not swallow an ordinary shared token (ISS-50)',
+      control.length === 1 && control[0].literal === 'ERR_TOKEN_SPENT',
+      `the control must still be proposed, or the case above passes by excluding everything: ${JSON.stringify(control)}`);
+
+    writeFileSync(join(root, 'z_first.ts'), 'const q = "ALPHA_TWO";\nconst p = "ALPHA_ONE";\n');
+    writeFileSync(join(root, 'a_second.go'), 'const q = "ALPHA_TWO"\nconst p = "ALPHA_ONE"\n');
+    writeFileSync(join(root, 'm_first.ts'), 'const r = "BETA_CODE";\n');
+    writeFileSync(join(root, 'n_second.go'), 'const r = "BETA_CODE"\n');
+    // cm:guard z_first.ts is scanned first yet must sort AFTER m_first.ts, while a_second.go sorts
+    //   before both — only that makes the path key, not discovery order or the pair's smaller side, decide (ISS-52)
+    // cm:guard ALPHA_TWO stays written ABOVE ALPHA_ONE and BETA_CODE stays sorting after both, or
+    //   the literal key alone reproduces the expected order (ISS-52)
+    const many = contractCandidates(root, ['z_first.ts', 'a_second.go', 'm_first.ts', 'n_second.go']);
+    check('propose: contract returns every candidate when a repo has more than one (ISS-52)',
+      many.length === 3, `expected 3 candidates, got ${JSON.stringify(many)}`);
+    check('propose: contract orders candidates by first side\'s path, then literal (ISS-52)',
+      many.map((c) => c.literal).join(',') === 'BETA_CODE,ALPHA_ONE,ALPHA_TWO',
+      `order was ${JSON.stringify(many.map((c) => [c.files[0]?.file, c.literal]))}`);
+    check('propose: both sides of a contract candidate carry the record the printer reads (ISS-52)',
+      many.every((c) => c.files.length === 2 && c.files.every((f) => typeof f?.file === 'string' && typeof f?.line === 'number')),
+      `both sides must hold {file,line,lang,eco}: ${JSON.stringify(many[0])}`);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -135,6 +404,16 @@ function lockstepCases(check) {
     check('propose: lockstep drops a pair once one side visibly imports the other',
       afterImport.length === 0, `import evidence should exclude the pair, got ${JSON.stringify(afterImport)}`);
 
+    // cm:guard looksWired reads the file RAW, so a mention in a comment still drops the pair — the
+    //   sharpest case is an edge ALREADY DECLARED here, which propose would otherwise re-propose (ISS-59)
+    writeFileSync(join(root, 'lock_a.ts'), 'export const a = 1; // cm:edge lockstep -> lock_b.ts — they ship together\n');
+    git(root, 'add', 'lock_a.ts');
+    git(root, 'commit', '-qm', 'lock_a declares the edge in a trailing comment');
+    const declared = lockstepCandidates(root, files);
+    check('propose: a pair whose edge is declared in a TRAILING comment is not re-proposed (ISS-59)',
+      declared.length === 0,
+      `masking comments here made propose print "add cm:edge -> lock_b.ts" for a file that already carries it: ${JSON.stringify(declared)}`);
+
     const strict = lockstepCandidates(root, files, { minCoChanges: 1000 });
     check('propose: lockstep respects a caller-supplied minCoChanges', strict.length === 0,
       'an unreachable threshold must return nothing');
@@ -150,6 +429,8 @@ function cliCases(pluginRoot, check) {
     writeFileSync(join(root, '.forge', 'codemap.json'), '{}\n');
     writeFileSync(join(root, 'a.ts'), '// see product_create.go for the matching validation rules\nexport const a = 1;\n');
     writeFileSync(join(root, 'product_create.go'), 'package main\nfunc create() {}\n');
+    writeFileSync(join(root, 'pair_one.ts'), 'const p = "GAMMA_ONE";\nconst q = "GAMMA_TWO";\n');
+    writeFileSync(join(root, 'pair_two.go'), 'const p = "GAMMA_ONE"\nconst q = "GAMMA_TWO"\n');
     git(root, 'init', '-q');
     git(root, 'add', '-A');
     git(root, 'commit', '-qm', 'seed');
@@ -160,6 +441,12 @@ function cliCases(pluginRoot, check) {
     check('cli: propose never writes a fabricated — why', !/—\s*why they/.test(r.out) || /add\s*—\s*why/.test(r.out),
       'a suggestion line must not assert a why it did not derive');
     check('cli: propose says a candidate is not a fact', /not a fact/.test(r.out), r.out);
+
+    const two = cm(pluginRoot, root, 'propose', '--source', 'contract');
+    check('cli: propose exits 0 where source 3 finds two candidates (ISS-52)', two.status === 0,
+      `status ${two.status}\n${two.out}`);
+    check('cli: propose prints both contract candidates rather than dying on the second (ISS-52)',
+      /GAMMA_ONE/.test(two.out) && /GAMMA_TWO/.test(two.out), two.out);
 
     const asJson = cm(pluginRoot, root, 'propose', '--json');
     let parsed;

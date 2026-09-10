@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { baselineKey } from '../cli/lib/parse.mjs';
 import { tmpdir } from 'node:os';
+import { stripGitEnv } from './git-env.mjs';
 
 const GUARD_TEXT = 'wiring probe — this line must reach injected context';
 const PLACEHOLDER = '${CLAUDE_PLUGIN_ROOT}';
@@ -55,7 +56,7 @@ function runHook(entry, { root, file }) {
   const payload = { cwd: root, tool_name: 'Edit', tool_input: { file_path: file } };
   const res = spawnSync(process.execPath, [entry.command, ...entry.args], {
     input: JSON.stringify(payload),
-    encoding: 'utf8',
+    encoding: 'utf8', env: stripGitEnv(process.env),
   });
   let json = null;
   try { json = JSON.parse(res.stdout); } catch { json = null; }

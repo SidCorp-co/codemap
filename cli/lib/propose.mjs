@@ -1,6 +1,7 @@
 // codemap/1 — candidate discovery for `cm propose` (ISS-12).
 //
-// Every function here answers "where might a coupling be hiding", never "what is the coupling". A
+// Every function here answers "where might a coupling be hiding", never "what is the coupling" —
+// makeReserved excepted, which builds no candidate but the list they are filtered against. A
 // candidate carries its evidence and nothing else: no kind is asserted unless the source itself
 // defines the kind (lockstep, contract), no `— why` text is ever written (patterns/finding-candidates.md
 // §4: history can propose the pair, but the reason it is bound is what a human's annotation carries),
@@ -9,11 +10,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { PROSE_CODES } from './parse.mjs';
+import { PROSE_CODES, TAGS, CM_IGNORE_RE } from './parse.mjs';
 import { profileFor, ecosystemOf } from './languages.mjs';
+import { scanComments } from './scan.mjs';
 import { connected } from './archmap.mjs';
 
-const PATH_RE = /[\w./-]+\.(?:ts|tsx|js|jsx|mjs|cjs|go|php|py|rs|sql|prisma|graphql)\b/g;
+// cm:why a path SHAPE, not an extension list — the match is resolved against the registry's file list,
+//   which registry.mjs already gates on profileFor, so a second list could only disagree (ISS-59)
+const PATH_RE = /[\w./-]+\.[A-Za-z0-9]+\b/g;
 
 /**
  * Confidence 1 — prose that already names a file which resolves to exactly one other file in the
@@ -21,6 +25,20 @@ const PATH_RE = /[\w./-]+\.(?:ts|tsx|js|jsx|mjs|cjs|go|php|py|rs|sql|prisma|grap
  * judged worth recording, with no channel to put it in. Shared with `cm onboard`, which surfaced this
  * same evidence as prose before this verb existed to turn it into a proposal.
  */
+// cm:why longest first, then one trailing `.word` at a time — the shape match is greedy, so a sentence
+//   with no space after its full stop reads `scan.mjs.The` and resolved to nothing before (ISS-59)
+function resolve(cand, files) {
+  // cm:guard the loop ends on NO PROGRESS, never on "still has a dot" — a dot in a directory
+  //   component is not strippable, so `docs/v1.2/guide.ts` spun forever and hung the verb (ISS-59)
+  for (let c = cand; ;) {
+    const hit = files.find((f) => f === c || f.endsWith(`/${c.replace(/^\.\//, '')}`));
+    if (hit) return hit;
+    const next = c.replace(/\.[^./]*$/, '');
+    if (next === c) return undefined;
+    c = next;
+  }
+}
+
 export function proseCandidates(perFile, files) {
   const prose = perFile.flatMap((f) => f.diags.filter((d) => PROSE_CODES.has(d.code))
     .map((d) => ({ file: f.relPath, line: d.line, text: d.text ?? d.message })));
@@ -30,7 +48,7 @@ export function proseCandidates(perFile, files) {
   for (const p of prose) {
     const matches = String(p.text).match(PATH_RE) ?? [];
     for (const cand of matches) {
-      const hit = files.find((f) => f === cand || f.endsWith(`/${cand.replace(/^\.\//, '')}`));
+      const hit = resolve(cand, files);
       const key = `${p.file}:${p.line}:${hit}`;
       if (!hit || hit === p.file || seen.has(key)) continue;
       seen.add(key);
@@ -43,14 +61,37 @@ export function proseCandidates(perFile, files) {
 }
 
 const stem = (p) => p.split('/').pop().replace(/\.\w+$/, '');
-// cm:guard blanks a comment LINE rather than dropping it — a dropped line shifts every line number
-//   after it, and contractCandidates reports the line it found a literal on
-const codeOnly = (src) => src.split('\n').map((l) => (/^\s*(\/\/|#|--|\*|\/\*)/.test(l) ? '' : l)).join('\n');
+
+// cm:guard blanks comment text IN PLACE and never drops a line or shifts a column — a dropped line
+//   shifts every line number after it, and contractCandidates reports the line it found a literal on
+// cm:edge contract -> cli/lib/scan.mjs — masks the `spans` range scanComments reports, delimiters
+//   included; the two must agree that [from,to) is half-open or a literal survives at an edge (ISS-59)
+// cm:why the profile is the ONLY authority on what a comment is here — a private leader list read a
+//   template comment as code where analyzeFile read the same text as a comment (ISS-59)
+// cm:why exported for its tests alone, as makeReserved is: no assertion over the profiles that exist
+//   can reach a comment form none of them carries yet, which is the property this must hold (ISS-59)
+export const codeOnly = (src, prof) => {
+  if (!prof) return src;
+  const lines = src.split('\n');
+  const mask = (i, from, to) => {
+    const l = lines[i];
+    // cm:guard a reversed range must return, never mask — `repeat` clamped at 0 still re-appends
+    //   l.slice(to), which GROWS the line and shifts every column after it (ISS-59)
+    if (l === undefined || to <= from) return;
+    lines[i] = l.slice(0, from) + ' '.repeat(to - from) + l.slice(to);
+  };
+  // cm:guard an unterminated block is left alone, so its text is READ AS CODE here while analyzeFile
+  //   discards it — masking it to EOF cost whole files wherever scan.mjs mis-lexed (ISS-59, ISS-61)
+  for (const c of scanComments(src, prof, { spans: true }).comments) {
+    for (const sp of c.spans ?? []) mask(sp.line - 1, sp.from, sp.to);
+  }
+  return lines.join('\n');
+};
 
 const readCache = (root, cache) => (rel) => {
   if (cache.has(rel)) return cache.get(rel);
   let src;
-  try { src = codeOnly(readFileSync(join(root, rel), 'utf8')); } catch { src = null; }
+  try { src = readFileSync(join(root, rel), 'utf8'); } catch { src = null; }
   cache.set(rel, src);
   return src;
 };
@@ -58,10 +99,13 @@ const readCache = (root, cache) => (rel) => {
 /**
  * Best-effort "these two are not already wired together": archmap's real import graph when the repo
  * has vendored it (`connected`), and — always, since most repos have not — a basename mention in
- * either file's own code. Neither is proof; both are only ever used to DROP a pair, never to add one,
- * so a miss here costs a false positive we would rather not risk, never a false negative that just
- * stays unproposed (§ precision over recall, this issue's own business rule).
+ * either file's text — comments deliberately included. Neither is proof; both are only ever used to
+ * DROP a pair, never to add one, so a miss here costs a false positive we would rather not risk,
+ * never a false negative that just stays unproposed (§ precision over recall, this issue's own
+ * business rule).
  */
+// cm:guard reads the file RAW, never through codeOnly — a stem named in a comment is exactly the
+//   evidence this wants, and masking it re-proposed a pair whose cm:edge was already written (ISS-59)
 function looksWired(root, a, b, importGraph, cache) {
   if (importGraph && connected(importGraph, a, b)) return true;
   const read = readCache(root, cache);
@@ -151,7 +195,14 @@ const TOKEN_RE = /^[A-Za-z][A-Za-z0-9]*(?:[_.:-][A-Za-z0-9]+)+$/;
 const LITERAL_RE = /"([^"\n]{4,80})"|'([^'\n]{4,80})'|`([^`\n]{4,80})`/g;
 // cm:why this tool's own tag vocabulary is quoted all over its help text, tests and docs — excluded,
 //   or a shared "cm:why" would look like a contract between two callers that share nothing (ISS-12)
-const RESERVED = /^cm:(edge|guard|flow|hack|why|ignore)/;
+// cm:guard the two arms differ on the word boundary and both halves are deliberate — the TAGS arm
+//   is unbounded so cm:whyever stays excluded as before, CM_IGNORE_RE's \b means cm:ignored is not
+// cm:why parameterised for its one caller so a test can exercise a tag that is not in TAGS yet —
+//   no assertion over the built constant can tell a derived list from an identical hand-written one
+export function makeReserved(tags, ignoreRe) {
+  return new RegExp(`^cm:(?:${tags.join('|')})|${ignoreRe.source}`);
+}
+export const RESERVED = makeReserved(TAGS, CM_IGNORE_RE);
 
 /**
  * Confidence 3 — a string literal that appears in exactly two files, in two different languages
@@ -167,7 +218,7 @@ export function contractCandidates(root, files) {
     const eco = ecosystemOf(rel);
     let raw;
     try { raw = readFileSync(join(root, rel), 'utf8'); } catch { continue; }
-    const src = codeOnly(raw);
+    const src = codeOnly(raw, prof);
     const seenInFile = new Set();
     const lines = src.split('\n');
     // cm:why line number is the literal's FIRST line in the CODE-only text — good enough to point a
@@ -193,6 +244,8 @@ export function contractCandidates(root, files) {
     if (a.eco === b.eco) continue;
     out.push({ source: 'contract', literal: lit, files: [a, b] });
   }
-  out.sort((x, y) => x.files[0].localeCompare(y.files[0]) || x.literal.localeCompare(y.literal));
+  // cm:edge contract -> cli/cm.mjs — the printer reads .file and .line off each side, so order this
+  //   pair through .file; lockstepCandidates compares the element itself, its files being bare paths
+  out.sort((x, y) => x.files[0].file.localeCompare(y.files[0].file) || x.literal.localeCompare(y.literal));
   return out;
 }
