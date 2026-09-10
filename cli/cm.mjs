@@ -109,6 +109,21 @@ function loadOrDie() {
   try { return loadRegistry(root); } catch (e) { die(e.message); }
 }
 
+// cm:edge contract -> cli/cm.mjs#scopeFromPositional — both resolve a user-supplied path and MUST agree: CWD first, then
+//   root-relative, `..` refused; two answers to "is this path in the repo" is the drift the header warns about (ISS-63)
+function hostFromIn() {
+  if (!flags.has('--in')) return null;
+  const raw = flagValue('--in');
+  if (!raw) die('--in needs a value', 'name the file the annotation will live in');
+  const fromCwd = resolve(raw);
+  const rel = (existsSync(fromCwd) ? relative(root, fromCwd) : raw).split('\\').join('/').replace(/^\.\//, '');
+  if (rel === '' || rel.startsWith('..')) die(`--in "${raw}" is outside the repo root ${root}`, 'cm only reasons about paths inside the tree it onboarded');
+  const abs = join(root, rel);
+  if (!existsSync(abs)) die(`--in "${raw}" is not a file in this repo`, 'name a file the annotation will actually live in');
+  if (!statSync(abs).isFile()) die(`--in "${raw}" is a directory, not a file`, 'an annotation lives in a file, so name the one it goes in');
+  return rel;
+}
+
 /** Positional paths, resolved against the repo root. A path that resolves to nothing is fatal (exit 2). */
 function scopeFromPositional(reg) {
   const files = [];
@@ -204,7 +219,7 @@ function fixCanonical(perFile) {
     done.push(...applied.map((d) => ({ file: f.relPath, line: d.line })));
     for (const d of failed) {
       console.error(yellow(`${f.relPath}:${d.line} CM009 could not be normalized automatically`));
-      console.error(dim(`  rewrite by hand to: ${d.leader ?? '//'} ${d.canonical}`));
+      console.error(dim(`  rewrite by hand to: ${d.leader} ${d.canonical}`));
     }
   }
   return done;
@@ -998,17 +1013,21 @@ switch (cmd) {
     if (reg._missing) { console.error('no .forge/codemap.json — run: cm init'); process.exit(2); }
     if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) { console.error(`"${name}" must be lower-case letters, digits and dashes`); process.exit(2); }
 
-    const host = flagValue('--in');
-    if (host && !existsSync(resolve(root, host))) die(`--in "${host}" is not a file in this repo`, 'name a file the annotation will actually live in');
+    // cm:guard refuse BEFORE saveRegistry — a --in nobody can resolve must not leave the flow declared (ISS-63)
+    const host = hostFromIn();
     const tally = host ? null : dominantLeader(allFiles(reg));
     const leader = host ? leaderFor(host) : tally.leader;
     const PLACEHOLDER = '<leader>';
     const paste = (text) => console.log(`  ${leader ?? PLACEHOLDER} ${text}`);
+    // cm:guard an SFC host needs its leaderRegion named as well as its leader — `//` outside <script> renders as visible text and
+    //   cm verify accepts it, so a template with the right leader and no region is still a paste nothing downstream catches (ISS-63)
+    const region = host ? profileFor(host)?.leaderRegion : tally.region;
+    const inRegion = region ? ` — put it inside ${region}, the only part of ${host ?? 'such a file'} a line comment reaches` : '';
     const assumption = () => {
       if (host && !leader) return dim(`no line comment reaches ${host}, so replace ${PLACEHOLDER} with the leader of the file you paste this into`);
-      if (host) return dim(`the leader is ${leader}, taken from ${host}`);
+      if (host) return dim(`the leader is ${leader}, taken from ${host}${inRegion}`);
       if (!leader) return dim(`no file here has a line comment leader, so replace ${PLACEHOLDER} yourself — pass --in <file> and this reads it off that file`);
-      return dim(`assuming ${leader}, the leader of ${tally.files} of this repo's ${tally.profiled} profiled files — pass --in <file> for one file's own`);
+      return dim(`assuming ${leader}, the leader of ${tally.files} of this repo's ${tally.profiled} files that carry one${inRegion} — pass --in <file> for one file's own`);
     };
 
     if (what === 'external') {
