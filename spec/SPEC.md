@@ -802,9 +802,12 @@ doc at 981 KB (30%) and live prose at 1 KB. The difference splits in two, and bo
 in characters, because differencing two rounded channel totals is what hides the smaller one.
 
 **Attribution**, over the 2,368 files both builds read: doc loses 125,908 characters and live gains
-125,789 — a relabelling, near-symmetric as one should be. The 119 characters between them are two
-shell scripts (`scripts/upload-image.sh`, `scripts/check-branch-name.sh`) that the older build
-billed to doc and this one bills to no channel at all.
+125,789 — a relabelling, near-symmetric as one should be. The 119 characters between them are not a
+leak in the partition: they are shell code the older scanner mis-read as comment text in two files
+(`scripts/upload-image.sh`, `scripts/check-branch-name.sh`), the tails of `[[ $# -gt 0 ]]` and of
+`${#branch}`, where `#` opened a comment mid-word. The older build billed them to doc; ISS-61 made a
+leader begin a word, so to this one they are not comment text and there is nothing to bill.
+Conservation holds under each build on its own scan.
 
 **Two files the older build did not read**, `packages/core/Dockerfile` and
 `packages/web-v2/Dockerfile`, on a profile added between the two commits: 3,715 characters of live
