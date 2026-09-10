@@ -84,6 +84,26 @@ function pureCases(check) {
     unscannable.length === 0,
     `the registry's file list is what decides, not the path shape: ${JSON.stringify(unscannable)}`);
 
+  // cm:guard the sentence must have NO space after the full stop — with one, the shape match stops at
+  //   the extension and the case passes without the longest-first retry (ISS-59)
+  const runOn = proseCandidates(
+    [{ relPath: 'notes.ts', diags: [{ code: 'CM001', line: 3, text: 'see cli/lib/scan.mjs.The mask is half-open' }] }],
+    ['notes.ts', 'cli/lib/scan.mjs'],
+  );
+  check('propose: a path followed straight by a sentence still resolves (ISS-59)',
+    runOn.length === 1 && runOn[0].target === 'cli/lib/scan.mjs',
+    `the greedy shape match reads "scan.mjs.The"; the retry drops one trailing word at a time: ${JSON.stringify(runOn)}`);
+
+  // cm:guard the longer real file must be in `files` too, or "longest first" is untested and a plain
+  //   shortest-prefix rule would pass this (ISS-59)
+  const longest = proseCandidates(
+    [{ relPath: 'notes.ts', diags: [{ code: 'CM001', line: 3, text: 'schema.prisma.bak is stale' }] }],
+    ['notes.ts', 'schema.prisma.bak', 'schema.prisma'],
+  );
+  check('propose: resolution prefers the longest path that exists (ISS-59)',
+    longest.length === 1 && longest[0].target === 'schema.prisma.bak',
+    `the full match must win where it resolves: ${JSON.stringify(longest)}`);
+
   const goSrc = 'const code = "ERR_PAYMENT_DECLINED"\n';
   const tsSrc = 'if (c === "ERR_PAYMENT_DECLINED") throw e;\n';
   const root = mkdtempSync(join(tmpdir(), 'cm-propose-pure-'));
@@ -158,14 +178,31 @@ function pureCases(check) {
       !/\/\*|\*\/|<!--|-->/.test(delim) && delim.includes('const a = 1;'),
       `no delimiter may survive the mask: ${JSON.stringify(delim)}`);
 
-    // cm:guard the opener must SHARE its line with the code literal — on a line of its own, masking the
-    //   opener line whole loses nothing and this case cannot see the difference (ISS-59)
-    writeFileSync(join(root, 'unterm.ts'), 'const y = "KEEP.UNTERM"; /* never closed\n"ERR_UNTERM.X" here\n');
-    writeFileSync(join(root, 'unterm.go'), 'const a = "KEEP.UNTERM"\nconst b = "ERR_UNTERM.X"\n');
-    const unterm = contractCandidates(root, ['unterm.ts', 'unterm.go']);
-    check('propose: an unterminated block masks to EOF and keeps the code on its opener line (ISS-59)',
-      unterm.length === 1 && unterm[0].literal === 'KEEP.UNTERM',
-      `exactly KEEP.UNTERM; the block swallows the file to EOF per lib/scan.mjs: ${JSON.stringify(unterm)}`);
+    // cm:guard the opener must END its line — that shape leaves the inner scanner loop before the block
+    //   branch runs, so it is the only one where the START line can go unmasked (ISS-59)
+    const eolOpen = codeOnly('const a = 1; /*\n text\n*/\nconst b = 2;\n', profileFor('x.ts'));
+    const eolLines = eolOpen.split('\n');
+    check('propose: an opener that ends its line is itself masked (ISS-59)',
+      !/\/\*|\*\//.test(eolOpen) && eolLines[0].startsWith('const a = 1;') && eolLines[3] === 'const b = 2;',
+      `the start line keeps its code, loses its opener, and no line moves: ${JSON.stringify(eolOpen)}`);
+
+    // cm:guard masking must be IDEMPOTENT — a surviving opener re-opens a block on a second pass and
+    //   swallows real code, which is what a consumer re-reading this output would hit (ISS-59, ISS-60)
+    const once = codeOnly('const a = 1; /*\n c\n*/\nconst K = "K.1";\n', profileFor('x.ts'));
+    check('propose: masking the masked text changes nothing (ISS-59)',
+      codeOnly(once, profileFor('x.ts')) === once && once.includes('"K.1"'),
+      `a second pass must be a no-op and must not eat K.1: ${JSON.stringify(once)}`);
+
+    // cm:guard an unterminated block is NOT masked, and this is the case that says so — masking it to
+    //   EOF made every shape scan.mjs cannot lex cost the whole rest of the file (ISS-59, ISS-61)
+    // cm:guard this is also the only case that separates flushOpen true from false here, since a
+    //   flushed block WOULD be masked — lib/scan.mjs reserves that flag for isGenerated (ISS-26)
+    writeFileSync(join(root, 'unterm.ts'), 'const y = "KEEP.UNTERM"; /* never closed\n"STILL.READ" here\n');
+    writeFileSync(join(root, 'unterm.go'), 'const a = "KEEP.UNTERM"\nconst b = "STILL.READ"\n');
+    const unterm = contractCandidates(root, ['unterm.ts', 'unterm.go']).map((c) => c.literal).sort();
+    check('propose: an unterminated block is left readable rather than masked to EOF (ISS-59)',
+      unterm.join(',') === 'KEEP.UNTERM,STILL.READ',
+      `both survive: the checker reports CM203 for this file, and propose loses no candidate to it: ${JSON.stringify(unterm)}`);
 
     // cm:guard the literal must be SHORT and start at column 0 — the opener sits at column 13, and a
     //   literal reaching past it is merely truncated, which matches nothing either way (ISS-59)
@@ -290,15 +327,15 @@ function lockstepCases(check) {
     check('propose: lockstep drops a pair once one side visibly imports the other',
       afterImport.length === 0, `import evidence should exclude the pair, got ${JSON.stringify(afterImport)}`);
 
-    // cm:guard the mention must sit in a TRAILING comment — one that OPENS its line was cut by the old
-    //   leader test too, so it cannot tell the profile-driven mask from what it replaced (ISS-59)
-    writeFileSync(join(root, 'lock_a.ts'), 'export const a = 1; // keep in step with lock_b\n');
+    // cm:guard looksWired reads the file RAW, so a mention in a comment still drops the pair — the
+    //   sharpest case is an edge ALREADY DECLARED here, which propose would otherwise re-propose (ISS-59)
+    writeFileSync(join(root, 'lock_a.ts'), 'export const a = 1; // cm:edge lockstep -> lock_b.ts — they ship together\n');
     git(root, 'add', 'lock_a.ts');
-    git(root, 'commit', '-qm', 'lock_a mentions lock_b in a trailing comment only');
-    const commentOnly = lockstepCandidates(root, files);
-    check('propose: a stem named only in a comment is not import evidence, so the pair still shows (ISS-59)',
-      commentOnly.length === 1 && commentOnly[0].files.includes('lock_a.ts'),
-      `looksWired reads a file's own CODE, as its docblock says; a comment mention dropped this pair before ISS-59: ${JSON.stringify(commentOnly)}`);
+    git(root, 'commit', '-qm', 'lock_a declares the edge in a trailing comment');
+    const declared = lockstepCandidates(root, files);
+    check('propose: a pair whose edge is declared in a TRAILING comment is not re-proposed (ISS-59)',
+      declared.length === 0,
+      `masking comments here made propose print "add cm:edge -> lock_b.ts" for a file that already carries it: ${JSON.stringify(declared)}`);
 
     const strict = lockstepCandidates(root, files, { minCoChanges: 1000 });
     check('propose: lockstep respects a caller-supplied minCoChanges', strict.length === 0,

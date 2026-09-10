@@ -72,7 +72,7 @@ function findUnescaped(line, delim, from) {
 //   and codeOnly masks exactly it; a span that excluded its delimiters would leave a literal readable (ISS-59)
 // cm:why flushing an unterminated block into the general comment list would turn one missing close
 //   delimiter into prose diagnostics down the rest of the file (ISS-26)
-export function scanComments(src, prof, { flushOpen = false } = {}) {
+export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = false } = {}) {
   const comments = [];
   const codeLines = new Set();
   const lines = src.split('\n');
@@ -95,11 +95,13 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
         block.lines.push({ line: lineNo, text: seg.replace(/^\s*\*?\s?/, '').trim() });
         // cm:guard openCol belongs to the START line only — a block opening at end of line pushes its
         //   first span on the NEXT one, where that column masks from the wrong offset (ISS-59)
-        block.spans.push({
-          line: lineNo,
-          from: lineNo === block.startLine ? block.openCol : j,
-          to: k === -1 ? line.length : k + block.close.length,
-        });
+        if (wantSpans) {
+          block.spans.push({
+            line: lineNo,
+            from: lineNo === block.startLine ? block.openCol : j,
+            to: k === -1 ? line.length : k + block.close.length,
+          });
+        }
         if (k === -1) { j = line.length; break; }
         j = k + block.close.length;
         comments.push({
@@ -147,7 +149,7 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
           leader,
           text: line.slice(j + leader.length).trim(),
           lines: [{ line: lineNo, text: line.slice(j + leader.length).trim() }],
-          spans: [{ line: lineNo, from: j, to: line.length }],
+          spans: wantSpans ? [{ line: lineNo, from: j, to: line.length }] : undefined,
           firstOnLine: !sawCode,
           indent: line.slice(0, j),
           col: j,
@@ -191,6 +193,12 @@ export function scanComments(src, prof, { flushOpen = false } = {}) {
       sawCode = true;
       codeLines.add(lineNo);
       j++;
+    }
+
+    // cm:guard an opener that ENDS its line never reaches the block branch, which runs from the NEXT
+    //   line — without this the start line gets no span and its delimiter survives the mask (ISS-59)
+    if (wantSpans && block && block.startLine === lineNo && block.spans.length === 0) {
+      block.spans.push({ line: lineNo, from: block.openCol, to: line.length });
     }
   }
 

@@ -25,6 +25,16 @@ const PATH_RE = /[\w./-]+\.[A-Za-z0-9]+\b/g;
  * judged worth recording, with no channel to put it in. Shared with `cm onboard`, which surfaced this
  * same evidence as prose before this verb existed to turn it into a proposal.
  */
+// cm:why longest first, then one trailing `.word` at a time — the shape match is greedy, so a sentence
+//   with no space after its full stop reads `scan.mjs.The` and resolved to nothing before (ISS-59)
+function resolve(cand, files) {
+  for (let c = cand; c.includes('.'); c = c.replace(/\.[^./]*$/, '')) {
+    const hit = files.find((f) => f === c || f.endsWith(`/${c.replace(/^\.\//, '')}`));
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
 export function proseCandidates(perFile, files) {
   const prose = perFile.flatMap((f) => f.diags.filter((d) => PROSE_CODES.has(d.code))
     .map((d) => ({ file: f.relPath, line: d.line, text: d.text ?? d.message })));
@@ -34,7 +44,7 @@ export function proseCandidates(perFile, files) {
   for (const p of prose) {
     const matches = String(p.text).match(PATH_RE) ?? [];
     for (const cand of matches) {
-      const hit = files.find((f) => f === cand || f.endsWith(`/${cand.replace(/^\.\//, '')}`));
+      const hit = resolve(cand, files);
       const key = `${p.file}:${p.line}:${hit}`;
       if (!hit || hit === p.file || seen.has(key)) continue;
       seen.add(key);
@@ -61,17 +71,15 @@ export const codeOnly = (src, prof) => {
   const lines = src.split('\n');
   const mask = (i, from, to) => {
     const l = lines[i];
-    if (l === undefined) return;
-    lines[i] = l.slice(0, from) + ' '.repeat(Math.max(0, to - from)) + l.slice(to);
+    // cm:guard a reversed range must return, never mask — `repeat` clamped at 0 still re-appends
+    //   l.slice(to), which GROWS the line and shifts every column after it (ISS-59)
+    if (l === undefined || to <= from) return;
+    lines[i] = l.slice(0, from) + ' '.repeat(to - from) + l.slice(to);
   };
-  const { comments, unterminated } = scanComments(src, prof);
-  for (const c of comments) for (const sp of c.spans ?? []) mask(sp.line - 1, sp.from, sp.to);
-  // cm:guard an unterminated block swallows the file to EOF (lib/scan.mjs header), so its text is masked
-  //   to EOF too — flushOpen is reserved for isGenerated and must stay false here (ISS-26, ISS-59)
-  if (unterminated) {
-    for (let i = unterminated.line - 1; i < lines.length; i++) {
-      mask(i, i === unterminated.line - 1 ? unterminated.col : 0, lines[i]?.length ?? 0);
-    }
+  // cm:guard an UNTERMINATED block is left alone on purpose — masking it to EOF turned every shape
+  //   scan.mjs cannot lex, `/**` included, into whole-file candidate loss (ISS-59, ISS-61)
+  for (const c of scanComments(src, prof, { spans: true }).comments) {
+    for (const sp of c.spans ?? []) mask(sp.line - 1, sp.from, sp.to);
   }
   return lines.join('\n');
 };
@@ -79,7 +87,7 @@ export const codeOnly = (src, prof) => {
 const readCache = (root, cache) => (rel) => {
   if (cache.has(rel)) return cache.get(rel);
   let src;
-  try { src = codeOnly(readFileSync(join(root, rel), 'utf8'), profileFor(rel)); } catch { src = null; }
+  try { src = readFileSync(join(root, rel), 'utf8'); } catch { src = null; }
   cache.set(rel, src);
   return src;
 };
@@ -87,12 +95,13 @@ const readCache = (root, cache) => (rel) => {
 /**
  * Best-effort "these two are not already wired together": archmap's real import graph when the repo
  * has vendored it (`connected`), and — always, since most repos have not — a basename mention in
- * either file's own code. Neither is proof; both are only ever used to DROP a pair, never to add one,
- * so a miss here costs a false positive we would rather not risk, never a false negative that just
- * stays unproposed (§ precision over recall, this issue's own business rule).
+ * either file's text — comments deliberately included. Neither is proof; both are only ever used to
+ * DROP a pair, never to add one, so a miss here costs a false positive we would rather not risk,
+ * never a false negative that just stays unproposed (§ precision over recall, this issue's own
+ * business rule).
  */
-// cm:why "its own CODE" became true here at ISS-59 — the mask is the profile's, so a stem named only
-//   in a comment no longer drops the pair, and that pair is now proposed where it was silently cut
+// cm:guard reads the file RAW, never through codeOnly — a stem named in a comment is exactly the
+//   evidence this wants, and masking it re-proposed a pair whose cm:edge was already written (ISS-59)
 function looksWired(root, a, b, importGraph, cache) {
   if (importGraph && connected(importGraph, a, b)) return true;
   const read = readCache(root, cache);
