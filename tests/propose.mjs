@@ -481,12 +481,18 @@ function leaderCases(pluginRoot, check) {
   const root = mkdtempSync(join(tmpdir(), 'cm-propose-leader-'));
   try {
     mkdirSync(join(root, '.forge'));
-    writeFileSync(join(root, '.forge', 'codemap.json'), '{}\n');
+    // cm:why docPolicy is overridden per repo so a #-leader file can hold a PROSE candidate — enforcementFor reads perLang.docPolicy
+    //   first (cli/lib/registry.mjs:151), so "only // languages enforce prose" is false and a py host is reachable (ISS-62)
+    writeFileSync(join(root, '.forge', 'codemap.json'), '{"languages":{"py":{"docPolicy":"banned"}}}\n');
     writeFileSync(join(root, 'deploy.sh'), '# the payload shape here must match svc_pay.go\nset -- ${f#src/} "ERR.PAY"\n');
     writeFileSync(join(root, 'pipeline.yml'), 'cmd: run#now "JOB.KICK"\n');
     writeFileSync(join(root, 'schema.sql'), "CREATE TABLE t (c text DEFAULT 'DDL.SEED');\n");
     writeFileSync(join(root, 'app.ts'), 'export const x = "TSX.WIRE";\n');
-    writeFileSync(join(root, 'svc_pay.go'), 'package main\n\nconst a = "ERR.PAY"\nconst b = "JOB.KICK"\nconst c = "DDL.SEED"\nconst d = "TSX.WIRE"\n');
+    writeFileSync(join(root, 'crate_pay.rs'), 'const R: &str = "RS.CRATE";\n');
+    // cm:why the .vue name sorts BEFORE svc_pay.go so the pair's host is the SFC side — contractCandidates orders on the first side's
+    //   path, so a later name would make the .go file the host and test the wrong profile's leader (ISS-62, and ISS-54 owns which side anchors)
+    writeFileSync(join(root, 'a_widget.vue'), '<template>\n  <div data-code="VUE.SLOT"/>\n</template>\n');
+    writeFileSync(join(root, 'svc_pay.go'), 'package main\n\nconst a = "ERR.PAY"\nconst b = "JOB.KICK"\nconst c = "DDL.SEED"\nconst d = "TSX.WIRE"\nconst e = "RS.CRATE"\nconst f = "VUE.SLOT"\n');
     git(root, 'init', '-q');
     git(root, 'add', '-A');
     git(root, 'commit', '-qm', 'seed');
@@ -511,31 +517,49 @@ function leaderCases(pluginRoot, check) {
       lineFor(r.out, 'TSX.WIRE').trim().startsWith('// cm:edge contract ->'),
       `app.ts is a // file; got: ${lineFor(r.out, 'TSX.WIRE')}`);
 
-    // cm:guard the host is the side the `(in X;` text names, never the target — asserting the leader
-    //   against that same X is what makes this blind to which side the pair happens to be ordered on
-    const hostMismatch = (out) => out.split('\n')
-      .map((l) => /^\s*(\S+) cm:edge \w+ -> \S+\s+\(in (\S+?);/.exec(l))
-      .filter(Boolean)
-      .filter(([, leader, host]) => leader !== leaderFor(host));
-    check('propose: every suggestion\'s leader is its own host\'s, across sources (ISS-62)',
+    // cm:guard the host is the side the `(in X;` text names, never the target — asserting the leader against that same X is what makes
+    //   this blind to which side the pair happens to be ordered on
+    const suggestions = (out) => out.split('\n').filter((l) => /cm:edge/.test(l));
+    const hostMatches = (out) => suggestions(out)
+      .map((l) => /^\s*(\S+) cm:edge (?:\w+|<kind>) -> \S+\s+\(in (\S+?);/.exec(l))
+      .filter(Boolean);
+    const hostMismatch = (out) => hostMatches(out).filter(([, leader, host]) => leader !== leaderFor(host));
+    // cm:guard the sweep must REACH every suggestion — unmatched lines are silently not judged, so rewording the `(in …)` clause made it
+    //   pass on output whose every leader was wrong; a mutation proved exactly that, so totality is asserted too (ISS-62)
+    const hostUnreached = (out) => suggestions(out).length - hostMatches(out).length;
+    check('propose: every suggestion\'s leader is its own host\'s (ISS-62)',
       hostMismatch(r.out).length === 0,
       `mismatched: ${JSON.stringify(hostMismatch(r.out))}\n${r.out}`);
+    check('propose: a rust host carries //, not the doc leader its profile lists first (ISS-62)',
+      lineFor(r.out, 'RS.CRATE').trim().startsWith('// cm:edge contract ->'),
+      `an annotation under /// is CM003 and dropped; got: ${lineFor(r.out, 'RS.CRATE')}`);
+    check('propose: an sfc host is told to put the annotation inside <script> (ISS-62)',
+      / \u2014 put it inside <script>,/.test(lineFor(r.out, 'VUE.SLOT')),
+      `// in a template renders as text and cm verify accepts it; got: ${lineFor(r.out, 'VUE.SLOT')}`);
+    check('propose: the leader sweep reaches every suggestion it is meant to judge (ISS-62)',
+      suggestions(r.out).length === 6 && hostUnreached(r.out) === 0,
+      `${suggestions(r.out).length} suggestions, ${hostUnreached(r.out)} unreached\n${r.out}`);
 
-    // cm:why the prose host's leader is read dynamically, not asserted as `#` — prose is enforced only where a profile bans or requires it
-    //   (ts, sfc, go) and all three carry `//`, so no #-leader file can hold a prose candidate today; what is provable is that the arm asks (ISS-62)
+    // cm:why one # host and one // host, each asserted LITERALLY — comparing against leaderFor(host) is the same call the printer makes,
+    //   so it passes even when the arm reads the target's leader instead of the host's, which a mutation confirmed (ISS-62)
     writeFileSync(join(root, 'wire_note.ts'), '// the retry budget here must match svc_pay.go\nexport const w = 1;\n');
-    git(root, 'add', 'wire_note.ts');
-    git(root, 'commit', '-qm', 'a prose comment naming another file');
+    writeFileSync(join(root, 'note.py'), '# the retry budget here must match svc_pay.go\nX = 1\n');
+    git(root, 'add', 'wire_note.ts', 'note.py');
+    git(root, 'commit', '-qm', 'a prose comment naming another file, in two languages');
     const prose = cm(pluginRoot, root, 'propose', '--source', 'prose');
-    const proseJson = cm(pluginRoot, root, 'propose', '--source', 'prose', '--json');
-    let proseHost;
-    try { proseHost = JSON.parse(proseJson.stdout).candidates.prose[0]?.file; } catch { proseHost = undefined; }
-    const proseLine = prose.out.split('\n').find((l) => /cm:edge <kind>/.test(l)) ?? '';
-    check('propose: the prose arm prints a suggestion for the candidate it found (ISS-62)',
-      Boolean(proseHost) && proseLine !== '', `no prose candidate reached the printer:\n${prose.out}`);
-    check('propose: the prose arm reads the leader of the file the comment is in (ISS-62)',
-      Boolean(proseHost) && proseLine.trim().startsWith(`${leaderFor(proseHost)} cm:edge <kind> ->`),
-      `host ${proseHost} has leader ${JSON.stringify(leaderFor(proseHost))}; got: ${proseLine}`);
+    const proseFor = (host) => prose.out.split('\n').find((l) => new RegExp(`\\(in ${host};`).test(l)) ?? '';
+    check('propose: the prose arm prints a suggestion for each candidate it found (ISS-62)',
+      proseFor('note.py') !== '' && proseFor('wire_note.ts') !== '',
+      `expected a suggestion for both prose hosts:\n${prose.out}`);
+    check('propose: a prose suggestion in a # host carries #, not // (ISS-62)',
+      proseFor('note.py').trim().startsWith('# cm:edge <kind> ->'),
+      `note.py is a # file; got: ${proseFor('note.py')}`);
+    check('propose: a prose suggestion in a // host still carries // (ISS-62)',
+      proseFor('wire_note.ts').trim().startsWith('// cm:edge <kind> ->'),
+      `wire_note.ts is a // file; got: ${proseFor('wire_note.ts')}`);
+    check('propose: the prose arm names its own host, so the leader sweep reaches it too (ISS-62)',
+      hostUnreached(prose.out) === 0 && hostMismatch(prose.out).length === 0,
+      `unreached ${hostUnreached(prose.out)}, mismatched ${JSON.stringify(hostMismatch(prose.out))}\n${prose.out}`);
 
     // cm:why two SHELL files, so the pair's host carries a leader that is not `//` — lockstep is the one arm whose host is a bare path rather
     //   than a candidate side, and a `//` host would pass whether the arm read the profile or kept the hard-coded leader (ISS-62)
@@ -559,8 +583,8 @@ function leaderCases(pluginRoot, check) {
       lockLine.trim().startsWith('# cm:edge lockstep ->'),
       `both sides are # files; got: ${lockLine}`);
     check('propose: the lockstep leader matches the host its own text names (ISS-62)',
-      hostMismatch(lock.out).length === 0,
-      `mismatched: ${JSON.stringify(hostMismatch(lock.out))}\n${lock.out}`);
+      hostMismatch(lock.out).length === 0 && hostUnreached(lock.out) === 0,
+      `unreached ${hostUnreached(lock.out)}, mismatched ${JSON.stringify(hostMismatch(lock.out))}\n${lock.out}`);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -569,9 +593,25 @@ function leaderCases(pluginRoot, check) {
 // ISS-62 — a host whose profile carries no line leader must not print a suggestion at all. No profile
 // in the tree is in that state, so the profile is injected, as makeReserved's tags are.
 function leaderProfileCases(check) {
-  check('propose: leaderFor takes the profile\'s first leader (ISS-62)',
+  check('propose: leaderFor takes the profile\'s own leader (ISS-62)',
     leaderFor('deploy.sh') === '#' && leaderFor('app.ts') === '//' && leaderFor('schema.sql') === '--',
     `got ${JSON.stringify([leaderFor('deploy.sh'), leaderFor('app.ts'), leaderFor('schema.sql')])}`);
+  // cm:guard the MULTI-leader profiles are the whole of this rule — every single-leader profile passes under any selection at all, so
+  //   `lineLeaders[0]`, `.at(-1)` and "skip the doc leaders" are indistinguishable without rust and php here (ISS-62)
+  check('propose: a rust host gets //, never the doc leader /// (ISS-62)',
+    leaderFor('a.rs') === '//',
+    `rust lineLeaders lead with /// and //!, both docLineLeaders; got ${JSON.stringify(leaderFor('a.rs'))}`);
+  check('propose: a php host gets // — its first leader, which is not a doc leader (ISS-62)',
+    leaderFor('a.php') === '//',
+    `php carries ['//', '#']; got ${JSON.stringify(leaderFor('a.php'))}`);
+  check('propose: a profile whose every leader is a doc leader yields none (ISS-62)',
+    leaderFor('x.rs', { lineLeaders: ['///', '//!'], docLineLeaders: ['///', '//!'] }) === null,
+    'a doc-only profile has no leader that can carry an annotation');
+  // cm:why an annotation under a rust doc leader is CM003 and DROPPED, so propose was suggesting a line cm verify then refused — the
+  //   selection rule is what keeps propose and verify agreeing, which is the property ISS-59 closed and this could have re-opened (ISS-62)
+  check('propose: an sfc host says the annotation belongs in <script> (ISS-62)',
+    profileFor('a.vue').leaderRegion === '<script>' && profileFor('a.ts').leaderRegion === undefined,
+    'the region lives on the sfc profile, and only there');
   check('propose: leaderFor reads lineLeaders[0] and adds no list of its own (ISS-62)',
     leaderFor('x.unknownext', profileFor('deploy.sh')) === '#',
     'an injected profile must decide the leader, so no extension list can be hiding in leaderFor');

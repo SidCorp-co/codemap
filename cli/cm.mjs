@@ -1098,12 +1098,14 @@ switch (cmd) {
 
     const limit = numericFlag('--limit', 20);
     const trunc = (s, n) => (s.length > n ? `${s.slice(0, n - 3)}...` : s);
-    // cm:why the leader is the HOST file's, never the target's — the annotation is pasted into the file each arm's `(in …)` text names, and
-    //   reading it off the pair's other side prints a comment that is a syntax error in the very file it was meant for (ISS-62)
+    // cm:why the leader is the HOST file's, never the target's — every arm names its host in its own `(in …)` text, and reading the leader
+    //   off the pair's other side prints a comment that is a syntax error in the very file it was meant for (ISS-62)
     const suggest = (host, text) => {
       const leader = leaderFor(host);
-      if (!leader) return dim(`     ${host} has no line comment — this pair needs a side that has one`);
-      return dim(`     ${leader} ${text}`);
+      if (!leader) return dim(`     no line comment reaches ${host}, so it cannot carry this annotation — write it on the other side`);
+      const region = profileFor(host)?.leaderRegion;
+      const where = region ? ` — put it inside ${region}, the only part of ${host} a line comment reaches` : '';
+      return dim(`     ${leader} ${text}${where}`);
     };
     const LABEL = {
       prose: '1. prose that already names a file (highest confidence — already written, already judged)',
@@ -1122,7 +1124,7 @@ switch (cmd) {
         if (kind === 'prose') {
           console.log(`   ${cand.file}:${cand.line} ${dim('->')} ${cand.target}`);
           console.log(dim(`     "${trunc(cand.evidence, 88)}"`));
-          console.log(suggest(cand.file, `cm:edge <kind> -> ${cand.target}   (pick a kind: ${EDGE_KINDS.join(', ')}; add — why by hand)`));
+          console.log(suggest(cand.file, `cm:edge <kind> -> ${cand.target}   (in ${cand.file}; pick a kind: ${EDGE_KINDS.join(', ')}; add — why by hand)`));
         } else if (kind === 'lockstep') {
           const [a, b] = cand.files;
           console.log(`   ${a} ${dim('<->')} ${b}`);
