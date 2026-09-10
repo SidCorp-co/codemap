@@ -12,9 +12,12 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { PROSE_CODES, TAGS, CM_IGNORE_RE } from './parse.mjs';
 import { profileFor, ecosystemOf } from './languages.mjs';
+import { scanComments } from './scan.mjs';
 import { connected } from './archmap.mjs';
 
-const PATH_RE = /[\w./-]+\.(?:ts|tsx|js|jsx|mjs|cjs|go|php|py|rs|sql|prisma|graphql)\b/g;
+// cm:why a path SHAPE, not an extension list — the match is resolved against the registry's file list,
+//   which registry.mjs already gates on profileFor, so a second list could only disagree (ISS-59)
+const PATH_RE = /[\w./-]+\.[A-Za-z0-9]+\b/g;
 
 /**
  * Confidence 1 — prose that already names a file which resolves to exactly one other file in the
@@ -44,14 +47,32 @@ export function proseCandidates(perFile, files) {
 }
 
 const stem = (p) => p.split('/').pop().replace(/\.\w+$/, '');
-// cm:guard blanks a comment LINE rather than dropping it — a dropped line shifts every line number
-//   after it, and contractCandidates reports the line it found a literal on
-const codeOnly = (src) => src.split('\n').map((l) => (/^\s*(\/\/|#|--|\*|\/\*)/.test(l) ? '' : l)).join('\n');
+
+// cm:guard blanks comment text IN PLACE and never drops a line or shifts a column — a dropped line
+//   shifts every line number after it, and contractCandidates reports the line it found a literal on
+// cm:edge contract -> cli/lib/scan.mjs — masks the `spans` range scanComments reports, delimiters
+//   included; the two must agree that [from,to) is half-open or a literal survives at an edge (ISS-59)
+// cm:why the profile is the ONLY authority on what a comment is here — a private leader list read a
+//   template comment as code where analyzeFile read the same text as a comment (ISS-59)
+// cm:why exported for its tests alone, as makeReserved is: no assertion over the profiles that exist
+//   can reach a comment form none of them carries yet, which is the property this must hold (ISS-59)
+export const codeOnly = (src, prof) => {
+  if (!prof) return src;
+  const lines = src.split('\n');
+  for (const c of scanComments(src, prof).comments) {
+    for (const sp of c.spans ?? []) {
+      const l = lines[sp.line - 1];
+      if (l === undefined) continue;
+      lines[sp.line - 1] = l.slice(0, sp.from) + ' '.repeat(sp.to - sp.from) + l.slice(sp.to);
+    }
+  }
+  return lines.join('\n');
+};
 
 const readCache = (root, cache) => (rel) => {
   if (cache.has(rel)) return cache.get(rel);
   let src;
-  try { src = codeOnly(readFileSync(join(root, rel), 'utf8')); } catch { src = null; }
+  try { src = codeOnly(readFileSync(join(root, rel), 'utf8'), profileFor(rel)); } catch { src = null; }
   cache.set(rel, src);
   return src;
 };
@@ -175,7 +196,7 @@ export function contractCandidates(root, files) {
     const eco = ecosystemOf(rel);
     let raw;
     try { raw = readFileSync(join(root, rel), 'utf8'); } catch { continue; }
-    const src = codeOnly(raw);
+    const src = codeOnly(raw, prof);
     const seenInFile = new Set();
     const lines = src.split('\n');
     // cm:why line number is the literal's FIRST line in the CODE-only text — good enough to point a

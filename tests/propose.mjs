@@ -9,7 +9,8 @@ import {
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { proseCandidates, lockstepCandidates, contractCandidates, RESERVED, makeReserved } from '../cli/lib/propose.mjs';
+import { proseCandidates, lockstepCandidates, contractCandidates, RESERVED, makeReserved, codeOnly } from '../cli/lib/propose.mjs';
+import { profileFor } from '../cli/lib/languages.mjs';
 import { stripGitEnv } from './git-env.mjs';
 import { TAGS, CM_IGNORE_RE } from '../cli/lib/parse.mjs';
 
@@ -57,6 +58,32 @@ function pureCases(check) {
   check('propose: prose drops a path that does not resolve to a real file', noHit.length === 0,
     `expected 0, got ${JSON.stringify(noHit)}`);
 
+  // cm:guard the .ts control must stay beside it — PATH_RE recognising a path SHAPE is only correct
+  //   because the registry's file list decides what exists, and a case for .vue alone cannot see that (ISS-59)
+  const sfcProse = proseCandidates(
+    [{ relPath: 'notes.ts', diags: [{ code: 'CM001', line: 3, text: 'see src/Widget.vue for the pair' }] }],
+    ['notes.ts', 'src/Widget.vue'],
+  );
+  check('propose: prose naming a .vue resolves to a prose candidate (ISS-59)',
+    sfcProse.length === 1 && sfcProse[0].target === 'src/Widget.vue',
+    `.vue has a profile, so the proposer must be able to see it named: ${JSON.stringify(sfcProse)}`);
+
+  const sveProse = proseCandidates(
+    [{ relPath: 'notes.ts', diags: [{ code: 'CM001', line: 3, text: 'see src/App.svelte for the pair' }] }],
+    ['notes.ts', 'src/App.svelte'],
+  );
+  check('propose: prose naming a .svelte resolves to a prose candidate (ISS-59)',
+    sveProse.length === 1 && sveProse[0].target === 'src/App.svelte',
+    `.svelte resolves to the same profile as .vue: ${JSON.stringify(sveProse)}`);
+
+  const unscannable = proseCandidates(
+    [{ relPath: 'notes.ts', diags: [{ code: 'CM001', line: 3, text: 'see docs/guide.md for the pair' }] }],
+    ['notes.ts'],
+  );
+  check('propose: prose naming a file the registry does not carry yields nothing (ISS-59)',
+    unscannable.length === 0,
+    `the registry's file list is what decides, not the path shape: ${JSON.stringify(unscannable)}`);
+
   const goSrc = 'const code = "ERR_PAYMENT_DECLINED"\n';
   const tsSrc = 'if (c === "ERR_PAYMENT_DECLINED") throw e;\n';
   const root = mkdtempSync(join(tmpdir(), 'cm-propose-pure-'));
@@ -86,6 +113,58 @@ function pureCases(check) {
     check('propose: contract drops a literal shared by an SFC and a .ts (ISS-28)',
       sfcPair.length === 0,
       `an SFC/.ts pair is one ecosystem, not two languages; got ${JSON.stringify(sfcPair)}`);
+
+    // cm:guard every arm below pairs its SFC or TS side against a `.go` side, so only the comment
+    //   question can decide it — an sfc/.ts pair ISS-28 drops would pass with the fix removed (ISS-59)
+    writeFileSync(join(root, 'Tpl.vue'), '<template>\n  <!-- "ONLY_IN_TEMPLATE" handled elsewhere -->\n  <div/>\n</template>\n');
+    writeFileSync(join(root, 'tpl.go'), 'const c = "ONLY_IN_TEMPLATE"\n');
+    check('propose: a literal only inside an SFC template comment is not a contract candidate (ISS-59)',
+      contractCandidates(root, ['Tpl.vue', 'tpl.go']).length === 0,
+      `the template comment is a comment form of the sfc profile, so propose must not read it as code: ${JSON.stringify(contractCandidates(root, ['Tpl.vue', 'tpl.go']))}`);
+
+    writeFileSync(join(root, 'inner.ts'), '/*\n "ONLY_BLOCK_INTERIOR" only here\n*/\nexport const y = 2;\n');
+    writeFileSync(join(root, 'inner.go'), 'const c = "ONLY_BLOCK_INTERIOR"\n');
+    check('propose: a literal on a block comment INTERIOR line is not a contract candidate (ISS-59)',
+      contractCandidates(root, ['inner.ts', 'inner.go']).length === 0,
+      `an interior line opens with no leader, and this is the plain ts profile, not sfc: ${JSON.stringify(contractCandidates(root, ['inner.ts', 'inner.go']))}`);
+
+    writeFileSync(join(root, 'trail.ts'), 'export const z = 3; // "ONLY_TRAILING_LINE" not real\n');
+    writeFileSync(join(root, 'trail.go'), 'const c = "ONLY_TRAILING_LINE"\n');
+    check('propose: a literal in a TRAILING line comment is not a contract candidate (ISS-59)',
+      contractCandidates(root, ['trail.ts', 'trail.go']).length === 0,
+      `a trailing comment does not open its line, which is all the old leader test asked: ${JSON.stringify(contractCandidates(root, ['trail.ts', 'trail.go']))}`);
+
+    writeFileSync(join(root, 'tblock.ts'), 'export const q = 4; /* "ONLY_TRAILING_BLOCK" nope */\n');
+    writeFileSync(join(root, 'tblock.go'), 'const c = "ONLY_TRAILING_BLOCK"\n');
+    check('propose: a literal in a TRAILING block comment is not a contract candidate (ISS-59)',
+      contractCandidates(root, ['tblock.ts', 'tblock.go']).length === 0,
+      `this is the one shape analyze.mjs's codeShape leaves whole, so spans are what decide it: ${JSON.stringify(contractCandidates(root, ['tblock.ts', 'tblock.go']))}`);
+
+    // cm:guard the pin is the SURVIVING literal, not the count — a codeOnly that blanked the whole line
+    //   would drop KEEP_ON_LINE too and every "is not a candidate" case above would still pass (ISS-59)
+    writeFileSync(join(root, 'mixed.ts'), 'export const A = "KEEP_ON_LINE"; // "DROP_ON_LINE" no\n');
+    writeFileSync(join(root, 'mixed.go'), 'const a = "KEEP_ON_LINE"\nconst b = "DROP_ON_LINE"\n');
+    const mixed = contractCandidates(root, ['mixed.ts', 'mixed.go']);
+    check('propose: code on a line survives while that line\'s trailing comment is masked (ISS-59)',
+      mixed.length === 1 && mixed[0].literal === 'KEEP_ON_LINE',
+      `exactly KEEP_ON_LINE, masked in place rather than by blanking the line: ${JSON.stringify(mixed)}`);
+
+    // cm:guard the reported line must be the literal's line in the ORIGINAL file — masking that dropped
+    //   or shifted lines would report 1 here and no "not a candidate" case above could see it (ISS-59)
+    writeFileSync(join(root, 'num.ts'), '// header\n/* block\n   spanning */\nexport const E = "ON_LINE_FOUR";\n');
+    writeFileSync(join(root, 'num.go'), 'const c = "ON_LINE_FOUR"\n');
+    const num = contractCandidates(root, ['num.ts', 'num.go']);
+    check('propose: masking a comment moves no line number under the literal (ISS-59)',
+      num.length === 1 && num[0].files[0].line === 4,
+      `ON_LINE_FOUR sits on line 4 after three comment lines: ${JSON.stringify(num)}`);
+
+    // cm:guard reaches a comment form NO profile carries today, so no hard-coded list — however long —
+    //   can pass it; only reading the resolved profile's own forms does (ISS-59)
+    const invented = { ...profileFor('x.ts'), id: 'invented', blockOpens: [['(*', '*)']], docBlockOpens: [] };
+    const masked = codeOnly('const a = 1; (* "INVENTED_FORM" *)\n', invented);
+    check('propose: a comment form a profile gains later is honoured with no second edit (ISS-59)',
+      !masked.includes('INVENTED_FORM') && masked.includes('const a = 1;'),
+      `the profile is the only authority on the form; masked text was ${JSON.stringify(masked)}`);
 
     const noSep = contractCandidates(root, ['emit.go', 'noisy.ts']);
     check('propose: contract ignores a plain word with no separator (no coincidental "hello")',
