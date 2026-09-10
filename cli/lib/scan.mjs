@@ -1,11 +1,18 @@
 // Comment scanner. Line-by-line state machine — enough to keep comment leaders inside string
 // literals from being mistaken for comments, without pretending to be a real lexer.
 //
+// A leader is narrowed by the text before it in two ways, both here rather than in any caller: a bare
+// URL or a `<scheme>:` prefix (insideUrl), and, where the profile sets `leaderAfter`, a leader that
+// must begin a word — `#` in sh, yaml and docker, where `${f#src/}` and `a#b` are one word and never a
+// comment. py and php set no `leaderAfter` on purpose: there `x = 1#c` IS a comment (ISS-61).
+//
 // Deliberate limitation: heredocs (PHP/shell) and Rust raw strings are not modelled. A comment leader
-// inside one reads as a leader, which costs a false-positive prose comment an author can silence with
-// an ignore directive. A BLOCK opener inside one is the exception that is not free: it swallows the
-// rest of the file, and the annotations below it are lost rather than merely mis-billed. That is why
-// the discard reports CM203 instead of passing quietly — the loss is loud, not prevented (ISS-31).
+// inside one reads as a leader. That costs a false-positive prose comment where prose is policed, which
+// an author can silence with an ignore directive — and, in the same place, a `cm propose` candidate,
+// which they cannot, because propose reads no directives and the loss is silent (ISS-61). A BLOCK
+// opener inside one is the exception that is not free: it swallows the rest of the file, and the
+// annotations below it are lost rather than merely mis-billed. That is why the discard reports CM203
+// instead of passing quietly — the loss is loud, not prevented (ISS-31).
 
 function matchLongest(candidates, line, i) {
   let best = null;
@@ -43,6 +50,11 @@ function insideBareUrl(line, j) {
 
 function insideUrl(line, j, leader) {
   return insideBareUrl(line, j) || (leader === '//' && schemeEndsAt(line, j));
+}
+
+/** Where the profile requires a leader to begin a word, does one begin at j? */
+function beginsWord(line, j, prof) {
+  return !prof.leaderAfter || j === 0 || prof.leaderAfter.test(line[j - 1]);
 }
 
 function findUnescaped(line, delim, from) {
@@ -135,7 +147,9 @@ export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = 
       // cm:why regex literals are not lexed, and `/https?:\/\//` ends in an escaped slash against its own
       // closing delimiter — read as a leader, that phantom comment is a CM001 on a line of real code
       if (leader && j > 0 && line[j - 1] === '\\') { j++; continue; }
-      if (leader && insideUrl(line, j, leader)) {
+      // cm:why both narrowings share ONE branch and one "treat it as code" path — a second reader of
+      //   what a comment is is exactly the divergence between verify and propose that ISS-59 closed
+      if (leader && (insideUrl(line, j, leader) || !beginsWord(line, j, prof))) {
         sawCode = true;
         codeLines.add(lineNo);
         j += leader.length;

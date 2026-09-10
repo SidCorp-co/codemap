@@ -212,6 +212,9 @@ const P = {
   sh: {
     id: 'sh',
     lineLeaders: ['#'],
+    // cm:why `${f#src/}` and `a#b` are one word, never a comment — shell ends a word at whitespace
+    //   or a metacharacter, and reading the `#` as a leader masked the rest of the line (ISS-61)
+    leaderAfter: /[\s;|&()<>]/,
     docLineLeaders: [],
     blockOpens: [],
     docBlockOpens: [],
@@ -227,6 +230,9 @@ const P = {
   yaml: {
     id: 'yaml',
     lineLeaders: ['#'],
+    // cm:why YAML requires a space before a `#` comment, so `run#now` is one scalar — without this the
+    //   leader masked the rest of the line and cost cm propose the literal on it (ISS-61)
+    leaderAfter: /\s/,
     docLineLeaders: [],
     blockOpens: [],
     docBlockOpens: [],
@@ -244,6 +250,8 @@ const P = {
     //   Docker's parser directives, and `cm ls` prints the id, so reporting as yaml misnames it (ISS-25)
     id: 'docker',
     lineLeaders: ['#'],
+    // cm:why a Dockerfile comment is a whole line, so `RUN echo a#b` carries no comment (ISS-61)
+    leaderAfter: /\s/,
     docLineLeaders: [],
     blockOpens: [],
     docBlockOpens: [],
