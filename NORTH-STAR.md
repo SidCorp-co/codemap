@@ -343,8 +343,11 @@ distribution. **Do not defend it by writing more documentation.**
 **Aggregate, because the detail is not this file's to publish.** The per-repository table — which
 internal repositories carry codemap, which checks each has switched off and why, and the tracking
 issue opened in each — lives in the project's own knowledge store under
-`codemap-rollout-log-internal`. Naming other teams' repositories and the gates they have disabled is
-not evidence of anything a reader here needs, and it is not this project's information to hand out.
+`codemap-rollout-log-internal`. What is withheld is **rollout posture**, not the existence of sibling
+products: a per-repo list of which gates a team has switched off is a map of where each of their
+gates is weakest, and that is not this project's information to hand out. The rule this file follows,
+stated so it is not re-derived each time someone edits it: **sibling products may be named;
+per-repository rollout posture may not.** §1 names siblings under that rule (ISS-24).
 
 | Tier | Count | What it means |
 |---|---|---|
