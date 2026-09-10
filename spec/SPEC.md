@@ -786,7 +786,7 @@ it cannot total a tree it did not read.
 **Baseline for the next measurement.** Same consumer repo — `forge-dev` at `9a7c34b9`, whole tree,
 measured by `cm mass --json` from codemap `fc2003c`: 2,370 files, 4,886 annotations, 3,302 KB of
 comment in total — annotation channel 1,332 KB (40%), doc comments 858 KB (26%), module headers
-516 KB (16%), frozen prose 467 KB (14%), live prose 128 KB (4%). Narrative: **77 KB across 314
+517 KB (16%), frozen prose 467 KB (14%), live prose 128 KB (4%). Narrative: **77 KB across 314
 annotations in 226 files**, 5.8% of the annotation channel, the top 20 files holding 26% of it. A
 repo making this fall is doing the thing the section is for; a repo whose annotation channel grows
 while the narrative figure stays flat is adding rules, which is the intent.
