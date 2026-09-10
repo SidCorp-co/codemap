@@ -367,8 +367,10 @@ export function profileFor(filePath) {
 //   for ts by coincidence and a syntax error in every #-leader file, which is what cm propose printed (ISS-62)
 // cm:guard skips a DOC leader by asking docLineLeaders, never by position — rust's lineLeaders[0] is `///`, and an annotation under it is
 //   CM003 and dropped, so propose suggested a line verify then refused; a doc-only profile has no leader to offer and returns null (ISS-62)
-// cm:edge contract -> cli/lib/scan.mjs — this trusts scanComments to stamp a docLineLeaders comment `kind: 'doc'`, which is what makes such
-//   a leader unusable for an annotation; a scanner that stopped doing so would leave this skipping a leader that had become legal (ISS-62)
+// cm:edge contract -> cli/lib/scan.mjs — this trusts scanComments to stamp a docLineLeaders comment `kind: 'doc'`; a scanner that stopped
+//   doing so would leave this skipping a leader that had become legal, which is stale rather than broken (ISS-62)
+// cm:edge contract -> cli/lib/analyze.mjs — what makes a doc leader UNUSABLE is decided there, not in the scanner: any comment whose kind is
+//   not 'line' carrying a cm: prefix becomes CM003 and is never parsed, so admitting one there is what would make this skip wrong (ISS-62)
 // cm:why the profile is a parameter for its tests alone, as makeReserved's tags are: no profile in the tree has an empty lineLeaders, so no
 //   assertion over the real ones reaches the null branch (ISS-62)
 export function leaderFor(filePath, prof = profileFor(filePath)) {

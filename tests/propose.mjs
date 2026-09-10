@@ -492,7 +492,10 @@ function leaderCases(pluginRoot, check) {
     // cm:why the .vue name sorts BEFORE svc_pay.go so the pair's host is the SFC side — contractCandidates orders on the first side's
     //   path, so a later name would make the .go file the host and test the wrong profile's leader (ISS-62, and ISS-54 owns which side anchors)
     writeFileSync(join(root, 'a_widget.vue'), '<template>\n  <div data-code="VUE.SLOT"/>\n</template>\n');
-    writeFileSync(join(root, 'svc_pay.go'), 'package main\n\nconst a = "ERR.PAY"\nconst b = "JOB.KICK"\nconst c = "DDL.SEED"\nconst d = "TSX.WIRE"\nconst e = "RS.CRATE"\nconst f = "VUE.SLOT"\n');
+    // cm:guard a SECOND sfc extension, so the region is proved to come from the shared profile — a `host.endsWith('.vue')` test in the
+    //   printer passes every .vue assertion and regresses .svelte silently, which is what languages.mjs forbids in terms (ISS-62)
+    writeFileSync(join(root, 'a_panel.svelte'), '<template>\n  <div data-code="SVELTE.SLOT"/>\n</template>\n');
+    writeFileSync(join(root, 'svc_pay.go'), 'package main\n\nconst a = "ERR.PAY"\nconst b = "JOB.KICK"\nconst c = "DDL.SEED"\nconst d = "TSX.WIRE"\nconst e = "RS.CRATE"\nconst f = "VUE.SLOT"\nconst g = "SVELTE.SLOT"\n');
     git(root, 'init', '-q');
     git(root, 'add', '-A');
     git(root, 'commit', '-qm', 'seed');
@@ -536,8 +539,16 @@ function leaderCases(pluginRoot, check) {
     check('propose: an sfc host is told to put the annotation inside <script> (ISS-62)',
       / \u2014 put it inside <script>,/.test(lineFor(r.out, 'VUE.SLOT')),
       `// in a template renders as text and cm verify accepts it; got: ${lineFor(r.out, 'VUE.SLOT')}`);
+    check('propose: a .svelte host is told the same, the region coming from the profile both share (ISS-62)',
+      / \u2014 put it inside <script>,/.test(lineFor(r.out, 'SVELTE.SLOT')),
+      `.svelte resolves to the same sfc profile; got: ${lineFor(r.out, 'SVELTE.SLOT')}`);
+    // cm:guard the NEGATIVE is the half that pins the condition — an unconditional region clause passes every assertion above and tells a
+    //   .sql host to put its annotation inside <script>, which is nonsense the suite would not have caught (ISS-62)
+    check('propose: a host whose whole file takes line comments is told no such thing (ISS-62)',
+      !/put it inside/.test(lineFor(r.out, 'DDL.SEED')) && !/put it inside/.test(lineFor(r.out, 'ERR.PAY')),
+      `only an sfc host has a region; got: ${lineFor(r.out, 'DDL.SEED')} / ${lineFor(r.out, 'ERR.PAY')}`);
     check('propose: the leader sweep reaches every suggestion it is meant to judge (ISS-62)',
-      suggestions(r.out).length === 6 && hostUnreached(r.out) === 0,
+      suggestions(r.out).length === 7 && hostUnreached(r.out) === 0,
       `${suggestions(r.out).length} suggestions, ${hostUnreached(r.out)} unreached\n${r.out}`);
 
     // cm:why one # host and one // host, each asserted LITERALLY — comparing against leaderFor(host) is the same call the printer makes,
@@ -561,12 +572,12 @@ function leaderCases(pluginRoot, check) {
       hostUnreached(prose.out) === 0 && hostMismatch(prose.out).length === 0,
       `unreached ${hostUnreached(prose.out)}, mismatched ${JSON.stringify(hostMismatch(prose.out))}\n${prose.out}`);
 
-    // cm:why two SHELL files, so the pair's host carries a leader that is not `//` — lockstep is the one arm whose host is a bare path rather
-    //   than a candidate side, and a `//` host would pass whether the arm read the profile or kept the hard-coded leader (ISS-62)
+    // cm:guard the lockstep pair spans TWO DIFFERENT leaders — with both sides `#` the host and the target have the same leader, so the
+    //   sweep cannot fire on this arm and reading the wrong side survives green; that is the defect this whole tier exists to catch (ISS-62)
     for (let i = 0; i < 6; i++) {
-      writeFileSync(join(root, 'ship_left.sh'), `left=${i}\n`);
+      writeFileSync(join(root, 'ship_left.sql'), `SELECT ${i};\n`);
       writeFileSync(join(root, 'ship_right.sh'), `right=${i}\n`);
-      git(root, 'add', 'ship_left.sh', 'ship_right.sh');
+      git(root, 'add', 'ship_left.sql', 'ship_right.sh');
       git(root, 'commit', '-qm', `co-change ${i}`);
     }
     for (let i = 0; i < 30; i++) {
@@ -574,14 +585,15 @@ function leaderCases(pluginRoot, check) {
       git(root, 'add', `noise${i}.ts`);
       git(root, 'commit', '-qm', `noise ${i}`);
     }
+    const LOCK_LEADER = '--';
     const lock = cm(pluginRoot, root, 'propose', '--source', 'lockstep');
     const lockLine = lock.out.split('\n').find((l) => /cm:edge lockstep ->/.test(l)) ?? '';
-    check('propose: the lockstep arm reaches a pair of shell files (ISS-62)',
-      /ship_left\.sh/.test(lock.out) && /ship_right\.sh/.test(lock.out),
-      `expected the ship_left/ship_right pair:\n${lock.out}`);
-    check('propose: a lockstep suggestion in a shell host carries #, not // (ISS-62)',
-      lockLine.trim().startsWith('# cm:edge lockstep ->'),
-      `both sides are # files; got: ${lockLine}`);
+    check('propose: the lockstep arm reaches a pair spanning two leaders (ISS-62)',
+      /ship_left\.sql/.test(lock.out) && /ship_right\.sh/.test(lock.out),
+      `expected the ship_left.sql/ship_right.sh pair:\n${lock.out}`);
+    check('propose: a lockstep suggestion carries its HOST\'s leader, not the other side\'s (ISS-62)',
+      lockLine.trim().startsWith(`${LOCK_LEADER} cm:edge lockstep ->`) && /\(in ship_left\.sql;/.test(lockLine),
+      `the host is ship_left.sql, a -- file, and the target is a # file; got: ${lockLine}`);
     check('propose: the lockstep leader matches the host its own text names (ISS-62)',
       hostMismatch(lock.out).length === 0 && hostUnreached(lock.out) === 0,
       `unreached ${hostUnreached(lock.out)}, mismatched ${JSON.stringify(hostMismatch(lock.out))}\n${lock.out}`);
@@ -612,7 +624,7 @@ function leaderProfileCases(check) {
   check('propose: an sfc host says the annotation belongs in <script> (ISS-62)',
     profileFor('a.vue').leaderRegion === '<script>' && profileFor('a.ts').leaderRegion === undefined,
     'the region lives on the sfc profile, and only there');
-  check('propose: leaderFor reads lineLeaders[0] and adds no list of its own (ISS-62)',
+  check('propose: leaderFor takes the leader from the profile it is handed, adding no list of its own (ISS-62)',
     leaderFor('x.unknownext', profileFor('deploy.sh')) === '#',
     'an injected profile must decide the leader, so no extension list can be hiding in leaderFor');
   check('propose: a profile with no line leader yields no leader, never an empty one (ISS-62)',
