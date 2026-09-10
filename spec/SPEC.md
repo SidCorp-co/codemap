@@ -431,7 +431,7 @@ what an annotation's own text carries, and nothing else does either: a `cm:` lin
 comment loop in `analyzeFile` before the `CM001` branch, and `CM011` caps a module *header*. So prose
 banned in one place reappears in the one channel that is loaded into an agent's context before every
 edit of the file — measured on one consumer repo over the five weeks after adoption, policed prose fell
-~203 KB while annotations added ~527 KB (§11).
+294 KB while annotations added 1,014 KB (§11).
 
 The question is not length. A rule with a real consequence keeps its characters however many it takes,
 and a byte cap is paid by shortening the consequence clause into taste, which loses the half that
@@ -493,8 +493,8 @@ that counted narrative the rule leaves alone would ask a repo to make a number f
 it how to reach it.
 
 **Decided 2026-09-08 (ISS-8): `CM303` enters at `advisory`, warning-only, and is not promoted to the
-grammar tier.** Measured on one consumer repo (2,368 files, 4,879 annotations, its own registry and
-baseline): **314 annotations flagged across 226 files, 6% of them, 77 KB of a 1,330 KB annotation
+grammar tier.** Measured on one consumer repo (2,370 files, 4,886 annotations, its own registry and
+baseline): **314 annotations flagged across 226 files, 6% of them, 77 KB of a 1,332 KB annotation
 channel.** Two hand audits, both of them on the flagged set rather than on a sample of the corpus: 40
 evenly-spaced hits there gave 33 genuine retelling and 7 the fused-sentence shape above; all 13 hits in
 codemap's own tree gave 9 and 4. So the false-positive rate is **17–31%**, and it is a property of the
@@ -769,7 +769,7 @@ prose, not annotation and not doc: it is narration the channel never loaded.
   figures move together, because the rule and the number read one function.
 - **Every tag, both escape hatches, one channel each.** Every comment carrying text is billed to exactly
   one channel, so the channels plus the `cm:ignore` directives reconcile to the file's whole comment text
-  — verified across the consumer repo below, 3,378,467 characters with none unexplained. A `cm:ignore
+  — verified across the consumer repo below, 3,381,330 characters with none unexplained. A `cm:ignore
   CM303` clears the diagnostic and the number together, and the directive's own characters are billed
   nowhere: an escape hatch that raised the total it cleared would be a fine for taking it. Files with no
   language profile and generated files are analyzed by nothing and so counted as nothing.
