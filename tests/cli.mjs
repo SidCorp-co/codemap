@@ -629,9 +629,8 @@ function advisoryCases(pluginRoot, check, roots) {
     !/CM301/.test(wired.out),
     `evidence at either end is enough:\n${wired.out}`);
 
-  // cm:guard these three pin that evidence is read through the file's PROFILE and not a leader list
-  //   of this check's own: a private list anchored at ^\s* strips only a whole-line comment, so each
-  //   shape below read as CODE, counted as evidence, and CM301 went silent for it (ISS-60)
+  // cm:guard evidence is read through the file's PROFILE, never a leader list of this check's own —
+  //   one anchored at ^\s* strips whole-line comments only, so each shape below counted as code (ISS-60)
   writeFileSync(join(root, 'caller.ts'),
     '// cm:edge contract -> engine.ts#unrelated — the engine must consume this\n'
     + 'export function listThings() { return []; }\n');
