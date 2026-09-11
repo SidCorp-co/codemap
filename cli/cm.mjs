@@ -1170,8 +1170,10 @@ switch (cmd) {
           console.log(`   "${cand.literal}" ${dim('in')} ${a.file}:${a.line} ${dim('&')} ${b.file}:${b.line}`);
           // cm:guard print BOTH directions and designate neither — which side owns a contract edge is
           //   emit-versus-parse, which nothing about a shared literal can observe (ISS-54)
-          console.log(suggest(a.file, `cm:edge contract -> ${b.file}   (add — why both sides must agree)`));
-          console.log(suggest(b.file, `cm:edge contract -> ${a.file}   (add — why both sides must agree)`));
+          // cm:edge contract -> tests/propose.mjs — the `(in X;` clause is how the ISS-62 leader sweep
+          //   recovers each suggestion's host; reword it and the sweep silently judges nothing (ISS-62)
+          console.log(suggest(a.file, `cm:edge contract -> ${b.file}   (in ${a.file}; add — why both sides must agree)`));
+          console.log(suggest(b.file, `cm:edge contract -> ${a.file}   (in ${b.file}; add — why both sides must agree)`));
           // cm:edge contract -> patterns/contract.md — the placement rule quoted here is that file's
           //   to state; both must say the annotation belongs in the side that emits (ISS-54)
           console.log(dim('     write whichever one sits in the side that EMITS the literal — the other side parses it (patterns/contract.md)'));
