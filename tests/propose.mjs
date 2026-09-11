@@ -353,8 +353,8 @@ function pureCases(check) {
     writeFileSync(join(root, 'b_alpha.go'), 'const q = "ZULU_ONE"\nconst p = "MIKE_TWO"\n');
     writeFileSync(join(root, 'm_beta.ts'), 'const r = "ALPHA_TWO";\n');
     writeFileSync(join(root, 'n_beta.go'), 'const r = "ALPHA_TWO"\n');
-    // cm:guard z_alpha.ts is scanned FIRST yet its pair must anchor on b_alpha.go — that is the ONLY
-    //   thing making the pair comparator load-bearing here, and without it this case still passed (ISS-54)
+    // cm:guard z_alpha.ts is scanned FIRST yet its pair must anchor on b_alpha.go — a fixture whose
+    //   smaller side is also its scanned-first side leaves the pair comparator unpinned here (ISS-54)
     // cm:guard ALPHA_TWO is the alphabetically first literal yet must come last, and ZULU_ONE stays
     //   written ABOVE MIKE_TWO — or literal order, or discovery order, reproduces the expectation (ISS-52)
     const many = contractCandidates(root, ['z_alpha.ts', 'b_alpha.go', 'm_beta.ts', 'n_beta.go']);
@@ -500,8 +500,8 @@ function leaderCases(pluginRoot, check) {
     writeFileSync(join(root, 'schema.sql'), "CREATE TABLE t (c text DEFAULT 'DDL.SEED');\n");
     writeFileSync(join(root, 'app.ts'), 'export const x = "TSX.WIRE";\n');
     writeFileSync(join(root, 'crate_pay.rs'), 'const R: &str = "RS.CRATE";\n');
-    // cm:why the .vue name sorts BEFORE svc_pay.go so the pair's host is the SFC side — contractCandidates orders on the first side's
-    //   path, so a later name would make the .go file the host and test the wrong profile's leader (ISS-62, and ISS-54 owns which side anchors)
+    // cm:why the .vue name sorts BEFORE svc_pay.go so the SFC side's suggestion prints FIRST — since ISS-54 both sides are
+    //   hosts and both are printed, and lineFor reads only lines[at + 1], so a later name would hand these arms the .go leader (ISS-62)
     writeFileSync(join(root, 'a_widget.vue'), '<template>\n  <div data-code="VUE.SLOT"/>\n</template>\n');
     // cm:guard a SECOND sfc extension, so the region is proved to come from the shared profile — a `host.endsWith('.vue')` test in the
     //   printer passes every .vue assertion and regresses .svelte silently, which is what languages.mjs forbids in terms (ISS-62)
@@ -512,10 +512,12 @@ function leaderCases(pluginRoot, check) {
     git(root, 'commit', '-qm', 'seed');
 
     const r = cm(pluginRoot, root, 'propose', '--source', 'contract');
-    const lineFor = (out, literal) => {
+    // cm:guard this returns ONE direction, the path-first one — a contract candidate prints two since
+    //   ISS-54, so every arm below judges that side and `hostMismatch` is what covers all of them (ISS-62)
+    const lineFor = (out, literal, n = 1) => {
       const lines = out.split('\n');
       const at = lines.findIndex((l) => l.includes(`"${literal}"`));
-      return at === -1 ? '' : (lines[at + 1] ?? '');
+      return at === -1 ? '' : (lines[at + n] ?? '');
     };
 
     check('propose: a shell host carries its own # leader, not // (ISS-62)',
@@ -563,6 +565,18 @@ function leaderCases(pluginRoot, check) {
     check('propose: the leader sweep reaches every suggestion it is meant to judge (ISS-62)',
       suggestions(r.out).length === 14 && hostUnreached(r.out) === 0,
       `${suggestions(r.out).length} suggestions, ${hostUnreached(r.out)} unreached\n${r.out}`);
+
+    // cm:guard this is the ONLY case that fails if the printer designates a side again — the sweep
+    //   above turns on a total that anyone adding a candidate would retune, and reaches nothing here (ISS-54)
+    check('propose: a contract candidate offers BOTH directions, so neither side is the anchor (ISS-54)',
+      /\(in deploy\.sh;/.test(lineFor(r.out, 'ERR.PAY')) && /\(in svc_pay\.go;/.test(lineFor(r.out, 'ERR.PAY', 2))
+      && / -> svc_pay\.go\s/.test(lineFor(r.out, 'ERR.PAY')) && / -> deploy\.sh\s/.test(lineFor(r.out, 'ERR.PAY', 2)),
+      `each side must host one suggestion pointing at the other:\n${lineFor(r.out, 'ERR.PAY')}\n${lineFor(r.out, 'ERR.PAY', 2)}`);
+    // cm:guard the placement rule is criterion 4's whole behaviour and nothing else asserts it —
+    //   deleting the sentence cost no test at all when this case was absent (ISS-54)
+    check('propose: a contract candidate says the annotation belongs in the EMITTING side (ISS-54)',
+      /EMITS the literal/.test(lineFor(r.out, 'ERR.PAY', 3)),
+      `the placement rule must follow both directions; got: ${lineFor(r.out, 'ERR.PAY', 3)}`);
 
     // cm:why one # host and one // host, each asserted LITERALLY — comparing against leaderFor(host) is the same call the printer makes,
     //   so it passes even when the arm reads the target's leader instead of the host's, which a mutation confirmed (ISS-62)

@@ -42,7 +42,7 @@ One rule produces both halves: **if a tool can derive it, you may not write it.*
 
 ```ts
 // cm:guard terminal pipeline_runs.status must route through cascadeCancelChildJobs
-// cm:edge  contract -> packages/core/src/pipeline/failure-classifier.ts — bracketed token needs a matching pattern
+// cm:edge  contract -> packages/api/src/retry-policy.ts — bracketed token needs a matching pattern
 // cm:flow  job-dispatch/claim-row after:pick-runner — cap gate already passed
 ```
 
