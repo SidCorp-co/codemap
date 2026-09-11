@@ -364,7 +364,7 @@ function pureCases(check) {
       many.map((c) => c.literal).join(',') === 'MIKE_TWO,ZULU_ONE,ALPHA_TWO',
       `order was ${JSON.stringify(many.map((c) => [c.files[0]?.file, c.literal]))}`);
     // cm:guard the pair is ordered inside contractCandidates, so this must hold for the ARGUMENT
-    //   order too — sorting `out` alone leaves files[0] decided by whichever side was scanned first (ISS-54)
+    //   order too — sorting `out` alone leaves files[0] to whichever side the walk reaches first (ISS-54)
     const reversed = contractCandidates(root, ['n_beta.go', 'm_beta.ts', 'b_alpha.go', 'z_alpha.ts']);
     check('propose: contract anchors each pair independently of the caller\'s argument order (ISS-54)',
       JSON.stringify(many.map((c) => [c.files[0].file, c.files[1].file, c.literal]))
@@ -501,7 +501,7 @@ function leaderCases(pluginRoot, check) {
     writeFileSync(join(root, 'app.ts'), 'export const x = "TSX.WIRE";\n');
     writeFileSync(join(root, 'crate_pay.rs'), 'const R: &str = "RS.CRATE";\n');
     // cm:why the .vue name sorts BEFORE svc_pay.go so the SFC side's suggestion prints FIRST — since ISS-54 both sides are
-    //   hosts and both are printed, and lineFor reads only lines[at + 1], so a later name would hand these arms the .go leader (ISS-62)
+    //   hosts and both are printed, and the arms below read only the first, so a later name would hand them the .go leader (ISS-62)
     writeFileSync(join(root, 'a_widget.vue'), '<template>\n  <div data-code="VUE.SLOT"/>\n</template>\n');
     // cm:guard a SECOND sfc extension, so the region is proved to come from the shared profile — a `host.endsWith('.vue')` test in the
     //   printer passes every .vue assertion and regresses .svelte silently, which is what languages.mjs forbids in terms (ISS-62)
@@ -512,8 +512,8 @@ function leaderCases(pluginRoot, check) {
     git(root, 'commit', '-qm', 'seed');
 
     const r = cm(pluginRoot, root, 'propose', '--source', 'contract');
-    // cm:guard this returns ONE direction, the path-first one — a contract candidate prints two since
-    //   ISS-54, so every arm below judges that side and `hostMismatch` is what covers all of them (ISS-62)
+    // cm:guard n selects a line WITHIN one candidate's block, and a contract candidate spans four since
+    //   ISS-54 — the arms that omit n judge the path-first direction only, and `hostMismatch` covers all 14 (ISS-62)
     const lineFor = (out, literal, n = 1) => {
       const lines = out.split('\n');
       const at = lines.findIndex((l) => l.includes(`"${literal}"`));
