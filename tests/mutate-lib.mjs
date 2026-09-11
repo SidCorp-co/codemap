@@ -46,6 +46,13 @@ export const MUTATIONS = [
     replace: '',
   },
   {
+    id: 'unaccounted-verdict',
+    file: 'cli/lib/mass.mjs',
+    mechanism: "the report taking its verdict from analyze's CM203 rather than from the scanner's signal alone",
+    find: "if (scan.unterminated && (res.diags ?? []).some((d) => d.code === 'CM203')) {",
+    replace: 'if (scan.unterminated) {',
+  },
+  {
     id: 'unaccounted-size',
     file: 'cli/lib/mass.mjs',
     mechanism: 'the size of the unread region being COMPUTED rather than any constant standing in for it',

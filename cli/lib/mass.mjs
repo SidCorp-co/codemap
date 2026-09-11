@@ -118,8 +118,8 @@ const unaccountedFor = (src, unterminated) => {
 export function fileMass({ relPath, res, frozen }) {
   const src = res?.src;
   const prof = profileFor(relPath);
-  // cm:guard `unaccounted` is the one field that is NOT a character channel — massOf sums the keys of
-  //   its own total, so adding it there would fold an unread region into the comment figure (ISS-34)
+  // cm:guard `unaccounted` is the one row field that is NOT a character count, so it must never become a
+  //   key of massOf's `total`: that publishes `"0[object Object]"` in --json, and no case goes red (ISS-34)
   const out = { relPath, annotation: 0, frozen: 0, live: 0, doc: 0, header: 0, narrative: 0, annotations: 0, retelling: 0, unaccounted: null };
   if (!prof || res?.skipped) return out;
 
@@ -172,7 +172,11 @@ export function fileMass({ relPath, res, frozen }) {
   //   channels plus the directives below reconcile to that text — a channel is an attribution, never a filter
   // cm:guard a block left open at EOF is discarded whole by scan.mjs, so its opener and the text under it
   //   reach NO channel — report that file unaccounted, never billed: §6 leaves the region unread (ISS-34)
-  if (scan.unterminated) out.unaccounted = unaccountedFor(src, scan.unterminated);
+  // cm:edge contract -> cli/lib/analyze.mjs — the VERDICT is its CM203, never the scan's signal alone: a
+  //   `cm:ignore CM203` drops the diag there, and a second reader here named a file verify calls fine (ISS-34)
+  if (scan.unterminated && (res.diags ?? []).some((d) => d.code === 'CM203')) {
+    out.unaccounted = unaccountedFor(src, scan.unterminated);
+  }
   for (const [ci, c] of scan.comments.entries()) {
     if (!c.text) continue;
     // cm:why an ignore directive is billed nowhere — it is the escape hatch a code's own fix line
