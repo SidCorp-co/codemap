@@ -244,8 +244,11 @@ function pureCases(check) {
     writeFileSync(join(root, 'num.ts'), '// header\n/* block\n   spanning */\nexport const E = "ON_LINE_FOUR";\n');
     writeFileSync(join(root, 'num.go'), 'const c = "ON_LINE_FOUR"\n');
     const num = contractCandidates(root, ['num.ts', 'num.go']);
+    // cm:guard address the side BY NAME, never as files[0] — since ISS-54 the pair is ordered by
+    //   path, so files[0] here is num.go and a positional read would pin the wrong file's line (ISS-59)
+    const numTs = num[0]?.files.find((f) => f.file === 'num.ts');
     check('propose: masking a comment moves no line number under the literal (ISS-59)',
-      num.length === 1 && num[0].files[0].line === 4,
+      num.length === 1 && numTs?.line === 4,
       `ON_LINE_FOUR sits on line 4 after three comment lines: ${JSON.stringify(num)}`);
 
     // cm:guard reaches a comment form NO profile carries today, so no hard-coded list — however long —
@@ -555,8 +558,10 @@ function leaderCases(pluginRoot, check) {
     check('propose: a host whose whole file takes line comments is told no such thing (ISS-62)',
       !/put it inside/.test(lineFor(r.out, 'DDL.SEED')) && !/put it inside/.test(lineFor(r.out, 'ERR.PAY')),
       `only an sfc host has a region; got: ${lineFor(r.out, 'DDL.SEED')} / ${lineFor(r.out, 'ERR.PAY')}`);
+    // cm:guard 14, not 7: since ISS-54 a contract candidate prints BOTH directions, so each of the
+    //   seven candidates carries two suggestions and the sweep must still reach every one (ISS-62)
     check('propose: the leader sweep reaches every suggestion it is meant to judge (ISS-62)',
-      suggestions(r.out).length === 7 && hostUnreached(r.out) === 0,
+      suggestions(r.out).length === 14 && hostUnreached(r.out) === 0,
       `${suggestions(r.out).length} suggestions, ${hostUnreached(r.out)} unreached\n${r.out}`);
 
     // cm:why one # host and one // host, each asserted LITERALLY — comparing against leaderFor(host) is the same call the printer makes,
