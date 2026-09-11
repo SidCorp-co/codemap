@@ -35,15 +35,18 @@ function readTarget(root, path, cache) {
     let v;
     try { v = statSync(join(root, path)).isDirectory() ? { dir: true } : { src: readFileSync(join(root, path), 'utf8') }; }
     catch { v = {}; }
+    v.path = path;
     cache.set(path, v);
   }
   return cache.get(path);
 }
 
 // cm:guard the mask is cached with the READ it belongs to, never recomputed per edge — codeOnly runs
-//   the whole scanComments state machine, and per-edge it cost 3x the command's wall time (ISS-60)
-function maskedCode(entry, path) {
-  if (entry.code === undefined) entry.code = codeOnly(entry.src, profileFor(path));
+//   the whole scanComments state machine, and many edges into one big target pay it per edge (ISS-60)
+// cm:guard takes the cache ENTRY and reads its own path — a caller pairing an entry with another
+//   file's path poisons the memo for the rest of the run, and the two call sites are adjacent
+function maskedCode(entry) {
+  if (entry.code === undefined) entry.code = codeOnly(entry.src, profileFor(entry.path));
   return entry.code;
 }
 
@@ -159,12 +162,12 @@ export function advisoryDiags(g, { root, baseline = {}, importGraph } = {}) {
     const target = readTarget(root, path, cache);
     const source = readTarget(root, e.file, cache);
     if (target.src === undefined || source.src === undefined) continue;
-    // cm:guard evidence must come from CODE — counting comments made this check pass everything it
-    //   was built to find; a shebang and an unterminated block still read as code here (ISS-65)
-    // cm:why per-side profiles, though line 151 forces the two equal today: one advisory ecosystem
-    //   resolves to one profile, and this stays right if a second ever joins one (sfc, ISS-60)
-    const src = maskedCode(source, e.file);
-    const tgt = maskedCode(target, path);
+    // cm:guard evidence must come from CODE — counting comments makes this check pass everything it
+    //   exists to find; a shebang and an unterminated block still read as code here (ISS-65)
+    // cm:why per-side profiles, though the ecosystem guard above forces the two equal today: one
+    //   advisory ecosystem resolves to one profile, and this holds if a second ever joins (ISS-60)
+    const src = maskedCode(source);
+    const tgt = maskedCode(target);
     if (names(path).some((n) => anchorPresent(src, n))
       || names(e.file).some((n) => anchorPresent(tgt, n))) continue;
     out.push(diag('CM301', e.file, e.line, `${e.kind} -> ${e.target}`));
