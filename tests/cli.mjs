@@ -1007,6 +1007,30 @@ function unterminatedCases(pluginRoot, check, roots) {
       `--tier ${t} should ${want ? '' : 'not '}report CM203:\n${scoped.out}`);
   }
 
+  // cm:guard the two verbs are asserted over ONE repo state — CM203 above and this below read the same
+  //   file, which is the disagreement ISS-34 closed: verify loud, mass silently under-reporting it
+  const mass = cm(pluginRoot, root, 'mass');
+  check('cli: cm mass names the file whose block is never closed, at its opener',
+    mass.status === 0 && /unaccounted for/.test(mass.out) && /swallowed\.ts:2/.test(mass.out),
+    `expected swallowed.ts:2 under an unaccounted heading, status=${mass.status}:\n${mass.out}`);
+  // cm:guard the SIZE is asserted through the CLI, which is the only place it is visible to a test —
+  //   a computed region replaced by a constant passes every assertion that reads only the path (ISS-34)
+  check('cli: cm mass reports the exact unread region, and the leader that opened it',
+    /\/\* unclosed — 94 characters unread/.test(mass.out),
+    `expected "/* unclosed — 94 characters unread" for a 114-byte file whose opener starts at 20:\n${mass.out}`);
+  const massJson = cm(pluginRoot, root, 'mass', '--json');
+  const parsed = JSON.parse(massJson.out);
+  check('cli: cm mass --json carries the unaccounted file',
+    parsed.unaccounted?.length === 1 && parsed.unaccounted[0].relPath === 'swallowed.ts'
+      && parsed.unaccounted[0].chars === 94,
+    `--json unaccounted: ${JSON.stringify(parsed.unaccounted)}`);
+  // cm:guard the region must NOT be in the comment total — this is what keeps §11's published figures
+  //   true, and it is invisible to every check that only reads the unaccounted list (ISS-34)
+  check('cli: the unread region is not summed into the comment total',
+    parsed.total.comment === parsed.total.annotation + parsed.total.frozen + parsed.total.live
+      + parsed.total.doc + parsed.total.header,
+    `total.comment ${parsed.total.comment} is not the five channels summed: ${JSON.stringify(parsed.total)}`);
+
   // cm:guard the opener is OUTSIDE the diff in the case that matters — the annotations being lost are
   //   below it, so a line-filtered CM203 would report nothing exactly when it is needed (ISS-31)
   writeFileSync(join(root, 'swallowed.ts'),
