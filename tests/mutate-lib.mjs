@@ -42,7 +42,7 @@ export const MUTATIONS = [
     id: 'unaccounted-report',
     file: 'cli/lib/mass.mjs',
     mechanism: 'fileMass reporting a file whose block comment is never closed as unaccounted for',
-    find: 'if (scan.unterminated) out.unaccounted = unaccountedFor(src, scan.unterminated);',
+    find: 'out.unaccounted = unaccountedFor(src, scan.unterminated);',
     replace: '',
   },
   {
