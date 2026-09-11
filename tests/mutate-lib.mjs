@@ -52,6 +52,13 @@ export const MUTATIONS = [
     find: 'out.sort((x, y) => x.files[0].file.localeCompare(y.files[0].file) || x.literal.localeCompare(y.literal));',
     replace: 'out.sort(() => 0);',
   },
+  {
+    id: 'contract-literal-tiebreak',
+    file: 'cli/lib/propose.mjs',
+    mechanism: "breaking a tie between two candidates anchored on the same file by the literal",
+    find: 'out.sort((x, y) => x.files[0].file.localeCompare(y.files[0].file) || x.literal.localeCompare(y.literal));',
+    replace: 'out.sort((x, y) => x.files[0].file.localeCompare(y.files[0].file));',
+  },
 ];
 
 // cm:guard the corpus a copy runs carries this marker and main refuses when it is set: without it a
