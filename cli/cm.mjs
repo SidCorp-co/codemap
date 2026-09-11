@@ -834,8 +834,8 @@ switch (cmd) {
     //   the figure above it, and a reader quoting the total as ground truth has to see it there (§11)
     if (m.unaccounted.length) {
       console.log(bold('unaccounted for') + dim('  (not in any channel above)'));
-      console.log(`  ${plural(m.unaccounted.length, 'file')} open a block comment that is never closed, so the`
-        + ` scanner discards it and every character below the opener is billed to no channel`);
+      console.log(`  ${plural(m.unaccounted.length, 'file')} open${m.unaccounted.length === 1 ? 's' : ''} a block comment that is`
+        + ' never closed, so the scanner discards it and every character below the opener is billed to no channel');
       for (const u of m.unaccounted) {
         // cm:why characters and not the kb() the channels use — a region is usually small enough to
         //   round to "0.0 KB", which reads as nothing when the point is that it went unmeasured
