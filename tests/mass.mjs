@@ -875,12 +875,139 @@ function cliCases(pluginRoot, check, roots) {
     !/comment mass:/.test(scoped.out), scoped.out);
 }
 
+// §11's third exclusion. A block left open at EOF is discarded by §6, so its opener and everything
+// below it reach no channel — and the conservation oracle above cannot see that, because it compares
+// the channels against the same scan that already dropped the block. These assert the report instead.
+function unaccountedCases(check) {
+  // cm:guard each fixture's premise is pinned through CM203 at the opener — one that stopped being an
+  //   unterminated shape still bills 0 to every channel, so the figures alone would pass on it (ISS-34)
+  const forms = [
+    {
+      relPath: 'swallowed.ts',
+      leader: '/*',
+      line: 3,
+      chars: 114,
+      src: [
+        '// a header line that does get billed',
+        '',
+        '/* oops never closed',
+        '   this line is swallowed whole',
+        '// cm:guard this annotation is never read',
+        'export const x = 1;',
+      ].join('\n'),
+      channels: { annotation: 0, frozen: 0, live: 0, doc: 0, header: 34 },
+    },
+    // cm:guard the HTML form is a case of its own, not a variation — the profile reaching `<!--` is what
+    //   makes this a property of the discard rather than of one delimiter pair (ISS-34)
+    {
+      relPath: 'swallowed.vue',
+      leader: '<!--',
+      line: 2,
+      chars: 75,
+      src: [
+        '<template><div/></template>',
+        '<!-- oops never closed',
+        '     swallowed html comment text',
+        'export const y = 2;',
+      ].join('\n'),
+      channels: { annotation: 0, frozen: 0, live: 0, doc: 0, header: 0 },
+    },
+    // cm:guard the ONLY fixture whose opener is not at column 0 — a size ignoring the column reads 117
+    //   here and stays right for every column-0 fixture beside it, so this alone pins that term (ISS-34)
+    {
+      relPath: 'midline.ts',
+      leader: '/*',
+      line: 3,
+      col: 23,
+      chars: 94,
+      src: [
+        '// a header line that does get billed',
+        '',
+        'export const code = 1; /* opened after code and never closed',
+        '   swallowed below a mid-line opener',
+        'export const x = 2;',
+      ].join('\n'),
+      channels: { annotation: 0, frozen: 0, live: 0, doc: 0, header: 34 },
+    },
+  ];
+
+  const rows = [];
+  for (const f of forms) {
+    const res = analyzeFile({ relPath: f.relPath, src: f.src, reg: DEFAULT_REGISTRY });
+    const m = fileMass({ relPath: f.relPath, res });
+    rows.push(m);
+
+    const cm203 = (res.diags ?? []).filter((d) => d.code === 'CM203');
+    check(`mass: ${f.relPath} really is an unterminated block, one CM203 at line ${f.line}`,
+      cm203.length === 1 && cm203[0].line === f.line,
+      `expected exactly one CM203 at line ${f.line}, got ${JSON.stringify(cm203.map((d) => `${d.code}@${d.line}`))}`
+        + ' — without this the figures below pass on a fixture that stopped being this shape');
+
+    const scanned = scanComments(f.src, profileFor(f.relPath)).unterminated;
+    check(`mass: ${f.relPath} opens its block at column ${f.col ?? 0}, as this fixture set requires`,
+      scanned?.col === (f.col ?? 0),
+      `the scanner puts the opener at column ${scanned?.col}, not ${f.col ?? 0} — the column-sensitivity`
+        + ' of the region size is pinned by midline.ts alone, so its column moving silently unpins it');
+
+    check(`mass: ${f.relPath} is named unaccounted for, at its opener with its leader`,
+      m.unaccounted?.line === f.line && m.unaccounted?.leader === f.leader,
+      `unaccounted=${JSON.stringify(m.unaccounted)} — want line ${f.line} leader ${f.leader}`);
+
+    // cm:guard the size is asserted EXACTLY — a computed region replaced by any constant passes a
+    //   `chars > 0` check, which is the value-never-asserted shape ISS-33 found in CM204 (ISS-34)
+    check(`mass: ${f.relPath} reports the exact size of the region below its opener`,
+      m.unaccounted?.chars === f.chars,
+      `chars=${m.unaccounted?.chars} != ${f.chars} — the region runs from the opener's column to EOF,`
+        + ` and the fixture is ${f.src.length} characters long`);
+
+    const got = Object.fromEntries(Object.keys(f.channels).map((k) => [k, m[k]]));
+    check(`mass: ${f.relPath} bills the discarded block to no channel`,
+      JSON.stringify(got) === JSON.stringify(f.channels),
+      `channels ${JSON.stringify(got)} != ${JSON.stringify(f.channels)} — the swallowed text must reach`
+        + ' no channel, and what the scan did return must still be billed normally');
+  }
+
+  // cm:guard the control closes the SAME block and must bill it — without this every assertion above
+  //   passes on a fileMass that reported every file unaccounted and billed nothing anywhere (ISS-34)
+  const closed = [
+    '// a header line that does get billed',
+    '',
+    '/* a block that closes',
+    '   this line is billed */',
+    'export const x = 1;',
+  ].join('\n');
+  const closedRes = analyzeFile({ relPath: 'closed.ts', src: closed, reg: DEFAULT_REGISTRY });
+  const closedMass = fileMass({ relPath: 'closed.ts', res: closedRes });
+  check('mass: a block comment that closes is not named unaccounted for',
+    closedMass.unaccounted === null,
+    `unaccounted=${JSON.stringify(closedMass.unaccounted)} on a file whose block closes`);
+  check('mass: the control proves the swallowed text is what the discard costs',
+    closedMass.live === 39 && closedMass.header === 34,
+    `the same block, closed, must bill live 39 and header 34 — got live ${closedMass.live}`
+      + ` header ${closedMass.header}; the unterminated form above bills live 0 for the same text`);
+
+  const m = massOf([...rows, closedMass]);
+  check('mass: massOf lists every unaccounted file, largest region first',
+    JSON.stringify(m.unaccounted.map((u) => `${u.relPath}:${u.line}`))
+      === JSON.stringify(['swallowed.ts:3', 'midline.ts:3', 'swallowed.vue:2']),
+    `unaccounted list ${JSON.stringify(m.unaccounted)} — want all three files, 114 then 94 then 75;`
+      + ' midline.ts and swallowed.ts tie on nothing, so the order is the region size alone');
+  // cm:guard this is the property that keeps §11's and CASE-STUDY.md's published totals true across
+  //   this change: an unread region qualifies the comment figure and never joins it (ISS-34)
+  check('mass: an unaccounted file adds nothing to the comment total',
+    m.total.comment === 141,
+    `total.comment=${m.total.comment} != 141 — the control's 34 header + 39 live, plus the 34-char`
+      + ' header of each of the two ts fixtures whose block never closes; the three unread regions'
+      + ' total 283 characters and a total that summed them moves every published figure');
+}
+
 export function massCases(pluginRoot, check) {
   const roots = [];
   try {
     unitCases(check);
     agreementCases(check);
     conservationCases(check);
+    unaccountedCases(check);
     channelCases(check);
     singleReadCases(check);
     annotationIdentityCases(check);

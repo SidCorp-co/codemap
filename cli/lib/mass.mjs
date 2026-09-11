@@ -91,6 +91,19 @@ export function narrativeMass(perFile) {
   return { annotations: total, cited, retelling, chars };
 }
 
+// cm:edge contract -> cli/lib/scan.mjs — `line` is 1-based and `col` is a 0-based offset into that
+//   line, which is what makes the opener's own delimiter part of the region rather than before it
+/**
+ * The region one discarded block swallowed: from its opener to end of file.
+ *
+ * A size, never a channel. How much of it is comment is precisely what the discard makes unknowable,
+ * so this says how much of the tree went unclassified and stops there.
+ */
+const unaccountedFor = (src, unterminated) => {
+  const before = src.split('\n').slice(0, unterminated.line - 1).reduce((n, l) => n + l.length + 1, 0);
+  return { line: unterminated.line, leader: unterminated.leader, chars: src.length - before - unterminated.col };
+};
+
 /**
  * One file's comment characters, by channel.
  *
@@ -105,7 +118,9 @@ export function narrativeMass(perFile) {
 export function fileMass({ relPath, res, frozen }) {
   const src = res?.src;
   const prof = profileFor(relPath);
-  const out = { relPath, annotation: 0, frozen: 0, live: 0, doc: 0, header: 0, narrative: 0, annotations: 0, retelling: 0 };
+  // cm:guard `unaccounted` is the one field that is NOT a character channel — massOf sums the keys of
+  //   its own total, so adding it there would fold an unread region into the comment figure (ISS-34)
+  const out = { relPath, annotation: 0, frozen: 0, live: 0, doc: 0, header: 0, narrative: 0, annotations: 0, retelling: 0, unaccounted: null };
   if (!prof || res?.skipped) return out;
 
   for (const a of res.annotations ?? []) {
@@ -152,9 +167,13 @@ export function fileMass({ relPath, res, frozen }) {
   const takeSilenced = (c) => silencedAt.get(c.line)?.some((d) => d.text === c.text);
 
   const header = res.header;
-  // cm:guard every comment carrying text is billed to exactly ONE channel, so the channels plus the
-  //   directives below reconcile to the file's whole comment text — a channel is an attribution, never a filter
-  for (const [ci, c] of scanComments(src, prof).comments.entries()) {
+  const scan = scanComments(src, prof);
+  // cm:guard every comment the scan RETURNED and carrying text is billed to exactly ONE channel, so the
+  //   channels plus the directives below reconcile to that text — a channel is an attribution, never a filter
+  // cm:guard a block left open at EOF is discarded whole by scan.mjs, so its opener and the text under it
+  //   reach NO channel — report that file unaccounted, never billed: §6 leaves the region unread (ISS-34)
+  if (scan.unterminated) out.unaccounted = unaccountedFor(src, scan.unterminated);
+  for (const [ci, c] of scan.comments.entries()) {
     if (!c.text) continue;
     // cm:why an ignore directive is billed nowhere — it is the escape hatch a code's own fix line
     //   offers, and pricing it would charge an author for taking the way out the checker handed them
@@ -195,6 +214,12 @@ export function massOf(rows) {
   for (const r of rows) for (const k of Object.keys(total)) total[k] += r[k];
   total.comment = total.annotation + total.frozen + total.live + total.doc + total.header;
 
+  // cm:guard these files qualify the total rather than joining it — their region is unread, so summing
+  //   `chars` into `comment` would publish a figure no channel stands behind (ISS-34)
+  const unaccounted = rows.filter((r) => r.unaccounted)
+    .map((r) => ({ relPath: r.relPath, ...r.unaccounted }))
+    .sort((a, b) => b.chars - a.chars || a.relPath.localeCompare(b.relPath));
+
   const byNarrative = rows.filter((r) => r.narrative).sort((a, b) => b.narrative - a.narrative || a.relPath.localeCompare(b.relPath));
   const byAnnotation = rows.filter((r) => r.annotation).sort((a, b) => b.annotation - a.annotation || a.relPath.localeCompare(b.relPath));
   const share = (list, n, key) => (total[key] ? Math.round((list.slice(0, n).reduce((s, r) => s + r[key], 0) / total[key]) * 100) : 0);
@@ -202,6 +227,7 @@ export function massOf(rows) {
   return {
     total,
     files: rows.length,
+    unaccounted,
     // cm:why the head's SHARE says whether a drain can be targeted at all — on the repo §11 quotes, 100
     //   of 965 files hold 47% of the debt, so ranking reaches the tail without an edit
     headShare: { narrative: share(byNarrative, 20, 'narrative'), annotation: share(byAnnotation, 20, 'annotation') },
