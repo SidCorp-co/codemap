@@ -116,6 +116,20 @@ export const MUTATIONS = [
     find: 'const unaccounted = rows.filter((r) => r.unaccounted)',
     replace: 'const unaccounted = [].filter((r) => r.unaccounted)',
   },
+  {
+    id: 'contract-pair-order',
+    file: 'cli/lib/propose.mjs',
+    mechanism: "ordering a contract candidate's pair by path, so files[0] is not the scanned-first side",
+    find: 'const [a, b] = [...entry.values()].sort((p, q) => p.file.localeCompare(q.file));',
+    replace: 'const [a, b] = [...entry.values()];',
+  },
+  {
+    id: 'contract-out-sort-key',
+    file: 'cli/lib/propose.mjs',
+    mechanism: "ordering contract candidates by the pair's own path rather than by discovery order",
+    find: 'out.sort((x, y) => x.files[0].file.localeCompare(y.files[0].file) || x.literal.localeCompare(y.literal));',
+    replace: 'out.sort(() => 0);',
+  },
 ];
 
 // cm:guard the corpus a copy runs carries this marker and main refuses when it is set: without it a
