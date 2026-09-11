@@ -68,8 +68,8 @@ const stem = (p) => p.split('/').pop().replace(/\.\w+$/, '');
 //   included; the two must agree that [from,to) is half-open or a literal survives at an edge (ISS-59)
 // cm:why the profile is the ONLY authority on what a comment is here — a private leader list read a
 //   template comment as code where analyzeFile read the same text as a comment (ISS-59)
-// cm:why exported for its tests alone, as makeReserved is: no assertion over the profiles that exist
-//   can reach a comment form none of them carries yet, which is the property this must hold (ISS-59)
+// cm:why exported so its tests can reach a comment form no profile carries yet, which is the property
+//   this must hold — and, since ISS-60, so cli/lib/graph.mjs strips through this one answer too
 export const codeOnly = (src, prof) => {
   if (!prof) return src;
   const lines = src.split('\n');
