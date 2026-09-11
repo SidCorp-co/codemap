@@ -349,15 +349,15 @@ function pureCases(check) {
       control.length === 1 && control[0].literal === 'ERR_TOKEN_SPENT',
       `the control must still be proposed, or the case above passes by excluding everything: ${JSON.stringify(control)}`);
 
-    writeFileSync(join(root, 'a_pair.ts'), 'const q = "ZULU_ONE";\nconst p = "MIKE_TWO";\n');
-    writeFileSync(join(root, 'b_pair.go'), 'const q = "ZULU_ONE"\nconst p = "MIKE_TWO"\n');
-    writeFileSync(join(root, 'm_pair.ts'), 'const r = "ALPHA_TWO";\n');
-    writeFileSync(join(root, 'n_pair.go'), 'const r = "ALPHA_TWO"\n');
-    // cm:guard m_pair.ts is scanned FIRST yet must sort last, and ALPHA_TWO is the alphabetically
-    //   first literal yet comes last — only that makes the path key, not discovery or literal order, decide (ISS-52)
-    // cm:guard ZULU_ONE stays written ABOVE MIKE_TWO in a_pair.ts, or discovery order and the
-    //   expected order agree on that pair and the literal tiebreaker below pins nothing (ISS-52)
-    const many = contractCandidates(root, ['m_pair.ts', 'n_pair.go', 'a_pair.ts', 'b_pair.go']);
+    writeFileSync(join(root, 'z_alpha.ts'), 'const q = "ZULU_ONE";\nconst p = "MIKE_TWO";\n');
+    writeFileSync(join(root, 'b_alpha.go'), 'const q = "ZULU_ONE"\nconst p = "MIKE_TWO"\n');
+    writeFileSync(join(root, 'm_beta.ts'), 'const r = "ALPHA_TWO";\n');
+    writeFileSync(join(root, 'n_beta.go'), 'const r = "ALPHA_TWO"\n');
+    // cm:guard z_alpha.ts is scanned FIRST yet its pair must anchor on b_alpha.go — that is the ONLY
+    //   thing making the pair comparator load-bearing here, and without it this case still passed (ISS-54)
+    // cm:guard ALPHA_TWO is the alphabetically first literal yet must come last, and ZULU_ONE stays
+    //   written ABOVE MIKE_TWO — or literal order, or discovery order, reproduces the expectation (ISS-52)
+    const many = contractCandidates(root, ['z_alpha.ts', 'b_alpha.go', 'm_beta.ts', 'n_beta.go']);
     check('propose: contract returns every candidate when a repo has more than one (ISS-52)',
       many.length === 3, `expected 3 candidates, got ${JSON.stringify(many)}`);
     check('propose: contract orders candidates by first side\'s path, then literal (ISS-52)',
@@ -365,7 +365,7 @@ function pureCases(check) {
       `order was ${JSON.stringify(many.map((c) => [c.files[0]?.file, c.literal]))}`);
     // cm:guard the pair is ordered inside contractCandidates, so this must hold for the ARGUMENT
     //   order too — sorting `out` alone leaves files[0] decided by whichever side was scanned first (ISS-54)
-    const reversed = contractCandidates(root, ['b_pair.go', 'a_pair.ts', 'n_pair.go', 'm_pair.ts']);
+    const reversed = contractCandidates(root, ['n_beta.go', 'm_beta.ts', 'b_alpha.go', 'z_alpha.ts']);
     check('propose: contract anchors each pair independently of the caller\'s argument order (ISS-54)',
       JSON.stringify(many.map((c) => [c.files[0].file, c.files[1].file, c.literal]))
       === JSON.stringify(reversed.map((c) => [c.files[0].file, c.files[1].file, c.literal])),
