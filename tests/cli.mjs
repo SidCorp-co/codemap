@@ -622,6 +622,11 @@ function advisoryCases(pluginRoot, check, roots) {
     !/CM301/.test(silenced.out),
     `the existing escape hatch must work here:\n${silenced.out}`);
 
+  // cm:guard drop the cm:ignore before judging the wiring — left in place it silences CM301 whatever
+  //   the evidence says, and this check passed against an engine.ts naming nothing at all (ISS-60)
+  writeFileSync(join(root, 'caller.ts'),
+    '// cm:edge contract -> engine.ts#unrelated — the engine must consume this\n'
+    + 'export function listThings() { return []; }\n');
   writeFileSync(join(root, 'engine.ts'),
     'import { listThings } from "./caller";\nexport function unrelated() { return listThings(); }\n');
   const wired = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
