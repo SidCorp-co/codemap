@@ -38,6 +38,34 @@ export const MUTATIONS = [
     find: 'if (block && flushOpen) {',
     replace: 'if (false) {',
   },
+  {
+    id: 'unaccounted-report',
+    file: 'cli/lib/mass.mjs',
+    mechanism: 'fileMass reporting a file whose block comment is never closed as unaccounted for',
+    find: 'if (scan.unterminated) out.unaccounted = unaccountedFor(src, scan.unterminated);',
+    replace: '',
+  },
+  {
+    id: 'unaccounted-size',
+    file: 'cli/lib/mass.mjs',
+    mechanism: 'the size of the unread region being COMPUTED rather than any constant standing in for it',
+    find: 'return { line: unterminated.line, leader: unterminated.leader, chars: src.length - before - unterminated.col };',
+    replace: 'return { line: unterminated.line, leader: unterminated.leader, chars: 1 };',
+  },
+  {
+    id: 'unaccounted-column',
+    file: 'cli/lib/mass.mjs',
+    mechanism: "the region running from the opener's COLUMN, not from the start of the opener's line",
+    find: 'chars: src.length - before - unterminated.col };',
+    replace: 'chars: src.length - before };',
+  },
+  {
+    id: 'unaccounted-list',
+    file: 'cli/lib/mass.mjs',
+    mechanism: 'massOf collecting the unaccounted rows, which is what the verb and --json report',
+    find: 'const unaccounted = rows.filter((r) => r.unaccounted)',
+    replace: 'const unaccounted = [].filter((r) => r.unaccounted)',
+  },
 ];
 
 // cm:guard the corpus a copy runs carries this marker and main refuses when it is set: without it a
