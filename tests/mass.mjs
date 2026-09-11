@@ -988,18 +988,26 @@ function unaccountedCases(check) {
 
   // cm:guard the verdict is analyze's CM203 and not the scanner's signal — CM203's own fix line tells an
   //   author to silence it where the opener is heredoc content, and mass named a file verify called fine
+  // cm:guard the live prose line is load-bearing: with it the file's diags are NON-EMPTY and carry no
+  //   CM203, so `diags.length > 0` stops standing in for the real test and dies against this case
   const hushedSrc = [
     'export const a = 1;',
+    '',
+    '// a plain narration line nobody froze',
+    'export const b = 2;',
+    '',
     '// cm:ignore CM203 — the opener is heredoc content, not a comment',
     '/* oops never closed',
     'export const x = 1;',
   ].join('\n');
   const hushedRes = analyzeFile({ relPath: 'hushed.ts', src: hushedSrc, reg: DEFAULT_REGISTRY });
-  check('mass: the fixture really does silence CM203, leaving no diagnostic at all',
-    (hushedRes.diags ?? []).filter((d) => d.code === 'CM203').length === 0
+  const hushedCodes = (hushedRes.diags ?? []).map((d) => d.code);
+  check('mass: the fixture silences CM203 while still raising a diagnostic of its own',
+    hushedCodes.length > 0 && !hushedCodes.includes('CM203')
       && scanComments(hushedSrc, profileFor('hushed.ts')).unterminated !== null,
-    `diags ${JSON.stringify((hushedRes.diags ?? []).map((d) => d.code))} — the premise is a file the`
-      + ' scanner still calls unterminated while analyze has dropped the diagnostic');
+    `diags ${JSON.stringify(hushedCodes)} — the premise is a file the scanner still calls unterminated,`
+      + ' whose CM203 analyze has dropped, and which raises something else: an empty list here lets a'
+      + ' test for ANY diagnostic pass as a test for this one');
   check('mass: a silenced CM203 is not named unaccounted for, so both verbs stay silent together',
     fileMass({ relPath: 'hushed.ts', res: hushedRes }).unaccounted === null,
     'cm verify reports nothing for this file, so cm mass naming it is the ISS-34 disagreement running'
@@ -1027,8 +1035,8 @@ function unaccountedCases(check) {
       === JSON.stringify(['swallowed.ts:3', 'midline.ts:3', 'swallowed.vue:2']),
     `unaccounted list ${JSON.stringify(m.unaccounted)} — want all three files, 114 then 94 then 75;`
       + ' midline.ts and swallowed.ts tie on nothing, so the order is the region size alone');
-  // cm:guard the guard on `out` says `unaccounted` must never become a key of `total`; this is what
-  //   makes that checkable — the failure is a `"0[object Object]"` in --json, which goes red nowhere
+  // cm:guard the guard on `out` says `unaccounted` must never become a key of `total`, and this is the
+  //   only thing that refuses it — total.comment is a five-term sum, so it stays right either way
   check('mass: massOf\'s total carries the character counts and nothing else',
     JSON.stringify(Object.keys(m.total).sort())
       === JSON.stringify(['annotation', 'annotations', 'comment', 'doc', 'frozen', 'header', 'live', 'narrative', 'retelling']),

@@ -119,7 +119,7 @@ export function fileMass({ relPath, res, frozen }) {
   const src = res?.src;
   const prof = profileFor(relPath);
   // cm:guard `unaccounted` is the one row field that is NOT a character count, so it must never become a
-  //   key of massOf's `total`: that publishes `"0[object Object]"` in --json, and no case goes red (ISS-34)
+  //   key of massOf's `total`: `total.comment` stays right and --json publishes `"0[object Object]"` (ISS-34)
   const out = { relPath, annotation: 0, frozen: 0, live: 0, doc: 0, header: 0, narrative: 0, annotations: 0, retelling: 0, unaccounted: null };
   if (!prof || res?.skipped) return out;
 

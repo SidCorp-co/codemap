@@ -765,15 +765,16 @@ prose, not annotation and not doc: it is narration the channel never loaded.
 
   The reconciliation is over the comments the scan returns, which is not always the file's whole comment
   text: §6 discards a block comment left open at EOF, so its opener and every character below it are
-  never scanned, and billing them would be the prose-reading §6 refuses. `cm mass` reports such a file as
-  **unaccounted for** — its path, the opener's line and leader, and the size of the unread region — under
-  the channel total it qualifies, and `--json` carries the same list. The region's size is a count of
-  characters, never a channel: how much of it is comment is what the discard makes unknowable. The
-  verdict is `CM203` itself and not the scanner's signal, so the two verbs name the same files: where an
-  author takes the directive `CM203`'s own fix line offers, because the opener is a heredoc or a raw
-  string §6 does not model, both fall silent together. This is the case the verb says out loud; it is not
-  the only way a file can lose text, because a construct §6 declares it does not lex can swallow one with
-  no diagnostic at all, and nothing below that point is scanned or reported (ISS-34).
+  never returned by the scan, and billing them would be the prose-reading §6 refuses. `cm mass` reports
+  such a file as **unaccounted for** — its path, the opener's line and leader, and the size of the unread
+  region — under the channel total it qualifies, and `--json` carries the same list. The region's size is
+  a count of characters, never a channel: how much of it is comment is what the discard makes unknowable.
+  The verdict is `CM203` itself and not the scanner's signal, so the two verbs name the same files: where
+  an author takes the directive `CM203`'s own fix line offers, because the opener is a heredoc or a raw
+  string the scanner does not model, both fall silent together. This is the case the verb says out loud,
+  and it is not the only way a file can lose text: the scanner declares the constructs it does not lex in
+  its own header, and one of those can swallow a file with no diagnostic at all, leaving nothing below
+  that point either returned or reported (ISS-34).
 - **The head's share is the number that says whether a drain can be targeted.** A flat distribution has
   no head to pick off; a top-heavy one is reachable by ranking rather than by editing every file. On the
   repo above, 100 of 965 files held 47% of the frozen debt.
