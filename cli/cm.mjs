@@ -830,6 +830,24 @@ switch (cmd) {
     console.log(`  ${'total'.padEnd(14)} ${bold(kb(m.total.comment).padStart(10))}`);
     console.log('');
 
+    // cm:why printed directly under the total and never at the end: it is the one thing that qualifies
+    //   the figure above it, and a reader quoting the total as ground truth has to see it there (§11)
+    if (m.unaccounted.length) {
+      console.log(bold('unaccounted for') + dim('  (not in any channel above)'));
+      console.log(`  ${plural(m.unaccounted.length, 'file')} open${m.unaccounted.length === 1 ? 's' : ''} a block comment that is`
+        + ' never closed, so the scanner discards it and every character below the opener is billed to no channel');
+      for (const u of m.unaccounted) {
+        // cm:why characters and not the kb() the channels use — a region is usually small enough to
+        //   round to "0.0 KB", which reads as nothing when the point is that it went unmeasured
+        console.log(`  ${bold(`${u.relPath}:${u.line}`)} ${dim(`${u.leader} unclosed — ${plural(u.chars, 'character')} unread`)}`);
+      }
+      // cm:why "close the block" is sound advice for every file listed BECAUSE the list is keyed on a live
+      //   CM203 — a file whose opener the author declared not a comment is silenced in both verbs (ISS-34)
+      console.log(dim('  the text stays unread on purpose (§6) — close the block and the characters return to their channels'));
+      console.log(dim('  if the opener is not a comment at all, CM203\'s fix line carries the directive that silences both verbs (cm codes CM203)'));
+      console.log('');
+    }
+
     const limit = numericFlag('--limit', 20);
     console.log(bold('story in the injected channel'));
     console.log(`  ${kb(m.total.narrative)} of the ${kb(m.total.annotation)} annotation channel is incident narrative`

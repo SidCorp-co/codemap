@@ -756,12 +756,25 @@ prose, not annotation and not doc: it is narration the channel never loaded.
   counted however long it runs. It is not a clean separation of rule from story, and §7.1 says where it
   fails: a rule with a past-tense clause is counted, at a measured 17–31% of the flagged set. Both
   figures move together, because the rule and the number read one function.
-- **Every tag, both escape hatches, one channel each.** Every comment carrying text is billed to exactly
-  one channel, so the channels plus the `cm:ignore` directives reconcile to the file's whole comment text
+- **Every tag, both escape hatches, one channel each.** Every comment the scan returns carrying text is
+  billed to exactly one channel, so the channels plus the `cm:ignore` directives reconcile to that text
   — verified across the consumer repo below, 3,378,467 characters with none unexplained. A `cm:ignore
   CM303` clears the diagnostic and the number together, and the directive's own characters are billed
   nowhere: an escape hatch that raised the total it cleared would be a fine for taking it. Files with no
   language profile and generated files are analyzed by nothing and so counted as nothing.
+
+  The reconciliation is over the comments the scan returns, which is not always the file's whole comment
+  text: §6 discards a block comment left open at EOF, so its opener and every character below it are
+  never returned by the scan, and billing them would be the prose-reading §6 refuses. `cm mass` reports
+  such a file as **unaccounted for** — its path, the opener's line and leader, and the size of the unread
+  region — under the channel total it qualifies, and `--json` carries the same list. The region's size is
+  a count of characters, never a channel: how much of it is comment is what the discard makes unknowable.
+  The verdict is `CM203` itself and not the scanner's signal, so the two verbs name the same files: where
+  an author takes the directive `CM203`'s own fix line offers, because the opener is a heredoc or a raw
+  string the scanner does not model, both fall silent together. This is the case the verb says out loud,
+  and it is not the only way a file can lose text: the scanner declares the constructs it does not lex in
+  its own header, and one of those can swallow a file with no diagnostic at all, leaving nothing below
+  that point either returned or reported (ISS-34).
 - **The head's share is the number that says whether a drain can be targeted.** A flat distribution has
   no head to pick off; a top-heavy one is reachable by ranking rather than by editing every file. On the
   repo above, 100 of 965 files held 47% of the frozen debt.
