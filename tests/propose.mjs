@@ -573,7 +573,7 @@ function leaderCases(pluginRoot, check) {
       && / -> svc_pay\.go\s/.test(lineFor(r.out, 'ERR.PAY')) && / -> deploy\.sh\s/.test(lineFor(r.out, 'ERR.PAY', 2)),
       `each side must host one suggestion pointing at the other:\n${lineFor(r.out, 'ERR.PAY')}\n${lineFor(r.out, 'ERR.PAY', 2)}`);
     // cm:guard the placement rule is criterion 4's whole behaviour and nothing else asserts it —
-    //   deleting the sentence cost no test at all when this case was absent (ISS-54)
+    //   delete the sentence at cli/cm.mjs and this is the only check that fails (ISS-54)
     check('propose: a contract candidate says the annotation belongs in the EMITTING side (ISS-54)',
       /EMITS the literal/.test(lineFor(r.out, 'ERR.PAY', 3)),
       `the placement rule must follow both directions; got: ${lineFor(r.out, 'ERR.PAY', 3)}`);
