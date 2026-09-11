@@ -7,8 +7,8 @@ import { diag, baselineKey } from './parse.mjs';
 import { retells } from './mass.mjs';
 import { connected } from './archmap.mjs';
 import { advisoryEcosystemOf, profileFor } from './languages.mjs';
-// cm:edge contract -> cli/lib/propose.mjs#codeOnly — ONE answer to what a comment is; a private
-//   leader list here read a trailing comment as code and CM301 went silent for it (ISS-60)
+// cm:edge contract -> cli/lib/propose.mjs#codeOnly — ONE answer to what a comment is on the
+//   production path; a private list here read a trailing comment as code and CM301 fell silent (ISS-60)
 import { codeOnly } from './propose.mjs';
 
 const trim = (t) => (t.length > 60 ? `${t.slice(0, 57)}...` : t);
@@ -38,6 +38,13 @@ function readTarget(root, path, cache) {
     cache.set(path, v);
   }
   return cache.get(path);
+}
+
+// cm:guard the mask is cached with the READ it belongs to, never recomputed per edge — codeOnly runs
+//   the whole scanComments state machine, and per-edge it cost 3x the command's wall time (ISS-60)
+function maskedCode(entry, path) {
+  if (entry.code === undefined) entry.code = codeOnly(entry.src, profileFor(path));
+  return entry.code;
 }
 
 export function buildGraph(perFile) {
@@ -152,12 +159,12 @@ export function advisoryDiags(g, { root, baseline = {}, importGraph } = {}) {
     const target = readTarget(root, path, cache);
     const source = readTarget(root, e.file, cache);
     if (target.src === undefined || source.src === undefined) continue;
-    // cm:guard evidence must come from CODE — the edge's own annotation names the target, so counting
-    //   comments made the check unable to fire at all, silently passing everything it was built to find
-    // cm:why each side resolves its OWN profile: the two are different files and may be different
-    //   languages, so one profile masking both would read the wrong comment forms on one of them
-    const src = codeOnly(source.src, profileFor(e.file));
-    const tgt = codeOnly(target.src, profileFor(path));
+    // cm:guard evidence must come from CODE — counting comments made this check pass everything it
+    //   was built to find; a shebang and an unterminated block still read as code here (ISS-65)
+    // cm:why per-side profiles, though line 151 forces the two equal today: one advisory ecosystem
+    //   resolves to one profile, and this stays right if a second ever joins one (sfc, ISS-60)
+    const src = maskedCode(source, e.file);
+    const tgt = maskedCode(target, path);
     if (names(path).some((n) => anchorPresent(src, n))
       || names(e.file).some((n) => anchorPresent(tgt, n))) continue;
     out.push(diag('CM301', e.file, e.line, `${e.kind} -> ${e.target}`));
