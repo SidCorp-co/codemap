@@ -6,7 +6,10 @@ import { join } from 'node:path';
 import { diag, baselineKey } from './parse.mjs';
 import { retells } from './mass.mjs';
 import { connected } from './archmap.mjs';
-import { advisoryEcosystemOf } from './languages.mjs';
+import { advisoryEcosystemOf, profileFor } from './languages.mjs';
+// cm:edge contract -> cli/lib/propose.mjs#codeOnly — ONE answer to what a comment is; a private
+//   leader list here read a trailing comment as code and CM301 went silent for it (ISS-60)
+import { codeOnly } from './propose.mjs';
 
 const trim = (t) => (t.length > 60 ? `${t.slice(0, 57)}...` : t);
 
@@ -117,9 +120,6 @@ export function advisoryDiags(g, { root, baseline = {}, importGraph } = {}) {
   const stem = (p) => p.split('/').pop().replace(/\.\w+$/, '');
   // cm:why an import names the file in JS and the package DIRECTORY in Go, so both count as evidence
   const names = (p) => [stem(p), p.split('/').slice(-2, -1)[0]].filter(Boolean);
-  // cm:guard evidence must come from CODE — the edge's own annotation names the target, so counting
-  //   comments made the check unable to fire at all, silently passing everything it was built to find
-  const codeOnly = (src) => src.split('\n').filter((l) => !/^\s*(\/\/|#|--|\*|\/\*)/.test(l)).join('\n');
   // cm:why prose prefixed with a tag was the cheapest way to clear CM001, and nothing looked at what the
   //   tag carried — the baseline already holds the evidence, since those exact words are frozen (ISS-27)
   // cm:why the story rides the ONE channel loaded before every edit, and the repo already holds it in
@@ -152,8 +152,12 @@ export function advisoryDiags(g, { root, baseline = {}, importGraph } = {}) {
     const target = readTarget(root, path, cache);
     const source = readTarget(root, e.file, cache);
     if (target.src === undefined || source.src === undefined) continue;
-    const src = codeOnly(source.src);
-    const tgt = codeOnly(target.src);
+    // cm:guard evidence must come from CODE — the edge's own annotation names the target, so counting
+    //   comments made the check unable to fire at all, silently passing everything it was built to find
+    // cm:why each side resolves its OWN profile: the two are different files and may be different
+    //   languages, so one profile masking both would read the wrong comment forms on one of them
+    const src = codeOnly(source.src, profileFor(e.file));
+    const tgt = codeOnly(target.src, profileFor(path));
     if (names(path).some((n) => anchorPresent(src, n))
       || names(e.file).some((n) => anchorPresent(tgt, n))) continue;
     out.push(diag('CM301', e.file, e.line, `${e.kind} -> ${e.target}`));
