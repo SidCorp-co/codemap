@@ -244,8 +244,11 @@ function pureCases(check) {
     writeFileSync(join(root, 'num.ts'), '// header\n/* block\n   spanning */\nexport const E = "ON_LINE_FOUR";\n');
     writeFileSync(join(root, 'num.go'), 'const c = "ON_LINE_FOUR"\n');
     const num = contractCandidates(root, ['num.ts', 'num.go']);
+    // cm:guard address the side BY NAME, never as files[0] — since ISS-54 the pair is ordered by
+    //   path, so files[0] here is num.go and a positional read would pin the wrong file's line (ISS-59)
+    const numTs = num[0]?.files.find((f) => f.file === 'num.ts');
     check('propose: masking a comment moves no line number under the literal (ISS-59)',
-      num.length === 1 && num[0].files[0].line === 4,
+      num.length === 1 && numTs?.line === 4,
       `ON_LINE_FOUR sits on line 4 after three comment lines: ${JSON.stringify(num)}`);
 
     // cm:guard reaches a comment form NO profile carries today, so no hard-coded list — however long —
@@ -346,20 +349,28 @@ function pureCases(check) {
       control.length === 1 && control[0].literal === 'ERR_TOKEN_SPENT',
       `the control must still be proposed, or the case above passes by excluding everything: ${JSON.stringify(control)}`);
 
-    writeFileSync(join(root, 'z_first.ts'), 'const q = "ALPHA_TWO";\nconst p = "ALPHA_ONE";\n');
-    writeFileSync(join(root, 'a_second.go'), 'const q = "ALPHA_TWO"\nconst p = "ALPHA_ONE"\n');
-    writeFileSync(join(root, 'm_first.ts'), 'const r = "BETA_CODE";\n');
-    writeFileSync(join(root, 'n_second.go'), 'const r = "BETA_CODE"\n');
-    // cm:guard z_first.ts is scanned first yet must sort AFTER m_first.ts, while a_second.go sorts
-    //   before both — only that makes the path key, not discovery order or the pair's smaller side, decide (ISS-52)
-    // cm:guard ALPHA_TWO stays written ABOVE ALPHA_ONE and BETA_CODE stays sorting after both, or
-    //   the literal key alone reproduces the expected order (ISS-52)
-    const many = contractCandidates(root, ['z_first.ts', 'a_second.go', 'm_first.ts', 'n_second.go']);
+    writeFileSync(join(root, 'z_alpha.ts'), 'const q = "ZULU_ONE";\nconst p = "MIKE_TWO";\n');
+    writeFileSync(join(root, 'b_alpha.go'), 'const q = "ZULU_ONE"\nconst p = "MIKE_TWO"\n');
+    writeFileSync(join(root, 'm_beta.ts'), 'const r = "ALPHA_TWO";\n');
+    writeFileSync(join(root, 'n_beta.go'), 'const r = "ALPHA_TWO"\n');
+    // cm:guard z_alpha.ts is scanned FIRST yet its pair must anchor on b_alpha.go — a fixture whose
+    //   smaller side is also its scanned-first side leaves the pair comparator unpinned here (ISS-54)
+    // cm:guard ALPHA_TWO is the alphabetically first literal yet must come last, and ZULU_ONE stays
+    //   written ABOVE MIKE_TWO — or literal order, or discovery order, reproduces the expectation (ISS-52)
+    const many = contractCandidates(root, ['z_alpha.ts', 'b_alpha.go', 'm_beta.ts', 'n_beta.go']);
     check('propose: contract returns every candidate when a repo has more than one (ISS-52)',
       many.length === 3, `expected 3 candidates, got ${JSON.stringify(many)}`);
     check('propose: contract orders candidates by first side\'s path, then literal (ISS-52)',
-      many.map((c) => c.literal).join(',') === 'BETA_CODE,ALPHA_ONE,ALPHA_TWO',
+      many.map((c) => c.literal).join(',') === 'MIKE_TWO,ZULU_ONE,ALPHA_TWO',
       `order was ${JSON.stringify(many.map((c) => [c.files[0]?.file, c.literal]))}`);
+    // cm:guard the pair is ordered inside contractCandidates, so this must hold for the ARGUMENT
+    //   order too — sorting `out` alone leaves files[0] to whichever side the walk reaches first (ISS-54)
+    const reversed = contractCandidates(root, ['n_beta.go', 'm_beta.ts', 'b_alpha.go', 'z_alpha.ts']);
+    check('propose: contract anchors each pair independently of the caller\'s argument order (ISS-54)',
+      JSON.stringify(many.map((c) => [c.files[0].file, c.files[1].file, c.literal]))
+      === JSON.stringify(reversed.map((c) => [c.files[0].file, c.files[1].file, c.literal])),
+      `as listed ${JSON.stringify(many.map((c) => [c.files[0]?.file, c.literal]))}`
+      + ` vs reversed ${JSON.stringify(reversed.map((c) => [c.files[0]?.file, c.literal]))}`);
     check('propose: both sides of a contract candidate carry the record the printer reads (ISS-52)',
       many.every((c) => c.files.length === 2 && c.files.every((f) => typeof f?.file === 'string' && typeof f?.line === 'number')),
       `both sides must hold {file,line,lang,eco}: ${JSON.stringify(many[0])}`);
@@ -489,8 +500,8 @@ function leaderCases(pluginRoot, check) {
     writeFileSync(join(root, 'schema.sql'), "CREATE TABLE t (c text DEFAULT 'DDL.SEED');\n");
     writeFileSync(join(root, 'app.ts'), 'export const x = "TSX.WIRE";\n');
     writeFileSync(join(root, 'crate_pay.rs'), 'const R: &str = "RS.CRATE";\n');
-    // cm:why the .vue name sorts BEFORE svc_pay.go so the pair's host is the SFC side — contractCandidates orders on the first side's
-    //   path, so a later name would make the .go file the host and test the wrong profile's leader (ISS-62, and ISS-54 owns which side anchors)
+    // cm:why the .vue name sorts BEFORE svc_pay.go so the SFC side's suggestion prints FIRST — since ISS-54 both sides are
+    //   hosts and both are printed, and the arms below read only the first, so a later name would hand them the .go leader (ISS-62)
     writeFileSync(join(root, 'a_widget.vue'), '<template>\n  <div data-code="VUE.SLOT"/>\n</template>\n');
     // cm:guard a SECOND sfc extension, so the region is proved to come from the shared profile — a `host.endsWith('.vue')` test in the
     //   printer passes every .vue assertion and regresses .svelte silently, which is what languages.mjs forbids in terms (ISS-62)
@@ -501,10 +512,12 @@ function leaderCases(pluginRoot, check) {
     git(root, 'commit', '-qm', 'seed');
 
     const r = cm(pluginRoot, root, 'propose', '--source', 'contract');
-    const lineFor = (out, literal) => {
+    // cm:guard n selects a line WITHIN one candidate's block, and a contract candidate spans four since
+    //   ISS-54 — the arms that omit n judge the path-first direction only, and `hostMismatch` covers all 14 (ISS-62)
+    const lineFor = (out, literal, n = 1) => {
       const lines = out.split('\n');
       const at = lines.findIndex((l) => l.includes(`"${literal}"`));
-      return at === -1 ? '' : (lines[at + 1] ?? '');
+      return at === -1 ? '' : (lines[at + n] ?? '');
     };
 
     check('propose: a shell host carries its own # leader, not // (ISS-62)',
@@ -547,9 +560,23 @@ function leaderCases(pluginRoot, check) {
     check('propose: a host whose whole file takes line comments is told no such thing (ISS-62)',
       !/put it inside/.test(lineFor(r.out, 'DDL.SEED')) && !/put it inside/.test(lineFor(r.out, 'ERR.PAY')),
       `only an sfc host has a region; got: ${lineFor(r.out, 'DDL.SEED')} / ${lineFor(r.out, 'ERR.PAY')}`);
+    // cm:guard 14, not 7: since ISS-54 a contract candidate prints BOTH directions, so each of the
+    //   seven candidates carries two suggestions and the sweep must still reach every one (ISS-62)
     check('propose: the leader sweep reaches every suggestion it is meant to judge (ISS-62)',
-      suggestions(r.out).length === 7 && hostUnreached(r.out) === 0,
+      suggestions(r.out).length === 14 && hostUnreached(r.out) === 0,
       `${suggestions(r.out).length} suggestions, ${hostUnreached(r.out)} unreached\n${r.out}`);
+
+    // cm:guard this is the ONLY case that fails if the printer designates a side again — the sweep
+    //   above turns on a total that anyone adding a candidate would retune, and reaches nothing here (ISS-54)
+    check('propose: a contract candidate offers BOTH directions, so neither side is the anchor (ISS-54)',
+      /\(in deploy\.sh;/.test(lineFor(r.out, 'ERR.PAY')) && /\(in svc_pay\.go;/.test(lineFor(r.out, 'ERR.PAY', 2))
+      && / -> svc_pay\.go\s/.test(lineFor(r.out, 'ERR.PAY')) && / -> deploy\.sh\s/.test(lineFor(r.out, 'ERR.PAY', 2)),
+      `each side must host one suggestion pointing at the other:\n${lineFor(r.out, 'ERR.PAY')}\n${lineFor(r.out, 'ERR.PAY', 2)}`);
+    // cm:guard the placement rule is criterion 4's whole behaviour and nothing else asserts it —
+    //   delete the sentence at cli/cm.mjs and this is the only check that fails (ISS-54)
+    check('propose: a contract candidate says the annotation belongs in the EMITTING side (ISS-54)',
+      /EMITS the literal/.test(lineFor(r.out, 'ERR.PAY', 3)),
+      `the placement rule must follow both directions; got: ${lineFor(r.out, 'ERR.PAY', 3)}`);
 
     // cm:why one # host and one // host, each asserted LITERALLY — comparing against leaderFor(host) is the same call the printer makes,
     //   so it passes even when the arm reads the target's leader instead of the host's, which a mutation confirmed (ISS-62)

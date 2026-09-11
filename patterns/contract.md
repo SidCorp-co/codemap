@@ -2,12 +2,22 @@
 
 ```mermaid
 flowchart LR
-  A["failure-classifier.ts<br/>emits a bracketed token"] -.->|"same string — no shared symbol checks it"| B["the file that parses it"]
+  A["failure-classifier.ts<br/>emits a bracketed token"] -.->|"same string — no shared symbol checks it"| B["retry-policy.ts<br/>parses it"]
   A -->|"renamed"| X{{"parser silently stops matching — no error, ever"}}
 ```
 
+## Which side carries it
+
+**The annotation goes in the side that emits the string, and points at the side that parses it.**
+The emitter is where a rename starts, so that is the file whose editor has to be told; the parser
+has nothing to warn about until the emitter moves. Nothing a tool can see decides this — a shared
+literal carries no trace of which side wrote it — so `cm propose` offers both directions and names
+neither. You pick.
+
+So the annotation lives in `failure-classifier.ts`, the emitter above, and reads:
+
 ```ts
-// cm:edge contract -> packages/core/src/pipeline/failure-classifier.ts — the bracketed token this emits must have a matching pattern there
+// cm:edge contract -> packages/api/src/retry-policy.ts — the bracketed token this emits must have a matching pattern there
 ```
 
 ## When it applies
