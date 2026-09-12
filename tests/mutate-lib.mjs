@@ -46,6 +46,13 @@ export const MUTATIONS = [
     replace: "    const lineNo = i + 1;\n    tail = '';",
   },
   {
+    id: 'cm204-span',
+    file: 'cli/cm.mjs',
+    mechanism: "inScope intersecting CM204's [line, endLine] span rather than its anchor line alone",
+    find: 'return spans.some(([a, b]) => d.line <= b && end >= a);',
+    replace: 'return spans.some(([a, b]) => d.line >= a && d.line <= b);',
+  },
+  {
     id: 'flushopen-block',
     file: 'cli/lib/scan.mjs',
     mechanism: 'the flush of a block still open at EOF, for the truncated head isGenerated hands in',

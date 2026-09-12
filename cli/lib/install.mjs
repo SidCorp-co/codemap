@@ -35,8 +35,7 @@ const PRE_COMMIT = `#!/bin/sh
 # codemap/1 — installed by: cm install --git-hook
 # Gates the staged tree only, so an unrelated legacy file can never block a commit.
 # Two passes: the first reports what the gating tier cannot see — CM203, a file whose annotations have
-# stopped being read, and CM204, an annotation running past the one line it may wrap onto — and never
-# blocks; the second is the gate, and its status is the hook's.
+# stopped being read — and never blocks; the second is the gate, and its status is the hook's.
 cm="$(git rev-parse --show-toplevel)/.forge/codemap/cm"
 "$cm" verify --staged --tier structural || true
 exec "$cm" verify --staged --tier grammar
