@@ -123,6 +123,41 @@ export const analyzeCases = [
       + ' because releasing between rows lets a second dispatcher claim the tail'],
   },
   {
+    // cm:edge lockstep -> cli/lib/analyze.mjs — the exempt branch's run-through is what this pins, and
+    //   a directive that ends the run again has to fail a case rather than only contradict a comment
+    name: 'ts: a lint directive carries the overflow run through it and is not itself billed',
+    file: 'wrap-exempt-run.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      '// eslint-disable-next-line @typescript-eslint/no-explicit-any',
+      '//   and this consequence clause never reaches the channel',
+      'const r = 1;',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM204'],
+    annotations: ['guard'],
+    texts: ['the batch is claimed whole, never row by row'
+      + ' because releasing between rows lets a second dispatcher claim the tail'],
+  },
+  {
+    // cm:guard a directive in the WRAP slot must not hand that slot to the line below it — adopting one
+    //   would change what renders, and a truncation diagnostic may only ever add diagnostics (ISS-67)
+    name: 'ts: a lint directive in the wrap slot leaves the annotation unwrapped',
+    file: 'wrap-exempt-slot.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '// eslint-disable-next-line @typescript-eslint/no-explicit-any',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      '//   and this consequence clause never reaches the channel',
+      'const r = 1;',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM204'],
+    annotations: ['guard'],
+    texts: ['the batch is claimed whole, never row by row'],
+  },
+  {
     name: 'ts: an annotation wrapping onto exactly one line draws no CM204',
     file: 'wrap-fits.ts',
     src: [

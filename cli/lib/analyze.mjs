@@ -108,7 +108,18 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
       continue;
     }
 
-    if (prof.exempt.some((re) => re.test(text))) continue;
+    // cm:guard a directive carries the run THROUGH it and is never billed as a lost line (ISS-67) — it
+    //   is not the author's prose, but ending the run here hid every line under it from CM204
+    if (prof.exempt.some((re) => re.test(text))) {
+      if (c.firstOnLine !== false) {
+        const held = chainAt.get(c.line - 1);
+        // cm:guard a directive in the WRAP slot does not pass that slot on — the annotation renders with
+        //   no wrap, so the line below it is a lost line rather than the wrap the author wrote (ISS-67)
+        const ann = held?.leader === c.leader ? held.ann : (annLines.get(c.line - 1) === c.leader ? annAt.get(c.line - 1) : undefined);
+        if (ann) chainAt.set(c.line, { ann, leader: c.leader });
+      }
+      continue;
+    }
 
     if (grammar && hasTodo(text)) {
       raw.push({ ...diag('CM010', relPath, c.line, trunc(text)), text });
