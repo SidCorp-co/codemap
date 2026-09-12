@@ -1022,8 +1022,8 @@ function unterminatedCases(pluginRoot, check, roots) {
     `expected CM203 from a staged run whose diff is the last line:\n${staged.out}`);
 }
 
-// cm:guard a warn that moves the exit code is a broken gate, so these assert the status and not only
-//   the text — CM204 rides the warning path CM203 does (ISS-33)
+// cm:guard these assert the STATUS and not only the text — CM204 moved to the gating tier (ISS-67), so
+//   a run reporting it and still exiting 0 is the fail-open this issue was filed about
 function overflowCases(pluginRoot, check, roots) {
   const root = makeRepo();
   roots.push(root);
@@ -1050,29 +1050,48 @@ function overflowCases(pluginRoot, check, roots) {
 
   const r = cm(pluginRoot, root, 'verify');
   check('cli: CM204 is reported at the annotation, not at the line that overflowed',
-    /over\.ts:1 warn CM204/.test(r.out) && !/over\.ts:3/.test(r.out),
+    /over\.ts:1 error CM204/.test(r.out) && !/over\.ts:3/.test(r.out),
     `expected CM204 at over.ts:1 and nothing at :3:\n${r.out}`);
   check('cli: CM204 counts one lost line',
-    /over\.ts:1 warn CM204[^\n]*: 1 line is not loaded/.test(r.out),
+    /over\.ts:1 error CM204[^\n]*: 1 line is not loaded/.test(r.out),
     `expected a count of 1 for over.ts:\n${r.out}`);
   check('cli: CM204 counts three lost lines, so the count is not a constant',
-    /deep\.ts:1 warn CM204[^\n]*: 3 lines are not loaded/.test(r.out),
+    /deep\.ts:1 error CM204[^\n]*: 3 lines are not loaded/.test(r.out),
     `expected a count of 3 for deep.ts:\n${r.out}`);
   check('cli: CM204 is raised where the prose tier is off',
     /CM204/.test(r.out) && !/ (error|warn) CM001/.test(r.out),
     `expected CM204 and no CM001 diagnostic under enforce.grammar false:\n${r.out}`);
-  check('cli: CM204 is a warning and does not gate',
-    r.status === 0 && /no errors, 2 warnings/.test(r.out),
-    `expected warning-only CM204s with status 0, got status=${r.status}:\n${r.out}`);
+  check('cli: CM204 is an error and gates',
+    r.status === 1 && /2 errors, 0 warnings/.test(r.out),
+    `expected CM204s to gate with status 1, got status=${r.status}:\n${r.out}`);
 
   // cm:edge contract -> cli/cm.mjs — the tier filter there decides which run reports a per-file
   //   diagnostic, so a code's tier and the tiers that reach it are one claim, asserted here (ISS-33)
-  for (const [t, want] of [['all', true], ['structural', true], ['grammar', false], ['referential', false]]) {
+  for (const [t, want] of [['all', true], ['structural', false], ['grammar', true], ['referential', false]]) {
     const scoped = cm(pluginRoot, root, 'verify', '--tier', t);
     check(`cli: CM204 is reported under --tier ${t}: ${want}`,
       /CM204/.test(scoped.out) === want,
       `--tier ${t} should ${want ? '' : 'not '}report CM204:\n${scoped.out}`);
   }
+
+  // cm:guard the annotation's own line is OUTSIDE the diff in the case that matters — an appended
+  //   overflow line is all the diff holds, so a CM204 filtered to changed lines reports nothing (ISS-67)
+  writeFileSync(join(root, 'appended.ts'),
+    '// cm:guard the claim is released only after the write commits\n'
+    + '//   because releasing first lets a second worker take a row this one still holds\n'
+    + 'export const c = 3;\n');
+  git(root, 'add', 'appended.ts');
+  git(root, 'commit', '-qm', 'a legal wrap');
+  writeFileSync(join(root, 'appended.ts'),
+    '// cm:guard the claim is released only after the write commits\n'
+    + '//   because releasing first lets a second worker take a row this one still holds\n'
+    + '//   and this appended line never reaches the channel\n'
+    + 'export const c = 3;\n');
+  git(root, 'add', 'appended.ts');
+  const appended = cm(pluginRoot, root, 'verify', '--staged', '--tier', 'grammar');
+  check('cli: CM204 survives --staged when only the overflow line is in the diff',
+    /appended\.ts:1 error CM204/.test(appended.out) && appended.status === 1,
+    `expected a gating CM204 at appended.ts:1 from a staged run whose diff is the appended line:\n${appended.out}`);
 }
 
 export function cliCases(pluginRoot, check) {
