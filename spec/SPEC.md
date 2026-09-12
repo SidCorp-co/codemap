@@ -68,7 +68,11 @@ tracked TODO in code is a second, non-authoritative copy of that state. Introduc
   family alone, so a repo that took the graph without that discipline is still told its annotation reaches
   its reader ending mid-clause, and is told it by a tier that can refuse the commit (ISS-67). What it
   refuses is a SHAPE — two or more continuation lines under one annotation — decided from the run itself
-  and never from a token on the line, so no marker satisfies it and no reindenting or rewrapping clears it. Its
+  and never from a token on the line, so no marker satisfies it and no reindenting or rewrapping clears it.
+  An exempt line — a lint directive, a licence header, a `cm:ignore` — carries the run THROUGH it and is
+  never counted, since it is not the author's prose; ending the run there would hide every line below it.
+  In the wrap slot it does not hand that slot on: the annotation renders unwrapped, so the line beneath
+  the directive is a lost line and not the wrap its author wrote (ISS-67). Its
   remedies are to reword, to split one annotation into two, or to move the annotation below prose that
   was never its own. A line the run counts is narration, so `cm mass` bills it as **live prose, never as a
   doc comment**, and it does not depend on the `CM001` that only the prose tier raises — otherwise a repo

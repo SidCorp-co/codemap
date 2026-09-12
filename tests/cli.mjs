@@ -1092,6 +1092,30 @@ function overflowCases(pluginRoot, check, roots) {
   check('cli: CM204 survives --staged when only the overflow line is in the diff',
     /appended\.ts:1 error CM204/.test(appended.out) && appended.status === 1,
     `expected a gating CM204 at appended.ts:1 from a staged run whose diff is the appended line:\n${appended.out}`);
+
+  // cm:guard the COUNT is what a run-through changes, so these pin it and not merely the code — a
+  //   directive billed as a lost line, or ending the run, both still raise CM204 (ISS-67)
+  writeFileSync(join(root, 'directive.ts'),
+    '// cm:guard the run lock is held for the whole batch, never per row\n'
+    + '//   because releasing between rows lets a second dispatcher claim the tail\n'
+    + '// eslint-disable-next-line @typescript-eslint/no-explicit-any\n'
+    + '//   and this consequence clause never reaches the channel\n'
+    + 'export const e = 5;\n');
+  writeFileSync(join(root, 'slot.ts'),
+    '// cm:guard the run lock is held for the whole batch, never per row\n'
+    + '// eslint-disable-next-line @typescript-eslint/no-explicit-any\n'
+    + '//   the wrap the author wrote\n'
+    + '//   and this consequence clause never reaches the channel\n'
+    + 'export const f = 6;\n');
+  git(root, 'add', 'directive.ts');
+  git(root, 'add', 'slot.ts');
+  const exempt = cm(pluginRoot, root, 'verify');
+  check('cli: a lint directive inside the run is not billed as a lost line',
+    /directive\.ts:1 error CM204[^\n]*: 1 line is not loaded/.test(exempt.out),
+    `expected a count of 1 for directive.ts, the directive itself uncounted:\n${exempt.out}`);
+  check('cli: a lint directive in the wrap slot leaves both lines below it lost',
+    /slot\.ts:1 error CM204[^\n]*: 2 lines are not loaded/.test(exempt.out),
+    `expected a count of 2 for slot.ts:\n${exempt.out}`);
 }
 
 export function cliCases(pluginRoot, check) {
