@@ -38,6 +38,19 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
   const overflow = new Map();
   const overflowEnd = new Map();
 
+  // cm:guard every branch that `continue`s over a line INSIDE a run must call this, or the run ends
+  //   there and CM204 goes silent over every line below it (ISS-67)
+  const carryRun = (c) => {
+    if (c.firstOnLine === false) return;
+    const held = chainAt.get(c.line - 1);
+    // cm:guard a directive in the WRAP slot does not pass that slot on — the annotation renders with no
+    //   wrap, so the line below it is a lost line rather than the wrap its author wrote (ISS-67)
+    const ann = held?.leader === c.leader
+      ? held.ann
+      : (annLines.get(c.line - 1) === c.leader ? annAt.get(c.line - 1) : undefined);
+    if (ann) chainAt.set(c.line, { ann, leader: c.leader });
+  };
+
   // cm:guard never gated on `grammar` — a repo that took the graph without the comment discipline still
   //   needs its annotations READ, so losing them silently is not a prose-discipline matter (ISS-31)
   if (unterminated) raw.push(diag('CM203', relPath, unterminated.line, unterminated.leader));
@@ -84,6 +97,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
         const set = ignores.get(c.line) ?? new Set();
         set.add(parsed.ignore.code);
         ignores.set(c.line, set);
+        carryRun(c);
         continue;
       }
       // cm:guard register the LINE before the parse verdict — §4 makes the comment below a cm: line its
@@ -111,13 +125,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     // cm:guard a directive carries the run THROUGH it and is never billed as a lost line (ISS-67) — it
     //   is not the author's prose, but ending the run here hid every line under it from CM204
     if (prof.exempt.some((re) => re.test(text))) {
-      if (c.firstOnLine !== false) {
-        const held = chainAt.get(c.line - 1);
-        // cm:guard a directive in the WRAP slot does not pass that slot on — the annotation renders with
-        //   no wrap, so the line below it is a lost line rather than the wrap the author wrote (ISS-67)
-        const ann = held?.leader === c.leader ? held.ann : (annLines.get(c.line - 1) === c.leader ? annAt.get(c.line - 1) : undefined);
-        if (ann) chainAt.set(c.line, { ann, leader: c.leader });
-      }
+      carryRun(c);
       continue;
     }
 

@@ -42,8 +42,16 @@ export const MUTATIONS = [
     id: 'cm204-exempt-run',
     file: 'cli/lib/analyze.mjs',
     mechanism: 'the overflow run continuing through a lint directive rather than ending at it',
-    find: '        if (ann) chainAt.set(c.line, { ann, leader: c.leader });',
-    replace: '        if (ann && false) chainAt.set(c.line, { ann, leader: c.leader });',
+    find: '    if (ann) chainAt.set(c.line, { ann, leader: c.leader });',
+    replace: '    if (ann && false) chainAt.set(c.line, { ann, leader: c.leader });',
+  },
+  {
+    id: 'cm204-ignore-run',
+    file: 'cli/lib/analyze.mjs',
+    mechanism: 'the run continuing through a parsed cm:ignore, which never reaches the prof.exempt branch',
+    find: `        carryRun(c);
+        continue;`,
+    replace: '        continue;',
   },
   {
     id: 'flushopen-block',

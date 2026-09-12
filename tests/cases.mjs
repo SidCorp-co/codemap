@@ -158,6 +158,24 @@ export const analyzeCases = [
     texts: ['the batch is claimed whole, never row by row'],
   },
   {
+    // cm:guard a parsed cm:ignore never reaches the prof.exempt branch, so this pins the OTHER call site
+    //   of the run-carry — the checker's own remedy hid the lines beneath it (ISS-67)
+    name: 'ts: a cm:ignore inside the run carries it through and is not billed',
+    file: 'wrap-ignore-run.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      '// cm:ignore CM001 — a generated compatibility note',
+      '//   and this consequence clause never reaches the channel',
+      'const r = 1;',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM204'],
+    annotations: ['guard'],
+    texts: ['the batch is claimed whole, never row by row'
+      + ' because releasing between rows lets a second dispatcher claim the tail'],
+  },
+  {
     name: 'ts: an annotation wrapping onto exactly one line draws no CM204',
     file: 'wrap-fits.ts',
     src: [
