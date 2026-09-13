@@ -68,10 +68,10 @@ function beginsWord(line, j, prof) {
 //   the next template's opening backtick, reporting the `//` inside it as prose (ISS-69)
 // cm:guard keep both vocabularies closed and every exclusion in place — `obj.return / value`,
 //   `value++ / divisor`, `value! / divisor` are division, and reading one as a regex eats the comment
-// cm:guard `<` is NOT in the set: in TSX `</a>` is a closing tag whose slash, read as a regex opener,
-//   closes on a trailing `//` — the corpus case 'a bare URL in markup text is code' catches it
+// cm:guard `<` and `}` are NOT in the set and `>` counts only as the tail of `=>`: `</a>` in TSX,
+//   `{} / d` and `f<number> / d` are all division whose slash, read as an opener, eats the comment
 const REGEX_AFTER_PUNCT = new Set([
-  '(', ',', '=', ':', '[', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '>', '~', '^',
+  '(', ',', '=', ':', '[', '&', '|', '?', '{', ';', '+', '-', '*', '%', '>', '~', '^',
 ]);
 const REGEX_AFTER_WORD = new Set([
   'return', 'typeof', 'instanceof', 'in', 'new', 'delete', 'void', 'case', 'do', 'else', 'yield',
@@ -89,6 +89,7 @@ function regexMayStart(tail) {
   }
   if (!REGEX_AFTER_PUNCT.has(c)) return false;
   if ((c === '+' || c === '-') && tail[tail.length - 2] === c) return false;
+  if (c === '>') return tail[tail.length - 2] === '=';
   return true;
 }
 
