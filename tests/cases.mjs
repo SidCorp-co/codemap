@@ -176,6 +176,24 @@ export const analyzeCases = [
       + ' because releasing between rows lets a second dispatcher claim the tail'],
   },
   {
+    // cm:guard the exempt classes share one call site, so a case per class is what keeps a narrowing of
+    //   COMMON_EXEMPT from silently un-carrying the run for the others (ISS-67)
+    name: 'ts: a licence header inside the run carries it through and is not billed',
+    file: 'wrap-licence-run.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      '// SPDX-License-Identifier: MIT',
+      '//   and this consequence clause never reaches the channel',
+      'const r = 1;',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM204'],
+    annotations: ['guard'],
+    texts: ['the batch is claimed whole, never row by row'
+      + ' because releasing between rows lets a second dispatcher claim the tail'],
+  },
+  {
     name: 'ts: an annotation wrapping onto exactly one line draws no CM204',
     file: 'wrap-fits.ts',
     src: [
