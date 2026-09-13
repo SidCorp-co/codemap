@@ -6,6 +6,9 @@
 // must begin a word — `#` in sh, yaml and docker, where `${f#src/}` and `run#now` are one token. py,
 // php and toml set none on purpose: in all three `x = 1#c` IS a comment (ISS-61).
 //
+// A regex literal is lexed where the profile sets `regexLiteral`, because a delimiter inside one is
+// not a delimiter: an unlexed backtick opens a template whose state carries down the file (ISS-69).
+//
 // Deliberate limitation: heredocs (PHP/shell) and Rust raw strings are not modelled. A comment leader
 // inside one reads as a leader. That costs a false-positive prose comment where prose is policed, which
 // an author can silence with an ignore directive — and, in the same place, a `cm propose` candidate,
@@ -13,6 +16,8 @@
 // opener inside one is the exception that is not free: it swallows the rest of the file, and the
 // annotations below it are lost rather than merely mis-billed. That is why the discard reports CM203
 // instead of passing quietly — the loss is loud, not prevented (ISS-31).
+
+const TAIL_CHARS = 24;
 
 function matchLongest(candidates, line, i) {
   let best = null;
@@ -59,6 +64,50 @@ function beginsWord(line, j, prof) {
   return !prof.leaderAfter || j === 0 || prof.leaderAfter.test(line[j - 1]);
 }
 
+// cm:why a regex literal is not lexed, so a backtick inside one opens a template literal whose state
+//   carries down the file and eats the NEXT template's opening backtick as its closer (ISS-69)
+// cm:guard keep both vocabularies closed and keep every exclusion: `obj.return / value`,
+//   `value++ / divisor` and `value! / divisor` are division whose predecessor is only lexically in
+//   the set, and reading one as a regex takes the first `/` of a following `//` as the closer and
+//   loses the annotation — the one failure direction this scanner's header forbids
+// cm:guard `<` is NOT in the set: in TSX `</a>` is a closing tag, and reading its slash as a regex
+//   opener closes it on the first `/` of a trailing `//` and eats the comment — the corpus case
+//   'a bare URL in markup text is code' is what catches this (ISS-69)
+const REGEX_AFTER_PUNCT = new Set([
+  '(', ',', '=', ':', '[', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '>', '~', '^',
+]);
+const REGEX_AFTER_WORD = new Set([
+  'return', 'typeof', 'instanceof', 'in', 'new', 'delete', 'void', 'case', 'do', 'else', 'yield',
+  'await', 'throw',
+]);
+
+/** Does a regex literal start after this tail of significant code, or is the `/` division? */
+function regexMayStart(tail) {
+  if (!tail) return true;
+  const c = tail[tail.length - 1];
+  if (/[A-Za-z0-9_$]/.test(c)) {
+    const m = /([A-Za-z_$][A-Za-z0-9_$]*)$/.exec(tail);
+    if (!m || !REGEX_AFTER_WORD.has(m[1])) return false;
+    return tail[tail.length - m[1].length - 1] !== '.';
+  }
+  if (!REGEX_AFTER_PUNCT.has(c)) return false;
+  if ((c === '+' || c === '-') && tail[tail.length - 2] === c) return false;
+  return true;
+}
+
+/** Index just past the closing `/` of a regex literal opened before `from`, or -1 on this line. */
+function regexEndsAt(line, from) {
+  let inClass = false;
+  for (let i = from; i < line.length; i++) {
+    const c = line[i];
+    if (c === '\\') { i++; continue; }
+    if (inClass) { if (c === ']') inClass = false; continue; }
+    if (c === '[') { inClass = true; continue; }
+    if (c === '/') return i + 1;
+  }
+  return -1;
+}
+
 function findUnescaped(line, delim, from) {
   for (let i = from; i < line.length; i++) {
     if (line[i] === '\\') { i++; continue; }
@@ -93,6 +142,10 @@ export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = 
 
   let block = null;
   let str = null;
+  // cm:guard the tail carries ACROSS lines and is fed by code alone — a regex opening a line reads
+  //   its predecessor off the line before, and whitespace, comments and string insides never reach it
+  let tail = '';
+  const keep = (t) => { tail = (tail + t).slice(-TAIL_CHARS); };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -136,6 +189,7 @@ export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = 
         const k = findUnescaped(line, str, j);
         if (k === -1) { j = line.length; break; }
         j = k + str.length;
+        keep(str);
         str = null;
         sawCode = true;
         codeLines.add(lineNo);
@@ -191,6 +245,19 @@ export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = 
         continue;
       }
 
+      // cm:edge contract -> cli/lib/languages.mjs — `regexLiteral` turns this branch on, and its
+      //   vocabulary is ECMAScript's; a language whose regex literals take another form needs its own
+      if (prof.regexLiteral && line[j] === '/' && regexMayStart(tail)) {
+        const end = regexEndsAt(line, j + 1);
+        if (end !== -1) {
+          sawCode = true;
+          codeLines.add(lineNo);
+          keep('/');
+          j = end;
+          continue;
+        }
+      }
+
       const q = matchLongest(prof.strDelims, line, j);
       if (q) {
         const k = findUnescaped(line, q, j + q.length);
@@ -203,11 +270,13 @@ export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = 
           break;
         }
         j = k + q.length;
+        keep(q);
         continue;
       }
 
       sawCode = true;
       codeLines.add(lineNo);
+      keep(line[j]);
       j++;
     }
 

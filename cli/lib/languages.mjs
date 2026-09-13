@@ -109,6 +109,10 @@ const TS = {
   docBlockOpens: ['/**'],
   strDelims: ['"', "'", '`'],
   multiline: ['`'],
+  // cm:edge contract -> cli/lib/scan.mjs — `regexLiteral` turns on the regex-literal branch, whose
+  //   preceding-token vocabulary is ECMAScript's; `` ` `` is the only delimiter here that is also in
+  //   `multiline`, which is why an unlexed one desyncs the rest of the file rather than one line (ISS-69)
+  regexLiteral: true,
   docPolicy: 'banned',
   // A /** */ block is documentation by form: the IDE surfaces it on hover, which is a consumer
   // with an immediate payoff (principle 1). Narration in a function body is the spam this exists
