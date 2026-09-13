@@ -406,7 +406,10 @@ function inScope(ranges, d) {
   if (!ranges || d.fileLevel || d.tier !== 'grammar' || d.sited) return true;
   const spans = ranges.get(d.file);
   if (!spans) return true;
-  return spans.some(([a, b]) => d.line >= a && d.line <= b);
+  // cm:edge contract -> cli/lib/analyze.mjs — CM204 sets endLine to its last dropped line, and an
+  //   appended overflow line is the only part of the run the diff touches (ISS-67)
+  const end = d.endLine ?? d.line;
+  return spans.some(([a, b]) => d.line <= b && end >= a);
 }
 
 function printGrouped(diags, legacy) {

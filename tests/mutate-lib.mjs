@@ -32,6 +32,28 @@ export const MUTATIONS = [
     replace: 'scanComments(head, prof)',
   },
   {
+    id: 'cm204-span',
+    file: 'cli/cm.mjs',
+    mechanism: "inScope intersecting CM204's [line, endLine] span rather than its anchor line alone",
+    find: 'return spans.some(([a, b]) => d.line <= b && end >= a);',
+    replace: 'return spans.some(([a, b]) => d.line >= a && d.line <= b);',
+  },
+  {
+    id: 'cm204-exempt-run',
+    file: 'cli/lib/analyze.mjs',
+    mechanism: 'the overflow run continuing through a lint directive rather than ending at it',
+    find: '    if (ann) chainAt.set(c.line, { ann, leader: c.leader });',
+    replace: '    if (ann && false) chainAt.set(c.line, { ann, leader: c.leader });',
+  },
+  {
+    id: 'cm204-ignore-run',
+    file: 'cli/lib/analyze.mjs',
+    mechanism: 'the run continuing through a parsed cm:ignore, which never reaches the prof.exempt branch',
+    find: `        carryRun(c);
+        continue;`,
+    replace: '        continue;',
+  },
+  {
     id: 'flushopen-block',
     file: 'cli/lib/scan.mjs',
     mechanism: 'the flush of a block still open at EOF, for the truncated head isGenerated hands in',
