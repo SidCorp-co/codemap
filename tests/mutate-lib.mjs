@@ -32,6 +32,20 @@ export const MUTATIONS = [
     replace: 'scanComments(head, prof)',
   },
   {
+    id: 'regex-literal',
+    file: 'cli/lib/scan.mjs',
+    mechanism: 'consuming a regex literal as one token, so a delimiter inside it is not a delimiter',
+    find: "if (prof.regexLiteral && line[j] === '/' && regexMayStart(tail)) {",
+    replace: 'if (false) {',
+  },
+  {
+    id: 'regex-tail-carry',
+    file: 'cli/lib/scan.mjs',
+    mechanism: 'the significant-code tail carrying across lines, which is what reads a regex opening a line',
+    find: '    const lineNo = i + 1;',
+    replace: "    const lineNo = i + 1;\n    tail = '';",
+  },
+  {
     id: 'flushopen-block',
     file: 'cli/lib/scan.mjs',
     mechanism: 'the flush of a block still open at EOF, for the truncated head isGenerated hands in',
