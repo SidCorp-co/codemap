@@ -64,16 +64,12 @@ function beginsWord(line, j, prof) {
   return !prof.leaderAfter || j === 0 || prof.leaderAfter.test(line[j - 1]);
 }
 
-// cm:why a regex literal is lexed for one reason: unlexed, a backtick inside one opened a template
-//   literal whose state carried down the file and ate the NEXT template's opening backtick as its
-//   closer, reporting the `//` inside that template as a prose comment (ISS-69)
-// cm:guard keep both vocabularies closed and keep every exclusion: `obj.return / value`,
-//   `value++ / divisor` and `value! / divisor` are division whose predecessor is only lexically in
-//   the set, and reading one as a regex takes the first `/` of a following `//` as the closer and
-//   loses the annotation — the one failure direction this scanner's header forbids
-// cm:guard `<` is NOT in the set: in TSX `</a>` is a closing tag, and reading its slash as a regex
-//   opener closes it on the first `/` of a trailing `//` and eats the comment — the corpus case
-//   'a bare URL in markup text is code' is what catches this (ISS-69)
+// cm:why unlexed, a backtick inside a regex opened template state that carried down the file and ate
+//   the next template's opening backtick, reporting the `//` inside it as prose (ISS-69)
+// cm:guard keep both vocabularies closed and every exclusion in place — `obj.return / value`,
+//   `value++ / divisor`, `value! / divisor` are division, and reading one as a regex eats the comment
+// cm:guard `<` is NOT in the set: in TSX `</a>` is a closing tag whose slash, read as a regex opener,
+//   closes on a trailing `//` — the corpus case 'a bare URL in markup text is code' catches it
 const REGEX_AFTER_PUNCT = new Set([
   '(', ',', '=', ':', '[', '&', '|', '?', '{', '}', ';', '+', '-', '*', '%', '>', '~', '^',
 ]);
@@ -201,9 +197,8 @@ export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = 
       if (ch === ' ' || ch === '\t') { j++; continue; }
 
       const leader = matchLongest(prof.lineLeaders, line, j);
-      // cm:why this narrowing still stands where the regex branch below declines — a profile without
-      //   `regexLiteral`, or a `/` whose literal never closes on its line — and `/https?:\/\//` ends in an
-      //   escaped slash against its own closing delimiter, which read as a leader is a CM001 on real code
+      // cm:why this still stands wherever the regex branch declines — no `regexLiteral`, or a literal
+      //   that never closes on its line — and `/https?:\/\//` read as a leader is a CM001 on real code
       if (leader && j > 0 && line[j - 1] === '\\') { j++; continue; }
       // cm:why both narrowings share ONE branch and one "treat it as code" path — a second reader of
       //   what a comment is is exactly the divergence between verify and propose that ISS-59 closed
