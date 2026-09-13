@@ -943,6 +943,16 @@ export const analyzeCases = [
     annotations: [],
   },
   {
+    name: 'ts: a division continued onto the next line is not a regex opening one (ISS-69)',
+    file: 'regex-carry.ts',
+    src: [
+      'const q = a',
+      '  / b; // cm:guard the tail carries, so the line before decides this slash',
+    ].join('\n'),
+    codes: [],
+    annotations: ['guard'],
+  },
+  {
     name: 'ts: a keyword reached through a property access is division, not a regex (ISS-69)',
     file: 'regex-property.ts',
     src: 'const q = obj.return / value; // cm:guard division after a property named for a keyword',

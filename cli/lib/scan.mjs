@@ -64,8 +64,9 @@ function beginsWord(line, j, prof) {
   return !prof.leaderAfter || j === 0 || prof.leaderAfter.test(line[j - 1]);
 }
 
-// cm:why a regex literal is not lexed, so a backtick inside one opens a template literal whose state
-//   carries down the file and eats the NEXT template's opening backtick as its closer (ISS-69)
+// cm:why a regex literal is lexed for one reason: unlexed, a backtick inside one opened a template
+//   literal whose state carried down the file and ate the NEXT template's opening backtick as its
+//   closer, reporting the `//` inside that template as a prose comment (ISS-69)
 // cm:guard keep both vocabularies closed and keep every exclusion: `obj.return / value`,
 //   `value++ / divisor` and `value! / divisor` are division whose predecessor is only lexically in
 //   the set, and reading one as a regex takes the first `/` of a following `//` as the closer and
@@ -200,8 +201,9 @@ export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = 
       if (ch === ' ' || ch === '\t') { j++; continue; }
 
       const leader = matchLongest(prof.lineLeaders, line, j);
-      // cm:why regex literals are not lexed, and `/https?:\/\//` ends in an escaped slash against its own
-      // closing delimiter — read as a leader, that phantom comment is a CM001 on a line of real code
+      // cm:why this narrowing still stands where the regex branch below declines — a profile without
+      //   `regexLiteral`, or a `/` whose literal never closes on its line — and `/https?:\/\//` ends in an
+      //   escaped slash against its own closing delimiter, which read as a leader is a CM001 on real code
       if (leader && j > 0 && line[j - 1] === '\\') { j++; continue; }
       // cm:why both narrowings share ONE branch and one "treat it as code" path — a second reader of
       //   what a comment is is exactly the divergence between verify and propose that ISS-59 closed
