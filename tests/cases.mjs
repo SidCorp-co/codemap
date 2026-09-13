@@ -974,6 +974,27 @@ export const analyzeCases = [
     annotations: ['guard'],
   },
   {
+    name: 'ts: an object literal divided is division, not a regex (ISS-69)',
+    file: 'regex-objlit.ts',
+    src: 'const q = {} / divisor; // cm:guard `}` is out of the set, so this slash stays division',
+    codes: [],
+    annotations: ['guard'],
+  },
+  {
+    name: 'ts: an instantiation expression divided is division, not a regex (ISS-69)',
+    file: 'regex-instantiation.ts',
+    src: 'const q = f<number> / divisor; // cm:guard `>` counts only as the tail of an arrow',
+    codes: [],
+    annotations: ['guard'],
+  },
+  {
+    name: 'ts: an arrow still opens a regex position (ISS-69)',
+    file: 'regex-arrow.ts',
+    src: 'const f = (s) => /`/.test(s); // cm:guard the arrow is why `>` is in the set at all',
+    codes: [],
+    annotations: ['guard'],
+  },
+  {
     name: 'ts: a postfix non-null assertion is division, not a regex (ISS-69)',
     file: 'regex-nonnull.ts',
     src: 'const q = value! / divisor; // cm:guard TypeScript postfix ! is why ! is out of the set',
