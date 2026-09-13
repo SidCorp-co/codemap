@@ -222,8 +222,8 @@ const P = {
     //   there and nowhere else, as a RegExp over the single character before the leader (ISS-61)
     // cm:why `${f#src/}` and `a#b` are one word, never a comment — shell ends a word at whitespace
     //   or a metacharacter, and reading the `#` as a leader masked the rest of the line (ISS-61)
-    // cm:guard the backtick stays written \x60 — regex literals are not lexed here, so a LITERAL one
-    //   opens a template string that swallows every annotation below it in this file (ISS-61)
+    // cm:why \x60 rather than a literal backtick is ISS-61's, when an unlexed regex here opened a
+    //   template string that swallowed every annotation below it; scan.mjs lexes this literal since ISS-69
     leaderAfter: /[\s;|&()<>\x60]/,
     docLineLeaders: [],
     blockOpens: [],
