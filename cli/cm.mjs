@@ -835,6 +835,17 @@ switch (cmd) {
       if (keep.length) pruned[f.relPath] = { keys: keep, blocks };
     }
 
+    // cm:guard a baselined file that is GONE loses every key it held, and `stale` is what the run
+    //   dropped — so a deleted file dropped its keys under a line reading 0 (ISS-71)
+    // cm:why whole-tree only, which is the only shape --prune-baseline runs in anyway
+    if (!scoped) {
+      const seen = new Set(perFile.map((f) => f.relPath));
+      for (const [rel, frozen] of Object.entries(baseline)) {
+        if (isReservedBaselineKey(rel) || seen.has(rel)) continue;
+        stale += [...frozen].filter((k) => !k.startsWith('b:')).length;
+      }
+    }
+
     if (flags.has('--prune-baseline')) {
       // cm:guard prune must never run scoped — an unscanned file would be dropped from the baseline entirely,
       // silently absolving every comment in it. cm baseline is the deliberate re-freeze; this is not.

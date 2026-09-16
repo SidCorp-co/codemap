@@ -554,6 +554,18 @@ function accountingCases(pluginRoot, check, roots) {
     symKeysOf(baselineOf(drain), 'guard.ts').length === 0, `after the prune: ${dropped.out}`);
   check('symbols: the dropped key is counted stale',
     /dropped 1 stale key/.test(dropped.out), `got: ${dropped.out}`);
+
+  // cm:guard a baselined file that is GONE loses every key it held, and the line must say so — the
+  //   loop walks the files that are THERE, so a deleted one dropped its keys under a 0 (ISS-71)
+  const vanishedPrune = mk({ 'guard.ts': guard(`the lock is taken by \`${GHOST}\``) });
+  cm(pluginRoot, vanishedPrune, 'baseline');
+  rmSync(join(vanishedPrune, 'guard.ts'));
+  const gonePrune = cm(pluginRoot, vanishedPrune, 'sweep', '--prune-baseline');
+  check('symbols: a deleted file\'s dropped CM108 key is counted stale',
+    /dropped 1 stale key/.test(gonePrune.out), `got: ${gonePrune.out}`);
+  check('symbols: and its entry is gone from the baseline',
+    baselineOf(vanishedPrune)['guard.ts'] === undefined,
+    `baseline held ${JSON.stringify(baselineOf(vanishedPrune))}`);
 }
 
 // cm:guard a typo'd form name must be exit 2 and not a green run with the code off — that is this
