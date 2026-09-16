@@ -29,7 +29,7 @@ export const DEFAULT_REGISTRY = {
   specVersion: SPEC_VERSION,
   flows: [],
   externals: [],
-  enforce: { grammar: true, drain: true, include: ['**'], exclude: DEFAULT_EXCLUDE },
+  enforce: { grammar: true, drain: true, symbolForms: ['camel'], include: ['**'], exclude: DEFAULT_EXCLUDE },
   languages: {},
 };
 
@@ -82,7 +82,11 @@ export function loadBaseline(root) {
   let raw;
   try { raw = JSON.parse(readFileSync(p, 'utf8')); } catch { return {}; }
   const out = {};
+  // cm:guard the declared codes are read BEFORE the file loop and never fall into it — a code name is
+  //   not a baseline key, and a run that read it as one would freeze a file called __codes (ISS-71)
+  out.__codes = new Set(Array.isArray(raw.__codes) ? raw.__codes : []);
   for (const [file, v] of Object.entries(raw)) {
+    if (file.startsWith('__')) continue;
     // cm:why a pre-ISS-9 baseline is a bare array with no per-block count — still readable, just
     //   crediting a rewrapped block 1 (today's behaviour) until it is re-frozen with `cm baseline`
     const keys = Array.isArray(v) ? v : v?.keys;
@@ -103,8 +107,12 @@ export function loadBaseline(root) {
 export function saveBaseline(root, keysByFile) {
   const dir = join(root, '.forge');
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  // cm:guard a caller that leaves __codes out DROPS the declaration, so every write that is not a
+  //   whole-tree re-freeze has to pass it back — losing it silently un-gates CM108 (ISS-71)
+  const codes = [...(keysByFile.__codes ?? [])].sort();
   const sorted = Object.fromEntries(
     Object.entries(keysByFile)
+      .filter(([f]) => !f.startsWith('__'))
       .map(([f, v]) => [f, Array.isArray(v) ? { keys: v, blocks: {} } : v])
       .filter(([, v]) => v.keys.length > 0)
       .sort(([a], [b]) => a.localeCompare(b))
@@ -114,7 +122,8 @@ export function saveBaseline(root, keysByFile) {
         return [f, entry];
       }),
   );
-  writeFileSync(join(root, ...BASELINE), `${JSON.stringify(sorted, null, 2)}\n`);
+  const payload = codes.length ? { __codes: codes, ...sorted } : sorted;
+  writeFileSync(join(root, ...BASELINE), `${JSON.stringify(payload, null, 2)}\n`);
 }
 
 function globToRe(g) {

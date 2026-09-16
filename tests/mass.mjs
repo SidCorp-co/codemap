@@ -499,7 +499,7 @@ function channelCases(check) {
   }
 
   // cm:guard this pins the OUTCOME, not the branch — §4.2's rule bills a silenced block to live by
-  //   itself, so deleting `ignoredProse` leaves this green; its own case is a `doc` form (ISS-48)
+  //   itself, so deleting `silencedProse` leaves this green; its own case is a `doc` form (ISS-48)
   {
     const ignSrc = [
       'export const x = 1;',
