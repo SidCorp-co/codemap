@@ -13,7 +13,7 @@
 // calling a name missing that is there.
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, lstatSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { diag, baselineKey } from './parse.mjs';
 import { profileFor } from './languages.mjs';
@@ -192,7 +192,9 @@ export function resolveNames(root, names, { list = repoFiles } = {}) {
     if (found.size === want.size) break;
     if (SKIP_DIR.test(rel)) continue;
     let st;
-    try { st = statSync(join(root, rel)); } catch { unreadable.push(rel); continue; }
+    // cm:guard lstat, never stat — stat FOLLOWS a symlink, so one dangling link anywhere in the tree
+    //   threw here and stood the whole code down; a link is not a regular file and is simply skipped
+    try { st = lstatSync(join(root, rel)); } catch { unreadable.push(rel); continue; }
     if (!st.isFile()) continue;
     let src;
     try { src = readFileSync(join(root, rel), 'utf8'); } catch { unreadable.push(rel); continue; }
@@ -218,6 +220,21 @@ export function resolveNames(root, names, { list = repoFiles } = {}) {
   //   and the caller says which file it was — the alternative accuses a name on evidence nobody read
   if (unreadable.length) for (const n of want) found.add(n);
   return { found, scanned, unreadable };
+}
+
+/**
+ * Why a command that WRITES the baseline must refuse this scan, or null when it may use it.
+ *
+ * A stand-down resolves every candidate, so the scan reports no sites — which to `cm baseline`,
+ * `cm init` and `cm sweep --prune-baseline` is indistinguishable from a repository with nothing to
+ * freeze. Each would then write: declare the code while freezing nothing, or prune every frozen key
+ * as stale. The next readable run gates on legacy that adoption was supposed to have covered, which
+ * is the one promise this code makes. A read may stand down and say so; a write may not.
+ */
+export function unreadableRefusal(symbols) {
+  const n = symbols?.unreadable?.length ?? 0;
+  if (!n) return null;
+  return `${n} file(s) could not be read, so CM108 cannot say which sites are real: ${symbols.unreadable.slice(0, 3).join(', ')}`;
 }
 
 /**

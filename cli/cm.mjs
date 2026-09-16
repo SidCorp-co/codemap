@@ -20,7 +20,7 @@ import { profileFor, leaderFor, dominantLeader } from './lib/languages.mjs';
 import { buildGraph, referentialDiags, structuralDiags, advisoryDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
 import { loadImportGraph, loadCachedImportGraph } from './lib/archmap.mjs';
 import { canonical, CODE_TABLE, PROSE_CODES, EDGE_KINDS, baselineKey, countsAsComment } from './lib/parse.mjs';
-import { symbolDiags, formsError } from './lib/symbols.mjs';
+import { symbolDiags, formsError, unreadableRefusal } from './lib/symbols.mjs';
 import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
 import { proseCandidates, lockstepCandidates, contractCandidates } from './lib/propose.mjs';
@@ -200,10 +200,17 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // cm:guard a bad `symbolForms` is exit 2, never a rule this quietly narrows to nothing — a typo made
 //   it a green gate with CM108 off, this file's own recurring fail-open shape (ISS-71)
-function symbolsFor(reg, graph) {
+// cm:guard a WRITING command refuses a scan that stood down — a stand-down reports no sites, which
+//   reads to baseline, init and prune exactly like a clean repo, and each would then write (ISS-71)
+function symbolsFor(reg, graph, { writes = false } = {}) {
   const wrong = formsError(reg);
   if (wrong) die(wrong, 'a registry value nothing validates is a rule that quietly stops running');
-  return symbolDiags({ root, reg, graph });
+  const symbols = symbolDiags({ root, reg, graph });
+  if (writes) {
+    const refusal = unreadableRefusal(symbols);
+    if (refusal) die(refusal, 'freezing or pruning on a scan that could not answer writes a verdict nobody read');
+  }
+  return symbols;
 }
 
 // cm:guard the ONE count of what a baseline holds, so `baseline`, `init`, `sweep` and `doctor` can
@@ -790,7 +797,7 @@ switch (cmd) {
     const files = fileList(reg);
     const perFile = analyzeAll(reg, files);
     const baseline = loadBaseline(root);
-    const symbols = symbolsFor(reg, buildGraph(perFile));
+    const symbols = symbolsFor(reg, buildGraph(perFile), { writes: flags.has('--prune-baseline') });
     const scoped = Boolean(flagValue('--since') || positional.length);
 
     const rows = [];
@@ -953,7 +960,7 @@ switch (cmd) {
     const perFile = analyzeAll(reg, scoped ? fileList(reg) : allFiles(reg));
     // cm:edge contract -> cli/lib/symbols.mjs — the freeze and the report must see one set of sites,
     //   or a repo adopts CM108 and is red on the next run for a site the freeze never saw (ISS-71)
-    const symbols = symbolsFor(reg, buildGraph(perFile));
+    const symbols = symbolsFor(reg, buildGraph(perFile), { writes: true });
     const prior = loadBaseline(root);
 
     // cm:guard a scoped re-freeze MERGES — writing only the scanned files' keys would drop every other
@@ -1036,7 +1043,7 @@ switch (cmd) {
     const perFile = analyzeAll(reg, allFiles(reg), {});
     // cm:guard init takes the tree AS IT STANDS, with no HEAD rule — a repo being onboarded may have
     //   no commit to measure against, and the point of the command is that the next verify is green
-    const symbols = symbolsFor(reg, buildGraph(perFile));
+    const symbols = symbolsFor(reg, buildGraph(perFile), { writes: true });
     const keys = {};
     for (const f of perFile) {
       const symKeys = symbols.sites.filter((site) => site.file === f.relPath).map((site) => site.key);

@@ -6,11 +6,11 @@
 // safe to gate on — the baseline declaring it, the edit hook not paying for it, the drain — lives in
 // cm.mjs and not in the checker.
 
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync, symlinkSync, existsSync } from 'node:fs';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join, sep } from 'node:path';
 import { tmpdir } from 'node:os';
-import { candidateSymbols, resolveNames, repoFiles, walkAll, symbolKey, formsFor, formsError, DEFAULT_SYMBOL_FORMS } from '../cli/lib/symbols.mjs';
+import { candidateSymbols, resolveNames, repoFiles, walkAll, symbolKey, formsFor, formsError, unreadableRefusal, DEFAULT_SYMBOL_FORMS } from '../cli/lib/symbols.mjs';
 import { CODE_TABLE } from '../cli/lib/parse.mjs';
 import { DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
 import { stripGitEnv } from './git-env.mjs';
@@ -232,6 +232,22 @@ function resolverCases(check, roots) {
   check('symbols: repoFiles reports a readable tree with nothing unreadable',
     repoFiles(live).files.length > 0 && repoFiles(live).unreadable.length === 0,
     `a clean tree must not stand the code down: ${JSON.stringify(repoFiles(live))}`);
+
+  // cm:guard a dangling symlink is SKIPPED, never a stand-down — stat follows a link, so one broken
+  //   link anywhere in a tree used to switch the whole code off with nothing said (ISS-71)
+  const linked = mk({ 'def.ts': `export function ${GHOST}() { return 1; }\n` });
+  symlinkSync('nowhere.ts', join(linked, 'broken.ts'));
+  const linkedRes = resolveNames(linked, [GHOST]);
+  check('symbols: a dangling symlink is skipped, not a file the resolver could not read',
+    linkedRes.found.has(GHOST) && linkedRes.unreadable.length === 0,
+    `unreadable=${JSON.stringify(linkedRes.unreadable)} — a link is not a regular file`);
+
+  check('symbols: a clean scan is one a writing command may use',
+    unreadableRefusal({ unreadable: [] }) === null && unreadableRefusal({}) === null,
+    'nothing was unreadable, so nothing is refused');
+  check('symbols: a stood-down scan is refused for a writing command, and names a file',
+    /locked\.ts/.test(unreadableRefusal({ unreadable: ['locked.ts'] }) ?? ''),
+    'freezing or pruning on a scan that could not answer writes a verdict nobody read');
 
   const spaced = mk({ ' spaced.ts': `export const ${GHOST} = 1;\n` });
   const spacedRes = resolveNames(spaced, [GHOST]);
@@ -548,6 +564,61 @@ function reservedKeyCases(pluginRoot, check, roots) {
     `after the scoped re-freeze: ${JSON.stringify(baselineOf(root))}`);
 }
 
+// cm:guard a stand-down reports NO sites, which reads to baseline, init and prune exactly like a
+//   clean repo — so each of the three must refuse rather than write on it (ISS-71)
+//
+// The unreadable path is made by replacing a committed directory with a FILE: git still lists
+// `hole/def.ts`, and lstat on it is ENOTDIR for every user. A mode-000 fixture would instead ask
+// whether the account running the suite is stopped by one, which in a container it is not.
+function standDownCases(pluginRoot, check, roots) {
+  const make = () => {
+    const root = makeRepo({ 'guard.ts': guard(`the lock is taken by \`${GHOST}\``) });
+    roots.push(root);
+    mkdirSync(join(root, 'hole'));
+    writeFileSync(join(root, 'hole', 'def.ts'), 'export const pad = 1;\n');
+    git(root, 'add', '-A');
+    git(root, 'commit', '-qm', 'hole');
+    return root;
+  };
+  const blind = (root) => { rmSync(join(root, 'hole'), { recursive: true, force: true }); writeFileSync(join(root, 'hole'), 'not a directory\n'); };
+
+  const forBaseline = make();
+  blind(forBaseline);
+  const b = cm(pluginRoot, forBaseline, 'baseline');
+  check('symbols: cm baseline refuses a scan that could not answer',
+    b.status === 2 && /could not be read/.test(b.out), `expected exit 2:\n${b.out}`);
+  check('symbols: and writes no baseline while refusing',
+    !existsSync(join(forBaseline, '.forge', 'codemap-baseline.json')),
+    'declaring the code while freezing nothing is the red-on-adoption this design exists to avoid');
+
+  const forInit = make();
+  rmSync(join(forInit, '.forge', 'codemap.json'));
+  blind(forInit);
+  const i = cm(pluginRoot, forInit, 'init');
+  check('symbols: cm init refuses a scan that could not answer',
+    i.status === 2 && /could not be read/.test(i.out), `expected exit 2:\n${i.out}`);
+
+  const forPrune = make();
+  cm(pluginRoot, forPrune, 'baseline');
+  const before = readFileSync(join(forPrune, '.forge', 'codemap-baseline.json'), 'utf8');
+  blind(forPrune);
+  const p = cm(pluginRoot, forPrune, 'sweep', '--prune-baseline');
+  check('symbols: cm sweep --prune-baseline refuses a scan that could not answer',
+    p.status === 2 && /could not be read/.test(p.out), `expected exit 2:\n${p.out}`);
+  check('symbols: and leaves the baseline byte for byte as it was',
+    readFileSync(join(forPrune, '.forge', 'codemap-baseline.json'), 'utf8') === before,
+    'unreadability cannot prove a frozen site is stale');
+
+  // cm:guard verify is a READ, so it stands down and says so rather than refusing — a gate that
+  //   exited 2 on one unreadable file would stop a pipeline over a code nobody had adopted
+  const forVerify = make();
+  cm(pluginRoot, forVerify, 'baseline');
+  blind(forVerify);
+  const v = cm(pluginRoot, forVerify, 'verify');
+  check('symbols: cm verify stands the code down and says which file',
+    v.status !== 2 && /stood down/.test(v.out), `expected a stand-down line, not exit 2:\n${v.out}`);
+}
+
 function hookCases(pluginRoot, check, roots) {
   const root = adopted(pluginRoot, { 'guard.ts': guard(`the lock is taken by \`${GHOST}\``) });
   roots.push(root);
@@ -584,6 +655,7 @@ export function symbolCases(pluginRoot, check) {
     accountingCases(pluginRoot, check, roots);
     badFormCases(pluginRoot, check, roots);
     reservedKeyCases(pluginRoot, check, roots);
+    standDownCases(pluginRoot, check, roots);
     hookCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });
