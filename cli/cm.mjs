@@ -199,8 +199,7 @@ function analyzeAll(reg, files, baseline = loadBaseline(root)) {
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 // cm:guard an unknown form name is exit 2, never a rule this quietly narrows to nothing — filtering
-//   it made `symbolForms: ["camle"]` a green gate with CM108 off, which is this file's own fail-open
-//   shape: a scope nobody could compute, reported as a scope with nothing wrong in it (ISS-71)
+//   it made `symbolForms: ["camle"]` a green gate with CM108 off, this file's own fail-open shape (ISS-71)
 function symbolsFor(reg, graph) {
   const bad = unknownForms(reg);
   if (bad.length) {
