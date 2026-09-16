@@ -50,9 +50,10 @@ const IDENT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 //   resolved RAW rather than skipped — dropping it would call a name missing that is there (ISS-71)
 const MASK_CAP = 2 * 1024 * 1024;
 
-// cm:guard the vendored checker is this tool's own source sitting inside a consumer tree, so its
-//   identifiers are not that repo's — registry.mjs holds the same three in HARD_EXCLUDE
-const SKIP_DIR = /(?:^|\/)(?:\.git|node_modules)\/|^\.forge\/codemap\//;
+// cm:guard the vendored checker alone, and NOT node_modules — this tool's own source inside a
+//   consumer tree names identifiers that are not that repo's, but a dependency a repo deliberately
+//   tracks is a file that answers for a name, and dropping it would accuse one that is there (ISS-71)
+const SKIP_DIR = /(?:^|\/)\.git\/|^\.forge\/codemap\//;
 
 export function formsFor(reg) {
   const declared = reg?.enforce?.symbolForms;
@@ -112,37 +113,47 @@ export function symbolKey(name) {
   return `sym:${baselineKey(name)}`;
 }
 
-// cm:why git is asked first for the same reason candidates.mjs asks it: it knows what is ignored,
-//   and a fallback walk that guessed would read a build directory the repo never wrote
-function repoFiles(root) {
+/**
+ * Every file of the repository, and every path it could not enumerate.
+ *
+ * git is asked first for the reason candidates.mjs asks it: it knows what is ignored, and a walk that
+ * guessed would read a build directory the repo never wrote. The fallback is this module's own walk
+ * and NOT registry.mjs's, which keeps only files `profileFor` resolves — the file answering for a
+ * name codemap cannot parse is exactly the one it would drop.
+ */
+export function repoFiles(root) {
   try {
     const out = execFileSync('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
       { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
     // cm:guard -z output is NUL-separated, so a path is taken BYTE for byte — trimming it renamed
     //   a file whose name begins or ends with a space, and the read then missed it (ISS-71)
     const list = out.split('\0').filter(Boolean);
-    if (list.length) return list;
+    if (list.length) return { files: list, unreadable: [] };
   } catch { /* not a git tree, or git is not there */ }
   return walkAll(root);
 }
 
-// cm:guard NOT registry.mjs's walk — that one keeps only files profileFor resolves, and the file
-//   answering for a name codemap cannot parse is exactly the one it would drop (ISS-71)
-function walkAll(root) {
-  const out = [];
+export function walkAll(root) {
+  const files = [];
+  const unreadable = [];
   (function rec(dir) {
     let entries;
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    // cm:guard a directory that cannot be LISTED is reported, never silently omitted — the files in
+    //   it could hold any of the names, and omitting it accuses one on a tree nobody read (ISS-71)
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch {
+      unreadable.push(relative(root, dir).split(sep).join('/') || '.');
+      return;
+    }
     for (const e of entries) {
       const abs = join(dir, e.name);
       const rel = relative(root, abs).split(sep).join('/');
       if (e.isDirectory()) {
-        if (e.name === '.git' || e.name === 'node_modules') continue;
+        if (e.name === '.git') continue;
         rec(abs);
-      } else if (e.isFile()) out.push(rel);
+      } else if (e.isFile()) files.push(rel);
     }
   })(root);
-  return out;
+  return { files, unreadable };
 }
 
 /**
@@ -153,15 +164,19 @@ function walkAll(root) {
  * no profile has no comment syntax codemap can identify and counts whole; one too large to mask, or
  * holding a NUL byte, resolves on its raw tokens. Every one of those is a silence, never an
  * accusation. The walk stops the moment nothing is still wanted.
+ *
+ * `list` is the seam the corpus drives: an enumeration failure has to stand every candidate down, and
+ * a case reaching that through the filesystem would depend on which user the suite runs as.
  */
-export function resolveNames(root, names) {
+export function resolveNames(root, names, { list = repoFiles } = {}) {
   const want = new Set(names);
   const found = new Set();
-  const unreadable = [];
-  if (!want.size) return { found, scanned: 0, unreadable };
+  if (!want.size) return { found, scanned: 0, unreadable: [] };
 
+  const listed = list(root);
+  const unreadable = [...listed.unreadable];
   let scanned = 0;
-  for (const rel of repoFiles(root)) {
+  for (const rel of listed.files) {
     if (found.size === want.size) break;
     if (SKIP_DIR.test(rel)) continue;
     let st;

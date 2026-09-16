@@ -6,11 +6,11 @@
 // safe to gate on — the baseline declaring it, the edit hook not paying for it, the drain — lives in
 // cm.mjs and not in the checker.
 
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync } from 'node:fs';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { candidateSymbols, resolveNames, symbolKey, formsFor, unknownForms, DEFAULT_SYMBOL_FORMS } from '../cli/lib/symbols.mjs';
+import { candidateSymbols, resolveNames, repoFiles, walkAll, symbolKey, formsFor, unknownForms, DEFAULT_SYMBOL_FORMS } from '../cli/lib/symbols.mjs';
 import { CODE_TABLE } from '../cli/lib/parse.mjs';
 import { DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
 import { stripGitEnv } from './git-env.mjs';
@@ -192,6 +192,43 @@ function resolverCases(check, roots) {
 
   // cm:guard `git ls-files -z` separates on NUL, so a path is taken byte for byte — trimming it
   //   renamed a file whose name begins with a space and the read then missed it (ISS-71)
+  // cm:guard node_modules is NOT skipped on the git path — git already ignores it, so a copy that is
+  //   TRACKED is one a repo put there deliberately, and dropping it accuses a name that is there
+  const vendored = mk({ 'a.ts': 'export const pad = 1;\n' });
+  mkdirSync(join(vendored, 'node_modules', 'local-pkg'), { recursive: true });
+  writeFileSync(join(vendored, 'node_modules', 'local-pkg', 'def.ts'), `export function ${GHOST}() { return 1; }\n`);
+  git(vendored, 'add', '-Af', 'node_modules');
+  const vendoredRes = resolveNames(vendored, [GHOST]);
+  check('symbols: a tracked file under node_modules still answers for a name',
+    vendoredRes.found.has(GHOST) && vendoredRes.unreadable.length === 0,
+    `found=${[...vendoredRes.found]} unreadable=${JSON.stringify(vendoredRes.unreadable)}`);
+
+  // cm:guard a directory the walk cannot LIST stands every candidate down, like an unreadable file —
+  //   driven through the `list` seam because a 0o000 directory answers differently to root (ISS-71)
+  const walled = mk({ 'a.ts': 'export const pad = 1;\n' }, { git: false });
+  mkdirSync(join(walled, 'shut'));
+  writeFileSync(join(walled, 'shut', 'def.ts'), `export function ${GHOST}() { return 1; }\n`);
+  chmodSync(join(walled, 'shut'), 0o000);
+  let listable = true;
+  try { readdirSync(join(walled, 'shut')); } catch { listable = false; }
+  // cm:guard the fixture is asserted before the behaviour is — a user who CAN list a 0o000 directory
+  //   would otherwise read the case below as proof of something it never reached (ISS-71)
+  check('symbols: the unreadable-directory fixture is really unreadable',
+    !listable, 'this user can list a 0o000 directory (root?), so the case below proves nothing');
+  const walkedBlind = walkAll(walled);
+  chmodSync(join(walled, 'shut'), 0o755);
+  check('symbols: the walk reports a directory it could not enumerate',
+    walkedBlind.unreadable.includes('shut'),
+    `omitting it silently would accuse a name on a tree nobody read: ${JSON.stringify(walkedBlind)}`);
+
+  const blind = resolveNames(live, [GHOST], { list: () => ({ files: [], unreadable: ['locked'] }) });
+  check('symbols: a directory that cannot be enumerated stands the code down',
+    blind.found.has(GHOST) && blind.unreadable.includes('locked'),
+    `found=${[...blind.found]} unreadable=${JSON.stringify(blind.unreadable)}`);
+  check('symbols: repoFiles reports a readable tree with nothing unreadable',
+    repoFiles(live).files.length > 0 && repoFiles(live).unreadable.length === 0,
+    `a clean tree must not stand the code down: ${JSON.stringify(repoFiles(live))}`);
+
   const spaced = mk({ ' spaced.ts': `export const ${GHOST} = 1;\n` });
   const spacedRes = resolveNames(spaced, [GHOST]);
   // cm:guard `found` alone cannot see this — a trimmed path fails statSync, lands in `unreadable` and
