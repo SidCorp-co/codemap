@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { candidateSymbols, resolveNames, symbolKey, formsFor, DEFAULT_SYMBOL_FORMS } from '../cli/lib/symbols.mjs';
 import { CODE_TABLE } from '../cli/lib/parse.mjs';
+import { DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
 import { stripGitEnv } from './git-env.mjs';
 
 const GHOST = 'claimRunnerSlot';
@@ -69,6 +70,17 @@ function tableCases(check) {
   check('symbols: the fix names all three outcomes, not one',
     /RENAMED/.test(fix) && /DELETED along with the claim/.test(fix) && /replace the example/.test(fix),
     `a fix reading "delete it" throws away the coupling codemap exists to carry; got: ${fix}`);
+}
+
+// cm:guard the published schema says additionalProperties:false, so a key `cm init` writes and the
+//   schema does not declare makes every fresh registry invalid against its own contract (ISS-71)
+function schemaCases(pluginRoot, check) {
+  const schema = JSON.parse(readFileSync(join(pluginRoot, 'spec', 'schema', 'codemap.schema.json'), 'utf8'));
+  const declared = Object.keys(schema.properties?.enforce?.properties ?? {});
+  const missing = Object.keys(DEFAULT_REGISTRY.enforce).filter((k) => !declared.includes(k));
+  check('symbols: every enforce key cm init writes is declared in the schema',
+    missing.length === 0,
+    `undeclared: ${missing.join(', ')} — enforce is additionalProperties:false, so cm init would write a registry its own schema refuses`);
 }
 
 function formCases(check) {
@@ -457,6 +469,7 @@ export function symbolCases(pluginRoot, check) {
   const roots = [];
   try {
     tableCases(check);
+    schemaCases(pluginRoot, check);
     formCases(check);
     resolverCases(check, roots);
     verifyCases(pluginRoot, check, roots);

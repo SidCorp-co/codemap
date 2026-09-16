@@ -131,12 +131,14 @@ error, never a warning). Proposed registry addition, additive to `.forge/codemap
 ```
 
 Proposed diagnostics, next free codes, never gating the exit code the grammar/referential tiers
-do:
+do. These were `CM108`/`CM109` when this was written and moved up by one when `CM108` shipped
+(ISS-71, SPEC §7.2): a number this document only ever claimed as "next free" does not hold one
+ahead of a code a tool actually consumes (principle 1).
 
 | Code | Tier | Meaning |
 |---|---|---|
-| `CM108` | referential | `federated:` names a remote the registry does not declare (mirrors `CM107`) |
-| `CM109` | federated (new, opt-in, never in a hook) | a federated edge's far side was reached and is confirmed `BROKEN` |
+| `CM109` | referential | `federated:` names a remote the registry does not declare (mirrors `CM107`) |
+| `CM110` | federated (new, opt-in, never in a hook) | a federated edge's far side was reached and is confirmed `BROKEN` |
 
 A **new tier**, `federated`, distinct from grammar/referential/structural/advisory: never runs
 in `PreToolUse`/`PostToolUse`, never in a bare `cm verify`. This project already paid for
@@ -169,7 +171,7 @@ this sandbox's credentials, which is exactly the failure mode §3 says must neve
 ## What remains before this can ship — explicitly out of scope here
 
 - `federated:` in `parse.mjs`'s target grammar and `CM005`; `remotes` in the registry schema
-  (`schema/codemap.schema.json`) and `CM108` in `graph.mjs`.
+  (`schema/codemap.schema.json`) and `CM109` in `graph.mjs`.
 - The `federated` tier itself and `cm federate check` — timeout policy, retry policy, where the
   scratch clone's cache lives (mirrors `cli/lib/archmap.mjs`'s cache-dir pattern, not designed
   here), and how `cm impact`/the hook mark a federated edge distinctly from both an in-tree edge
@@ -180,6 +182,6 @@ this sandbox's credentials, which is exactly the failure mode §3 says must neve
   *current* tip; a repo that wants "verified against the commit I last approved" needs a pinned
   sha and a deliberate re-pin step, not designed here.
 
-Recommend a follow-up implementation issue, scoped to the one-sided (`federated:` + `CM108` +
+Recommend a follow-up implementation issue, scoped to the one-sided (`federated:` + `CM109` +
 `cm federate check`, A-side only) form first — it needs no cooperation from archmap's owners,
 unlike `dependents:`, which needs its own measurement before it is decided.

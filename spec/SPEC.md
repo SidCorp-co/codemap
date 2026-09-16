@@ -343,6 +343,7 @@ and correct on a scoped run, and it still does not block; a new rule enters at w
 | `CM105` | referential | duplicate `<flow>/<step>` id |
 | `CM106` | referential | `cm:edge` `#symbol` is not in the target file, or the target is a directory (§4). A word-boundary match on the anchor's first dot-segment — not resolution, which stays LSP's job |
 | `CM107` | referential | `cm:edge` names an `external:` that the registry does not declare (§8) |
+| `CM108` | referential | an identifier a `cm:guard`/`cm:why` body names in backticks appears on no line of the repository outside a comment (§7.2). What counts as an identifier is a declared set of forms, `camel` by default |
 | `CM302` | advisory | an annotation's text is prose the baseline already froze — a tag worn by legacy narration (§7.1) |
 | `CM303` | advisory | an annotation cites its incident and then retells it — story riding the injected channel (§7.1, §11) |
 | `CM301` | advisory | a `contract`/`lockstep` edge with a `#symbol` where NEITHER file names the other — the coupling may be intention rather than code (§7.1) |
@@ -515,6 +516,87 @@ the survivors are always the same shape, the reference-free pair described above
 import graph confirmed that shape rather than shrinking it. Entering at `warn` on that evidence
 would warn on a legitimate pattern, not on drift. Re-opening this needs a new measurement that
 finds an actual missing-reference case, not renewed confidence in this same data (NORTH-STAR §9).
+
+### §7.2 The named-symbol check (`CM108`)
+
+`CM102` and `CM106` hold the half of an annotation that has a shape. Nothing held the half that does
+not: a name a person wrote in backticks inside a `cm:guard` or `cm:why` body. Measured on one
+consumer repository (3 061 files, 2026-09-16), 37 of 2 052 such names appear on no line outside a
+comment — among them a pair of guards explaining that a wire field must keep its cautious default
+"because `requires_preflight` reads it", where no such function exists. A target with a shape is one
+a reader trips over; a name in a sentence rots quietly. Whether a symbol exists is derivable, so by
+principle 1 it may not be a claim the annotation gets to make unchecked.
+
+**What is a candidate is declared, not guessed.** An annotation body legitimately names things that
+are not symbols of this repository — HTTP headers (`Referer`), platform error codes
+(`ENAMETOOLONG`, `ERR_INVALID_ARG_TYPE`), standard-library types (`RefCell`), filenames
+(`Dockerfile`), database tables (`api_tokens`), vendor settings (`Message_MaxAllowedSize`), status
+literals (`needs_info`), and plain prose in code font. The set that must be caught and the set that
+must not are **not separable by shape**: `requires_preflight` has the shape of `api_tokens`, and
+`STATUS_TO_JOB_TYPE` the shape of `ERR_INVALID_ARG_TYPE`. So the shape is a registry value and not a
+regex nobody can argue with, and a false positive is a configuration question rather than an
+argument.
+
+| `enforce.symbolForms` | shape | default | measured on the repository above |
+|---|---|---|---|
+| `camel` | `[a-z][a-z0-9]*([A-Z][A-Za-z0-9]*)+` — lowerCamelCase, at least one internal capital, no underscore | **on** | 37 sites over 31 names, one clear false positive (`findLast`, an Array method) |
+| `const` | `[A-Z][A-Z0-9]*(_[A-Z0-9]+)+` — SCREAMING_SNAKE, at least one underscore | off | 12 more sites, `ERR_INVALID_ARG_TYPE` among them |
+| `snake` | `[a-z][a-z0-9]*(_[a-z0-9]+)+` — lower_snake, at least one underscore | off | 17 more sites, `api_tokens`, `pg_stat_file` and `sockaddr_un` among them |
+
+A span is read whole and then narrowed, in this order: a trailing call suffix `(` … `)` is removed,
+arguments included, so `` `runCheck(a, b)` `` is the token `runCheck`; what is left is discarded if it
+still holds whitespace, so `` `two words` `` is nothing; and the token is reduced to its first
+dot-segment, the rule §4 already states for a `CM106` anchor. Removing a suffix is normalisation and
+never admission — `` `getcwd()` `` leaves `getcwd`, which no form accepts.
+
+**What resolves a candidate.** Its appearance as a whole token, outside a comment, on any line of any
+file in the repository — `git ls-files --cached --others --exclude-standard`, or a plain recursive
+walk outside a git tree. Comments are decided by each file's own profile (§6), through the one mask
+`cm propose` uses, so a line this reads as code is a line `analyzeFile` reads as code. A file codemap
+has no profile for has no comment syntax it can identify and counts whole. A token is a whole
+`[A-Za-z_$][A-Za-z0-9_$]*` run compared by equality, the same boundary a `CM106` anchor draws, so
+`claimRunnerSlotExtra` does not answer for `claimRunnerSlot`.
+
+Every case the resolver cannot decide is a **silence**, because the one error a gating tier may not
+make is calling a name missing that is there. A file too large to mask, and one holding a NUL byte,
+resolve on their raw tokens rather than being dropped from the universe; a name written only below an
+unterminated block-comment opener resolves too, since §6 leaves that text unmasked and `CM203`
+already reports the opener.
+
+**Where it runs.** Referential, so `cm verify`, `cm verify --since <ref>` and `--tier referential`
+raise it, `--tier grammar` does not, and the commit gate does not (see the tier's paragraph above).
+It is skipped on a `--changed-lines` run, which is the edit hook's: mid-keystroke is the wrong moment
+to ask whether a name exists, and the walk is measured at 2.1 s on a 3 061-file tree. It is skipped
+outright when no annotation carries a candidate, so a repository that names nothing pays nothing. A
+scoped run scopes the **report** and never the token set: an annotation in the diff whose symbol lives
+in a file the diff did not touch resolves exactly as it would on a bare run, or the gate would refuse
+a pull request for a file it never opened.
+
+**How a repository adopts it, and why none goes red on upgrade.** The baseline carries a top-level
+`__codes` naming the non-prose codes it has frozen, and `CM108` is reported only where that entry
+names it — or under `--no-baseline`, which means *show me everything the baseline hides*. `cm init`
+and a **whole-tree** `cm baseline` write the entry and freeze each site that exists at that moment,
+one key per file and name, `sym:` followed by the name's content hash. A scoped `cm baseline <path>`
+never declares the code: it cannot see the sites in the files it did not scan, and declaring from one
+would gate the repository on legacy it had no chance to freeze — the same reason
+`cm sweep --prune-baseline` refuses a scoped run. Under `cm baseline` a site obeys the HEAD rule prose
+obeys, so a name written since the last commit is not frozen without `--include-new`; `cm init` does
+not, because a repository being onboarded may have no commit to measure against.
+
+A `sym:` key is frozen but never **counted** as a comment — not in `cm verify`'s debt line, nor in
+`cm baseline`'s, `cm init`'s or `cm doctor`'s totals — for the reason a block key is not:
+it is one diagnostic's shadow and not a comment, and the debt line is quoted as ground truth.
+`cm sweep --prune-baseline` drains them: a key whose site still raises the code is kept, and one whose
+site no longer does — the symbol restored, the annotation reworded, the file gone — is dropped and
+counted stale.
+
+The escape hatch is the one every code has: `cm:ignore CM108 — <reason>` on the line above, read by
+the same filter `CM102` and `CM301` answer to.
+
+**The fix line names three outcomes, not one.** A ghost identifier means the symbol was renamed
+(update the name), or deleted along with the claim (delete the annotation), or deleted while the claim
+survives (replace the example). A diagnostic whose remedy read "delete it" would throw away the
+coupling codemap exists to carry.
 
 ## §8 Registry
 
