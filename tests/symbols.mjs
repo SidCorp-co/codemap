@@ -242,6 +242,15 @@ function resolverCases(check, roots) {
     linkedRes.found.has(GHOST) && linkedRes.unreadable.length === 0,
     `unreadable=${JSON.stringify(linkedRes.unreadable)} — a link is not a regular file`);
 
+  // cm:guard a tracked file DELETED in the working tree is absent, never unreadable — git ls-files
+  //   still lists it, and standing down for one would switch CM108 off in half the trees there are
+  const deleted = mk({ 'def.ts': `export function ${GHOST}() { return 1; }\n`, 'gone.ts': 'export const b = 2;\n' });
+  rmSync(join(deleted, 'gone.ts'));
+  const deletedRes = resolveNames(deleted, [GHOST]);
+  check('symbols: a tracked file deleted in the working tree is absent, not unreadable',
+    deletedRes.found.has(GHOST) && deletedRes.unreadable.length === 0,
+    `unreadable=${JSON.stringify(deletedRes.unreadable)}`);
+
   check('symbols: a clean scan is one a writing command may use',
     unreadableRefusal({ unreadable: [] }) === null && unreadableRefusal({}) === null,
     'nothing was unreadable, so nothing is refused');
@@ -597,6 +606,10 @@ function standDownCases(pluginRoot, check, roots) {
   const i = cm(pluginRoot, forInit, 'init');
   check('symbols: cm init refuses a scan that could not answer',
     i.status === 2 && /could not be read/.test(i.out), `expected exit 2:\n${i.out}`);
+  check('symbols: and leaves no half-onboarded repo behind',
+    !existsSync(join(forInit, '.forge', 'codemap.json'))
+      && !existsSync(join(forInit, '.forge', 'codemap-baseline.json')),
+    'a registry written ahead of the scan is an onboarding that refused and stayed');
 
   const forPrune = make();
   cm(pluginRoot, forPrune, 'baseline');

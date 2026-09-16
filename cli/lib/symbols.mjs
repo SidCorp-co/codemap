@@ -130,6 +130,13 @@ export function symbolKey(name) {
  * and NOT registry.mjs's, which keeps only files `profileFor` resolves — the file answering for a
  * name codemap cannot parse is exactly the one it would drop.
  */
+// cm:guard ENOENT is ABSENT, not unreadable — `git ls-files --cached` lists a tracked file that has
+//   been deleted in the working tree, and a file that is not there holds no name, so standing the
+//   code down for it would switch CM108 off in every tree with an uncommitted deletion (ISS-71)
+// cm:why every other errno stays a stand-down: EACCES cannot be told from a file full of the answer,
+//   and ENOTDIR means the index and the tree disagree about a path cm therefore cannot read
+const absent = (e) => e?.code === 'ENOENT';
+
 export function repoFiles(root) {
   try {
     const out = execFileSync('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
@@ -194,10 +201,10 @@ export function resolveNames(root, names, { list = repoFiles } = {}) {
     let st;
     // cm:guard lstat, never stat — stat FOLLOWS a symlink, so one dangling link anywhere in the tree
     //   threw here and stood the whole code down; a link is not a regular file and is simply skipped
-    try { st = lstatSync(join(root, rel)); } catch { unreadable.push(rel); continue; }
+    try { st = lstatSync(join(root, rel)); } catch (e) { if (absent(e)) continue; unreadable.push(rel); continue; }
     if (!st.isFile()) continue;
     let src;
-    try { src = readFileSync(join(root, rel), 'utf8'); } catch { unreadable.push(rel); continue; }
+    try { src = readFileSync(join(root, rel), 'utf8'); } catch (e) { if (absent(e)) continue; unreadable.push(rel); continue; }
     scanned++;
 
     const hits = [];

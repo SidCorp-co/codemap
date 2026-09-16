@@ -1037,13 +1037,15 @@ switch (cmd) {
     //   the graph is what this tool is for, so init gives that first and prose policy is opted into (--prose)
     const fresh = { ...DEFAULT_REGISTRY, enforce: { ...DEFAULT_REGISTRY.enforce, grammar: flags.has('--prose') } };
     const reg = existsSync(join(root, '.forge', 'codemap.json')) ? loadOrDie() : fresh;
-    saveRegistry(root, reg);
     // cm:why init freezes from scratch, so it must not consult a baseline that may already be there — a
     //   re-init against its own output would treat a frozen line as prose it had never seen
     const perFile = analyzeAll(reg, allFiles(reg), {});
     // cm:guard init takes the tree AS IT STANDS, with no HEAD rule — a repo being onboarded may have
     //   no commit to measure against, and the point of the command is that the next verify is green
+    // cm:guard every refusal comes BEFORE the first write — a registry saved ahead of the scan left a
+    //   half-onboarded repo behind whenever the scan went on to refuse (ISS-71)
     const symbols = symbolsFor(reg, buildGraph(perFile), { writes: true });
+    saveRegistry(root, reg);
     const keys = {};
     for (const f of perFile) {
       const symKeys = symbols.sites.filter((site) => site.file === f.relPath).map((site) => site.key);
