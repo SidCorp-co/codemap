@@ -10,7 +10,7 @@
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join, relative, resolve, dirname, normalize } from 'node:path';
 import {
-  findRoot, loadRegistry, saveRegistry, loadBaseline, saveBaseline,
+  findRoot, loadRegistry, saveRegistry, loadBaseline, saveBaseline, isReservedBaselineKey,
   selects, walk, changedSince, changedStaged, changedRanges, headBlob, dirtyFiles,
   vendoredVersion, compareVersions,
   toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
@@ -20,7 +20,7 @@ import { profileFor, leaderFor, dominantLeader } from './lib/languages.mjs';
 import { buildGraph, referentialDiags, structuralDiags, advisoryDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
 import { loadImportGraph, loadCachedImportGraph } from './lib/archmap.mjs';
 import { canonical, CODE_TABLE, PROSE_CODES, EDGE_KINDS, baselineKey, countsAsComment } from './lib/parse.mjs';
-import { symbolDiags, unknownForms, SYMBOL_FORMS } from './lib/symbols.mjs';
+import { symbolDiags, formsError } from './lib/symbols.mjs';
 import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
 import { proseCandidates, lockstepCandidates, contractCandidates } from './lib/propose.mjs';
@@ -198,20 +198,18 @@ function analyzeAll(reg, files, baseline = loadBaseline(root)) {
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-// cm:guard an unknown form name is exit 2, never a rule this quietly narrows to nothing — filtering
-//   it made `symbolForms: ["camle"]` a green gate with CM108 off, this file's own fail-open shape (ISS-71)
+// cm:guard a bad `symbolForms` is exit 2, never a rule this quietly narrows to nothing — a typo made
+//   it a green gate with CM108 off, this file's own recurring fail-open shape (ISS-71)
 function symbolsFor(reg, graph) {
-  const bad = unknownForms(reg);
-  if (bad.length) {
-    die(`unknown enforce.symbolForms: ${bad.join(', ')}`, `each one of: ${Object.keys(SYMBOL_FORMS).join(', ')}`);
-  }
+  const wrong = formsError(reg);
+  if (wrong) die(wrong, 'a registry value nothing validates is a rule that quietly stops running');
   return symbolDiags({ root, reg, graph });
 }
 
 // cm:guard the ONE count of what a baseline holds, so `baseline`, `init`, `sweep` and `doctor` can
 //   never print four different totals for one file — a block key and a CM108 key are not comments
 const countComments = (byFile) => Object.entries(byFile)
-  .filter(([f]) => !f.startsWith('__'))
+  .filter(([f]) => !isReservedBaselineKey(f))
   .flatMap(([, v]) => [...v.keys]).filter(countsAsComment).length;
 
 /**
@@ -567,7 +565,7 @@ switch (cmd) {
     if (!scoped) {
       const seen = new Set(perFile.map((f) => f.relPath));
       for (const [rel, frozen] of Object.entries(baseline)) {
-        if (rel.startsWith('__') || seen.has(rel)) continue;
+        if (isReservedBaselineKey(rel) || seen.has(rel)) continue;
         cleaned += frozen.size ?? frozen.length ?? 0;
       }
     }
@@ -963,7 +961,7 @@ switch (cmd) {
     const keys = {};
     if (scoped) {
       for (const [file, set] of Object.entries(prior)) {
-        if (!file.startsWith('__')) keys[file] = { keys: [...set], blocks: { ...(set.blockCounts ?? {}) } };
+        if (!isReservedBaselineKey(file)) keys[file] = { keys: [...set], blocks: { ...(set.blockCounts ?? {}) } };
       }
     }
     // cm:guard only a WHOLE-TREE run may DECLARE a code — a scoped run cannot see the sites in the
@@ -1013,7 +1011,7 @@ switch (cmd) {
     const total = countComments(keys);
     // cm:guard __codes is a declaration, not a file — counting it made every baseline line claim one
     //   file more than the repo has, in a number the case study quotes as ground truth (ISS-71)
-    const filesFrozen = Object.keys(keys).filter((k) => !k.startsWith('__')).length;
+    const filesFrozen = Object.keys(keys).filter((k) => !isReservedBaselineKey(k)).length;
     console.log(scoped
       ? `codemap baseline: re-froze ${plural(touched.length, 'file')}; ${total} comments frozen across ${filesFrozen} files`
       : `codemap baseline: froze ${total} pre-existing prose comments across ${filesFrozen} files`);
@@ -1302,7 +1300,7 @@ switch (cmd) {
     const reg = loadRegistry(root);
     const vend = vendoredVersion(root);
     const bl = loadBaseline(root);
-    const frozen = Object.entries(bl).filter(([k]) => !k.startsWith('__'));
+    const frozen = Object.entries(bl).filter(([k]) => !isReservedBaselineKey(k));
     const keys = frozen.reduce((a, [, v]) => a + [...v].filter(countsAsComment).length, 0);
     const row = (k, v) => console.log(`  ${k.padEnd(22)} ${v}`);
     console.log(bold(`codemap doctor · ${root}`));

@@ -8,9 +8,9 @@
 
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync } from 'node:fs';
 import { spawnSync, execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { tmpdir } from 'node:os';
-import { candidateSymbols, resolveNames, repoFiles, walkAll, symbolKey, formsFor, unknownForms, DEFAULT_SYMBOL_FORMS } from '../cli/lib/symbols.mjs';
+import { candidateSymbols, resolveNames, repoFiles, walkAll, symbolKey, formsFor, formsError, DEFAULT_SYMBOL_FORMS } from '../cli/lib/symbols.mjs';
 import { CODE_TABLE } from '../cli/lib/parse.mjs';
 import { DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
 import { stripGitEnv } from './git-env.mjs';
@@ -142,9 +142,12 @@ function formCases(check) {
     JSON.stringify(formsFor({})) === JSON.stringify(DEFAULT_SYMBOL_FORMS),
     `got ${JSON.stringify(formsFor({}))}`);
   check('symbols: an unknown form name is named, not quietly dropped',
-    JSON.stringify(unknownForms({ enforce: { symbolForms: ['const', 'nosuchform'] } })) === JSON.stringify(['nosuchform'])
-      && unknownForms({}).length === 0,
+    /nosuchform/.test(formsError({ enforce: { symbolForms: ['const', 'nosuchform'] } }) ?? '')
+      && formsError({}) === null && formsError({ enforce: { symbolForms: ['camel'] } }) === null,
     'a typo in the registry must not silently widen or narrow the rule');
+  check('symbols: a symbolForms that is not an array is an error, not an absent value',
+    /must be an array/.test(formsError({ enforce: { symbolForms: 'snake' } }) ?? ''),
+    'falling back to the default would run a check the operator did not ask for and skip the one they did');
 }
 
 function resolverCases(check, roots) {
@@ -205,21 +208,22 @@ function resolverCases(check, roots) {
 
   // cm:guard a directory the walk cannot LIST stands every candidate down, like an unreadable file —
   //   driven through the `list` seam because a 0o000 directory answers differently to root (ISS-71)
+  // cm:guard the failure is INJECTED, not a mode-000 directory — whether the user running the suite
+  //   is stopped by one depends on the container, and a case the gate cannot rely on gets deleted
   const walled = mk({ 'a.ts': 'export const pad = 1;\n' }, { git: false });
   mkdirSync(join(walled, 'shut'));
   writeFileSync(join(walled, 'shut', 'def.ts'), `export function ${GHOST}() { return 1; }\n`);
-  chmodSync(join(walled, 'shut'), 0o000);
-  let listable = true;
-  try { readdirSync(join(walled, 'shut')); } catch { listable = false; }
-  // cm:guard the fixture is asserted before the behaviour is — a user who CAN list a 0o000 directory
-  //   would otherwise read the case below as proof of something it never reached (ISS-71)
-  check('symbols: the unreadable-directory fixture is really unreadable',
-    !listable, 'this user can list a 0o000 directory (root?), so the case below proves nothing');
-  const walkedBlind = walkAll(walled);
-  chmodSync(join(walled, 'shut'), 0o755);
+  const blocking = (dir, opts) => {
+    if (dir.endsWith(`${sep}shut`)) throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+    return readdirSync(dir, opts);
+  };
+  const walkedBlind = walkAll(walled, { readdir: blocking });
   check('symbols: the walk reports a directory it could not enumerate',
-    walkedBlind.unreadable.includes('shut'),
+    walkedBlind.unreadable.includes('shut') && !walkedBlind.files.includes('shut/def.ts'),
     `omitting it silently would accuse a name on a tree nobody read: ${JSON.stringify(walkedBlind)}`);
+  check('symbols: the walk reports nothing unreadable when every directory lists',
+    walkAll(walled).unreadable.length === 0,
+    `a clean tree must not stand the code down: ${JSON.stringify(walkAll(walled))}`);
 
   const blind = resolveNames(live, [GHOST], { list: () => ({ files: [], unreadable: ['locked'] }) });
   check('symbols: a directory that cannot be enumerated stands the code down',
@@ -513,6 +517,35 @@ function badFormCases(pluginRoot, check, roots) {
   check('symbols: a mistyped enforce.symbolForms is exit 2, not a green gate with CM108 off',
     r.status === 2 && /unknown enforce\.symbolForms: camle/.test(r.out),
     `expected exit 2 naming the typo, got ${r.status}:\n${r.out}`);
+
+  writeFileSync(join(root, '.forge', 'codemap.json'), '{ "enforce": { "symbolForms": "snake" } }\n');
+  const notArray = cm(pluginRoot, root, 'verify');
+  check('symbols: a non-array enforce.symbolForms is exit 2, not a silent fall back to the default',
+    notArray.status === 2 && /must be an array/.test(notArray.out),
+    `expected exit 2, got ${notArray.status}:\n${notArray.out}`);
+}
+
+// cm:guard a path may begin with `__` — `__tests__/legacy.ts` and `__init__.py` are ordinary files,
+//   and reading the baseline's reserved names as a PREFIX dropped their frozen keys (ISS-71)
+function reservedKeyCases(pluginRoot, check, roots) {
+  const root = makeRepo({ 'seed.ts': 'export const a = 1;\n' });
+  roots.push(root);
+  mkdirSync(join(root, '__tests__'));
+  writeFileSync(join(root, '__tests__', 'legacy.ts'), '// a legacy sentence nobody owns\nexport const a = 1;\n');
+  git(root, 'add', '-A');
+  git(root, 'commit', '-qm', 'legacy');
+  cm(pluginRoot, root, 'baseline');
+  const lineKeys = (bl) => (bl['__tests__/legacy.ts']?.keys ?? []).filter((k) => !k.startsWith('b:'));
+  check('symbols: a file whose path begins with __ is frozen like any other',
+    lineKeys(baselineOf(root)).length === 1,
+    `baseline held ${JSON.stringify(baselineOf(root))}`);
+  check('symbols: its frozen prose is still suppressed on the next verify',
+    cm(pluginRoot, root, 'verify').status === 0,
+    'a dropped entry makes legacy prose reappear as a violation nobody introduced');
+  cm(pluginRoot, root, 'baseline', 'seed.ts');
+  check('symbols: a scoped re-freeze does not drop it either',
+    lineKeys(baselineOf(root)).length === 1,
+    `after the scoped re-freeze: ${JSON.stringify(baselineOf(root))}`);
 }
 
 function hookCases(pluginRoot, check, roots) {
@@ -550,6 +583,7 @@ export function symbolCases(pluginRoot, check) {
     adoptionCases(pluginRoot, check, roots);
     accountingCases(pluginRoot, check, roots);
     badFormCases(pluginRoot, check, roots);
+    reservedKeyCases(pluginRoot, check, roots);
     hookCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });

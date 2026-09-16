@@ -61,12 +61,21 @@ export function formsFor(reg) {
   return declared.filter((f) => Object.hasOwn(SYMBOL_FORMS, f));
 }
 
-// cm:guard a typo'd form name is exit 2 at the call site, never a silently narrowed rule — filtering
-//   it here alone made `symbolForms: ["camle"]` turn CM108 off under a green exit code (ISS-71)
-export function unknownForms(reg) {
+/**
+ * What is wrong with this registry's `enforce.symbolForms`, or null when nothing is.
+ *
+ * Exit 2 at the call site, never a silently narrowed rule: `symbolForms: ["camle"]` filtered down to
+ * an empty set and turned CM108 off under a green exit code, and `symbolForms: "snake"` is not an
+ * array at all, so the operator's asked-for check was simply not run. Nothing else validates the
+ * registry — `loadRegistry` parses it and checks the spec version and no more.
+ */
+export function formsError(reg) {
   const declared = reg?.enforce?.symbolForms;
-  if (!Array.isArray(declared)) return [];
-  return declared.filter((f) => !Object.hasOwn(SYMBOL_FORMS, f));
+  if (declared === undefined) return null;
+  const vocabulary = `each one of: ${Object.keys(SYMBOL_FORMS).join(', ')}`;
+  if (!Array.isArray(declared)) return `enforce.symbolForms must be an array — ${vocabulary}`;
+  const bad = declared.filter((f) => !Object.hasOwn(SYMBOL_FORMS, f));
+  return bad.length ? `unknown enforce.symbolForms: ${bad.join(', ')} — ${vocabulary}` : null;
 }
 
 /**
@@ -133,14 +142,17 @@ export function repoFiles(root) {
   return walkAll(root);
 }
 
-export function walkAll(root) {
+// cm:why `readdir` is a parameter so the corpus can make one directory fail: reaching that through
+//   the filesystem asks whether the user running the suite is stopped by mode 000, and in a container
+//   it is not — a case the gate cannot rely on is a case the gate eventually deletes (ISS-71)
+export function walkAll(root, { readdir = readdirSync } = {}) {
   const files = [];
   const unreadable = [];
   (function rec(dir) {
     let entries;
     // cm:guard a directory that cannot be LISTED is reported, never silently omitted — the files in
     //   it could hold any of the names, and omitting it accuses one on a tree nobody read (ISS-71)
-    try { entries = readdirSync(dir, { withFileTypes: true }); } catch {
+    try { entries = readdir(dir, { withFileTypes: true }); } catch {
       unreadable.push(relative(root, dir).split(sep).join('/') || '.');
       return;
     }
