@@ -573,7 +573,9 @@ switch (cmd) {
       const seen = new Set(perFile.map((f) => f.relPath));
       for (const [rel, frozen] of Object.entries(baseline)) {
         if (isReservedBaselineKey(rel) || seen.has(rel)) continue;
-        cleaned += frozen.size ?? frozen.length ?? 0;
+        // cm:guard the same predicate the debt line uses — counting a deleted file's keys RAW billed
+        //   its block shadows and its CM108 freezes as comments the author had cleaned (ISS-71)
+        cleaned += [...frozen].filter(countsAsComment).length;
       }
     }
 

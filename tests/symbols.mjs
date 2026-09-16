@@ -520,6 +520,15 @@ function accountingCases(pluginRoot, check, roots) {
     /1 comments frozen/.test(cm(pluginRoot, both, 'doctor').out),
     `got: ${cm(pluginRoot, both, 'doctor').out}`);
 
+  // cm:guard a baselined file that is GONE has its keys credited as cleaned, and a sym: key is not a
+  //   comment there either — the one predicate, or the two totals disagree about one baseline (ISS-71)
+  const vanished = mk({ 'guard.ts': guard(`the lock is taken by \`${GHOST}\``) });
+  cm(pluginRoot, vanished, 'baseline');
+  rmSync(join(vanished, 'guard.ts'));
+  const after = cm(pluginRoot, vanished, 'verify');
+  check('symbols: a deleted file\'s CM108 key is not credited as a cleaned comment',
+    !/legacy prose/.test(after.out), `got: ${after.out}`);
+
   const init = mk({ 'mixed.ts': `// a legacy sentence nobody owns\n// cm:guard the lock is taken by \`${GHOST}\`\nexport const a = 1;\n` });
   rmSync(join(init, '.forge', 'codemap.json'));
   const initOut = cm(pluginRoot, init, 'init', '--prose').out;
