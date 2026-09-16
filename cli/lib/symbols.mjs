@@ -60,6 +60,14 @@ export function formsFor(reg) {
   return declared.filter((f) => Object.hasOwn(SYMBOL_FORMS, f));
 }
 
+// cm:guard a typo'd form name is exit 2 at the call site, never a silently narrowed rule — filtering
+//   it here alone made `symbolForms: ["camle"]` turn CM108 off under a green exit code (ISS-71)
+export function unknownForms(reg) {
+  const declared = reg?.enforce?.symbolForms;
+  if (!Array.isArray(declared)) return [];
+  return declared.filter((f) => !Object.hasOwn(SYMBOL_FORMS, f));
+}
+
 /**
  * The identifiers one annotation's body names, in order and without repeats.
  *
@@ -110,7 +118,9 @@ function repoFiles(root) {
   try {
     const out = execFileSync('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
       { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
-    const list = out.split('\0').map((s) => s.trim()).filter(Boolean);
+    // cm:guard -z output is NUL-separated, so a path is taken BYTE for byte — trimming it renamed
+    //   a file whose name begins or ends with a space, and the read then missed it (ISS-71)
+    const list = out.split('\0').filter(Boolean);
     if (list.length) return list;
   } catch { /* not a git tree, or git is not there */ }
   return walkAll(root);
@@ -147,17 +157,18 @@ function walkAll(root) {
 export function resolveNames(root, names) {
   const want = new Set(names);
   const found = new Set();
-  if (!want.size) return { found, scanned: 0 };
+  const unreadable = [];
+  if (!want.size) return { found, scanned: 0, unreadable };
 
   let scanned = 0;
   for (const rel of repoFiles(root)) {
     if (found.size === want.size) break;
     if (SKIP_DIR.test(rel)) continue;
     let st;
-    try { st = statSync(join(root, rel)); } catch { continue; }
+    try { st = statSync(join(root, rel)); } catch { unreadable.push(rel); continue; }
     if (!st.isFile()) continue;
     let src;
-    try { src = readFileSync(join(root, rel), 'utf8'); } catch { continue; }
+    try { src = readFileSync(join(root, rel), 'utf8'); } catch { unreadable.push(rel); continue; }
     scanned++;
 
     const hits = [];
@@ -176,7 +187,10 @@ export function resolveNames(root, names) {
     const inCode = new Set(code.match(TOKEN_RE) ?? []);
     for (const h of hits) if (inCode.has(h)) found.add(h);
   }
-  return { found, scanned };
+  // cm:guard a file the resolver could not open could hold any of these names, so ALL of them resolve
+  //   and the caller says which file it was — the alternative accuses a name on evidence nobody read
+  if (unreadable.length) for (const n of want) found.add(n);
+  return { found, scanned, unreadable };
 }
 
 /**
@@ -187,7 +201,8 @@ export function resolveNames(root, names) {
  * the first. Each site carries the key it freezes under, the `carrier` text a HEAD-eligibility check
  * searches a blob for, and its own diagnostic, so both callers read one list.
  *
- * @returns {{ sites, scanned }} `scanned` is how many files the resolver opened, 0 where it did not run.
+ * @returns {{ sites, scanned, unreadable }} `scanned` is how many files the resolver opened, 0 where
+ *   it did not run; `unreadable` names the files it could not, each of which silences every candidate.
  */
 export function symbolDiags({ root, reg, graph }) {
   const forms = formsFor(reg);
@@ -202,10 +217,10 @@ export function symbolDiags({ root, reg, graph }) {
       }
     }
   }
-  if (!named.length) return { sites: [], scanned: 0 };
+  if (!named.length) return { sites: [], scanned: 0, unreadable: [] };
 
-  const { found, scanned } = resolveNames(root, [...new Set(named.map((s) => s.name))]);
+  const { found, scanned, unreadable } = resolveNames(root, [...new Set(named.map((s) => s.name))]);
   const sites = named.filter((s) => !found.has(s.name))
     .map((s) => ({ ...s, diag: diag('CM108', s.file, s.line, s.name) }));
-  return { sites, scanned };
+  return { sites, scanned, unreadable };
 }

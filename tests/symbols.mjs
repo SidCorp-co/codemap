@@ -6,11 +6,11 @@
 // safe to gate on — the baseline declaring it, the edit hook not paying for it, the drain — lives in
 // cm.mjs and not in the checker.
 
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, chmodSync } from 'node:fs';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { candidateSymbols, resolveNames, symbolKey, formsFor, DEFAULT_SYMBOL_FORMS } from '../cli/lib/symbols.mjs';
+import { candidateSymbols, resolveNames, symbolKey, formsFor, unknownForms, DEFAULT_SYMBOL_FORMS } from '../cli/lib/symbols.mjs';
 import { CODE_TABLE } from '../cli/lib/parse.mjs';
 import { DEFAULT_REGISTRY } from '../cli/lib/registry.mjs';
 import { stripGitEnv } from './git-env.mjs';
@@ -141,8 +141,9 @@ function formCases(check) {
   check('symbols: formsFor falls back to the default when the registry declares nothing',
     JSON.stringify(formsFor({})) === JSON.stringify(DEFAULT_SYMBOL_FORMS),
     `got ${JSON.stringify(formsFor({}))}`);
-  check('symbols: formsFor drops a form name nothing implements',
-    JSON.stringify(formsFor({ enforce: { symbolForms: ['const', 'nosuchform'] } })) === JSON.stringify(['const']),
+  check('symbols: an unknown form name is named, not quietly dropped',
+    JSON.stringify(unknownForms({ enforce: { symbolForms: ['const', 'nosuchform'] } })) === JSON.stringify(['nosuchform'])
+      && unknownForms({}).length === 0,
     'a typo in the registry must not silently widen or narrow the rule');
 }
 
@@ -165,15 +166,39 @@ function resolverCases(check, roots) {
     resolveNames(unterminated, [GHOST]).found.has(GHOST),
     'CM203 already reports the opener; calling a name missing here would be an accusation the scanner cannot support');
 
-  const big = mk({ 'huge.ts': `// x\n${'const pad = 1;\n'.repeat(90_000)}export const ${GHOST} = 1;\n` });
+  // cm:guard the name sits in a COMMENT of a profiled file over the cap, so only the over-cap branch
+  //   can resolve it — under the cap, or unprofiled, the case goes green on a branch it is not about
+  const big = mk({ 'huge.ts': `// ${GHOST} is named here\n${'const pad = 1;\n'.repeat(140_000)}` });
   check('symbols: a name in a file too large to mask resolves on its raw tokens',
     resolveNames(big, [GHOST]).found.has(GHOST),
     'dropping an oversized file from the universe would call a name missing that is there');
 
-  const nul = mk({ 'blob.bin': `\0\0${GHOST}\0\0` });
+  // cm:guard likewise a PROFILED file, so the NUL branch is the only one that can resolve it — in an
+  //   unprofiled file the no-profile branch answers and the case says nothing about NUL (ISS-71)
+  const nul = mk({ 'blob.ts': `\0\0\n// ${GHOST} is named here\nexport const a = 1;\n` });
   check('symbols: a name in a file holding a NUL byte resolves on its raw tokens',
     resolveNames(nul, [GHOST]).found.has(GHOST),
     'a malformed or binary file is not a reason to accuse');
+
+  // cm:guard a file the resolver could not OPEN could hold any of the names, so all of them resolve —
+  //   accusing on evidence nobody read is the one error this tier may not make (ISS-71)
+  const denied = mk({ 'locked.ts': 'export const pad = 1;\n' });
+  chmodSync(join(denied, 'locked.ts'), 0o000);
+  const stoodDown = resolveNames(denied, [GHOST]);
+  chmodSync(join(denied, 'locked.ts'), 0o644);
+  check('symbols: an unreadable file stands the code down and says which file',
+    stoodDown.found.has(GHOST) && stoodDown.unreadable.includes('locked.ts'),
+    `found=${[...stoodDown.found]} unreadable=${JSON.stringify(stoodDown.unreadable)}`);
+
+  // cm:guard `git ls-files -z` separates on NUL, so a path is taken byte for byte — trimming it
+  //   renamed a file whose name begins with a space and the read then missed it (ISS-71)
+  const spaced = mk({ ' spaced.ts': `export const ${GHOST} = 1;\n` });
+  const spacedRes = resolveNames(spaced, [GHOST]);
+  // cm:guard `found` alone cannot see this — a trimmed path fails statSync, lands in `unreadable` and
+  //   resolves everything anyway, so the case would go green on the stand-down instead (ISS-71)
+  check('symbols: a filename with leading whitespace is read, not renamed',
+    spacedRes.found.has(GHOST) && spacedRes.unreadable.length === 0,
+    `found=${[...spacedRes.found]} unreadable=${JSON.stringify(spacedRes.unreadable)}`);
 
   const noProfile = mk({ 'data.unknown': `{ "handler": "${GHOST}" }\n` });
   check('symbols: a name in a file codemap has no profile for resolves',
@@ -441,6 +466,18 @@ function accountingCases(pluginRoot, check, roots) {
     /dropped 1 stale key/.test(dropped.out), `got: ${dropped.out}`);
 }
 
+// cm:guard a typo'd form name must be exit 2 and not a green run with the code off — that is this
+//   CLI's own recurring fail-open shape, a scope nobody could compute reported as a clean one
+function badFormCases(pluginRoot, check, roots) {
+  const root = adopted(pluginRoot, { 'guard.ts': guard(`the lock is taken by \`${GHOST}\``) });
+  roots.push(root);
+  writeFileSync(join(root, '.forge', 'codemap.json'), '{ "enforce": { "symbolForms": ["camle"] } }\n');
+  const r = cm(pluginRoot, root, 'verify');
+  check('symbols: a mistyped enforce.symbolForms is exit 2, not a green gate with CM108 off',
+    r.status === 2 && /unknown enforce\.symbolForms: camle/.test(r.out),
+    `expected exit 2 naming the typo, got ${r.status}:\n${r.out}`);
+}
+
 function hookCases(pluginRoot, check, roots) {
   const root = adopted(pluginRoot, { 'guard.ts': guard(`the lock is taken by \`${GHOST}\``) });
   roots.push(root);
@@ -475,6 +512,7 @@ export function symbolCases(pluginRoot, check) {
     verifyCases(pluginRoot, check, roots);
     adoptionCases(pluginRoot, check, roots);
     accountingCases(pluginRoot, check, roots);
+    badFormCases(pluginRoot, check, roots);
     hookCases(pluginRoot, check, roots);
   } finally {
     for (const r of roots) rmSync(r, { recursive: true, force: true });

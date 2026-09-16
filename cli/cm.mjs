@@ -20,7 +20,7 @@ import { profileFor, leaderFor, dominantLeader } from './lib/languages.mjs';
 import { buildGraph, referentialDiags, structuralDiags, advisoryDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
 import { loadImportGraph, loadCachedImportGraph } from './lib/archmap.mjs';
 import { canonical, CODE_TABLE, PROSE_CODES, EDGE_KINDS, baselineKey, countsAsComment } from './lib/parse.mjs';
-import { symbolDiags } from './lib/symbols.mjs';
+import { symbolDiags, unknownForms, SYMBOL_FORMS } from './lib/symbols.mjs';
 import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
 import { proseCandidates, lockstepCandidates, contractCandidates } from './lib/propose.mjs';
@@ -197,6 +197,17 @@ function analyzeAll(reg, files, baseline = loadBaseline(root)) {
 }
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+// cm:guard an unknown form name is exit 2, never a rule this quietly narrows to nothing — filtering
+//   it made `symbolForms: ["camle"]` a green gate with CM108 off, which is this file's own fail-open
+//   shape: a scope nobody could compute, reported as a scope with nothing wrong in it (ISS-71)
+function symbolsFor(reg, graph) {
+  const bad = unknownForms(reg);
+  if (bad.length) {
+    die(`unknown enforce.symbolForms: ${bad.join(', ')}`, `each one of: ${Object.keys(SYMBOL_FORMS).join(', ')}`);
+  }
+  return symbolDiags({ root, reg, graph });
+}
 
 // cm:guard the ONE count of what a baseline holds, so `baseline`, `init`, `sweep` and `doctor` can
 //   never print four different totals for one file — a block key and a CM108 key are not comments
@@ -519,10 +530,12 @@ switch (cmd) {
     //   split CM102 makes — narrowing it would refuse a PR for a symbol in a file it never opened
     let symbolsScanned = 0;
     let symbolSites = [];
+    let symbolsUnreadable = [];
     if ((tier === 'all' || tier === 'referential') && !flags.has('--changed-lines')) {
-      const sym = symbolDiags({ root, reg, graph: g });
+      const sym = symbolsFor(reg, g);
       symbolsScanned = sym.scanned;
       symbolSites = sym.sites;
+      symbolsUnreadable = sym.unreadable;
       // cm:guard CM108 is raised only where the baseline DECLARES it — an adopted repo whose baseline
       //   predates the code has no key for it, and gating it on upgrade teaches the upgrade to wait
       if (declaresSymbols) {
@@ -625,6 +638,12 @@ switch (cmd) {
     if (vend && compareVersions(vend, toolVersion()) < 0) {
       console.log(yellow(`this repo's committed checker is ${vend}, but you just ran ${toolVersion()} — `
         + 'CI gates on the committed one, so this verdict is not the gate. Upgrade it: cm install --upgrade'));
+    }
+    // cm:guard a file the resolver could not open silences every CM108, so the loss is said OUT LOUD
+    //   here — a code that stood down quietly reads afterwards as a tree with nothing wrong in it
+    if (symbolsUnreadable.length) {
+      console.log(yellow(`${plural(symbolsUnreadable.length, 'file')} could not be read, so CM108 stood down:`
+        + ` any of them could hold the names it was asked about — ${symbolsUnreadable.slice(0, 3).join(', ')}`));
     }
     if (!declaresSymbols && symbolSites.length) {
       const n = symbolSites.length;
@@ -774,7 +793,7 @@ switch (cmd) {
     const files = fileList(reg);
     const perFile = analyzeAll(reg, files);
     const baseline = loadBaseline(root);
-    const symbols = symbolDiags({ root, reg, graph: buildGraph(perFile) });
+    const symbols = symbolsFor(reg, buildGraph(perFile));
     const scoped = Boolean(flagValue('--since') || positional.length);
 
     const rows = [];
@@ -937,7 +956,7 @@ switch (cmd) {
     const perFile = analyzeAll(reg, scoped ? fileList(reg) : allFiles(reg));
     // cm:edge contract -> cli/lib/symbols.mjs — the freeze and the report must see one set of sites,
     //   or a repo adopts CM108 and is red on the next run for a site the freeze never saw (ISS-71)
-    const symbols = symbolDiags({ root, reg, graph: buildGraph(perFile) });
+    const symbols = symbolsFor(reg, buildGraph(perFile));
     const prior = loadBaseline(root);
 
     // cm:guard a scoped re-freeze MERGES — writing only the scanned files' keys would drop every other
@@ -1020,7 +1039,7 @@ switch (cmd) {
     const perFile = analyzeAll(reg, allFiles(reg), {});
     // cm:guard init takes the tree AS IT STANDS, with no HEAD rule — a repo being onboarded may have
     //   no commit to measure against, and the point of the command is that the next verify is green
-    const symbols = symbolDiags({ root, reg, graph: buildGraph(perFile) });
+    const symbols = symbolsFor(reg, buildGraph(perFile));
     const keys = {};
     for (const f of perFile) {
       const symKeys = symbols.sites.filter((site) => site.file === f.relPath).map((site) => site.key);
