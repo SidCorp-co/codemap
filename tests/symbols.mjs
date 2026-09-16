@@ -6,7 +6,7 @@
 // safe to gate on — the baseline declaring it, the edit hook not paying for it, the drain — lives in
 // cm.mjs and not in the checker.
 
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync, symlinkSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, lstatSync, rmSync, symlinkSync, existsSync } from 'node:fs';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join, sep } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -185,13 +185,28 @@ function resolverCases(check, roots) {
 
   // cm:guard a file the resolver could not OPEN could hold any of the names, so all of them resolve —
   //   accusing on evidence nobody read is the one error this tier may not make (ISS-71)
+  // cm:guard the refusal is INJECTED, never a mode-000 file — as root, and under CAP_DAC_OVERRIDE in
+  //   a container, the read succeeds and the case would fail on correct code (ISS-71)
   const denied = mk({ 'locked.ts': 'export const pad = 1;\n' });
-  chmodSync(join(denied, 'locked.ts'), 0o000);
-  const stoodDown = resolveNames(denied, [GHOST]);
-  chmodSync(join(denied, 'locked.ts'), 0o644);
-  check('symbols: an unreadable file stands the code down and says which file',
+  const eacces = () => { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); };
+  const stoodDown = resolveNames(denied, [GHOST], {
+    readFile: (abs, enc) => (abs.endsWith('locked.ts') ? eacces() : readFileSync(abs, enc)),
+  });
+  check('symbols: a file that cannot be read stands the code down and says which file',
     stoodDown.found.has(GHOST) && stoodDown.unreadable.includes('locked.ts'),
     `found=${[...stoodDown.found]} unreadable=${JSON.stringify(stoodDown.unreadable)}`);
+  const statDenied = resolveNames(denied, [GHOST], {
+    lstat: (abs) => (abs.endsWith('locked.ts') ? eacces() : lstatSync(abs)),
+  });
+  check('symbols: a file that cannot be stat-ed stands the code down too',
+    statDenied.found.has(GHOST) && statDenied.unreadable.includes('locked.ts'),
+    `found=${[...statDenied.found]} unreadable=${JSON.stringify(statDenied.unreadable)}`);
+  const missing = resolveNames(denied, [GHOST], {
+    lstat: (abs) => { if (abs.endsWith('locked.ts')) throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }); return lstatSync(abs); },
+  });
+  check('symbols: an ENOENT from stat is absent, not a stand-down',
+    missing.unreadable.length === 0,
+    `unreadable=${JSON.stringify(missing.unreadable)} — a file that is not there holds no name`);
 
   // cm:guard `git ls-files -z` separates on NUL, so a path is taken byte for byte — trimming it
   //   renamed a file whose name begins with a space and the read then missed it (ISS-71)

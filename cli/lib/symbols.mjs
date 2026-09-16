@@ -184,10 +184,11 @@ export function walkAll(root, { readdir = readdirSync } = {}) {
  * holding a NUL byte, resolves on its raw tokens. Every one of those is a silence, never an
  * accusation. The walk stops the moment nothing is still wanted.
  *
- * `list` is the seam the corpus drives: an enumeration failure has to stand every candidate down, and
- * a case reaching that through the filesystem would depend on which user the suite runs as.
+ * `list`, `lstat` and `readFile` are the seams the corpus drives. Every failure here has to stand
+ * every candidate down, and a case reaching one through the filesystem would ask instead whether the
+ * account running the suite is stopped by mode 000 — which in a container, or as root, it is not.
  */
-export function resolveNames(root, names, { list = repoFiles } = {}) {
+export function resolveNames(root, names, { list = repoFiles, lstat = lstatSync, readFile = readFileSync } = {}) {
   const want = new Set(names);
   const found = new Set();
   if (!want.size) return { found, scanned: 0, unreadable: [] };
@@ -201,10 +202,10 @@ export function resolveNames(root, names, { list = repoFiles } = {}) {
     let st;
     // cm:guard lstat, never stat — stat FOLLOWS a symlink, so one dangling link anywhere in the tree
     //   threw here and stood the whole code down; a link is not a regular file and is simply skipped
-    try { st = lstatSync(join(root, rel)); } catch (e) { if (absent(e)) continue; unreadable.push(rel); continue; }
+    try { st = lstat(join(root, rel)); } catch (e) { if (absent(e)) continue; unreadable.push(rel); continue; }
     if (!st.isFile()) continue;
     let src;
-    try { src = readFileSync(join(root, rel), 'utf8'); } catch (e) { if (absent(e)) continue; unreadable.push(rel); continue; }
+    try { src = readFile(join(root, rel), 'utf8'); } catch (e) { if (absent(e)) continue; unreadable.push(rel); continue; }
     scanned++;
 
     const hits = [];
