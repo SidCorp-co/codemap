@@ -43,6 +43,9 @@ export const DEFAULT_SYMBOL_FORMS = ['camel'];
 // cm:why `$` is a word character on both sides, the same boundary `anchorPresent` draws for a CM106
 //   anchor, so `db.$connect` matches and a name with a `$` glued to it does not
 const TOKEN_RE = /[A-Za-z_$][A-Za-z0-9_$]*/g;
+// cm:guard iterate the matches, never `String.match` — that materialises EVERY token run in a file as
+//   one array before anything is filtered, and a generated asset can then abort the gate (ISS-71)
+const tokensOf = (text) => String(text).matchAll(TOKEN_RE);
 const BACKTICKED = /`([^`]+)`/g;
 const IDENT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
@@ -208,11 +211,11 @@ export function resolveNames(root, names, { list = repoFiles, lstat = lstatSync,
     try { src = readFile(join(root, rel), 'utf8'); } catch (e) { if (absent(e)) continue; unreadable.push(rel); continue; }
     scanned++;
 
-    const hits = [];
-    for (const tok of src.match(TOKEN_RE) ?? []) {
-      if (want.has(tok) && !found.has(tok)) hits.push(tok);
+    const hits = new Set();
+    for (const [tok] of tokensOf(src)) {
+      if (want.has(tok) && !found.has(tok)) hits.add(tok);
     }
-    if (!hits.length) continue;
+    if (!hits.size) continue;
 
     const prof = profileFor(rel);
     if (!prof || st.size > MASK_CAP || src.includes('\0')) {
@@ -221,7 +224,8 @@ export function resolveNames(root, names, { list = repoFiles, lstat = lstatSync,
     }
     let code;
     try { code = codeOnly(src, prof); } catch { code = src; }
-    const inCode = new Set(code.match(TOKEN_RE) ?? []);
+    const inCode = new Set();
+    for (const [tok] of tokensOf(code)) if (hits.has(tok)) inCode.add(tok);
     for (const h of hits) if (inCode.has(h)) found.add(h);
   }
   // cm:guard a file the resolver could not open could hold any of these names, so ALL of them resolve
