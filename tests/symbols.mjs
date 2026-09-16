@@ -221,6 +221,16 @@ function resolverCases(check, roots) {
     vendoredRes.found.has(GHOST) && vendoredRes.unreadable.length === 0,
     `found=${[...vendoredRes.found]} unreadable=${JSON.stringify(vendoredRes.unreadable)}`);
 
+  // cm:guard the opposite control for the case above: git lists a TRACKED dependency and the walk
+  //   consults no ignore file, so the fallback skips node_modules where the git path does not (ISS-71)
+  const bare = mk({ 'a.ts': 'export const pad = 1;\n' }, { git: false });
+  mkdirSync(join(bare, 'node_modules', 'dep'), { recursive: true });
+  writeFileSync(join(bare, 'node_modules', 'dep', 'def.ts'), `export function ${GHOST}() { return 1; }\n`);
+  const bareRes = resolveNames(bare, [GHOST]);
+  check('symbols: outside a git tree a dependency under node_modules does not answer for a name',
+    !bareRes.found.has(GHOST) && bareRes.unreadable.length === 0,
+    `found=${[...bareRes.found]} — the walk reads no ignore file, so it must not read a dependency tree either`);
+
   // cm:guard a directory the walk cannot LIST stands every candidate down, like an unreadable file —
   //   driven through the `list` seam because a 0o000 directory answers differently to root (ISS-71)
   // cm:guard the failure is INJECTED, not a mode-000 directory — whether the user running the suite

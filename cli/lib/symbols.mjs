@@ -170,7 +170,12 @@ export function walkAll(root, { readdir = readdirSync } = {}) {
       const abs = join(dir, e.name);
       const rel = relative(root, abs).split(sep).join('/');
       if (e.isDirectory()) {
-        if (e.name === '.git') continue;
+        // cm:guard node_modules is skipped HERE and not on the git path, which looks asymmetric and is
+        //   not: `--others --exclude-standard` honours .gitignore, so git already leaves an ordinary
+        //   node_modules out and lists only one a repo tracks deliberately. This walk consults no
+        //   ignore file at all, so without this the two enumerators disagree about the same tree, and
+        //   the fallback reads a dependency tree nobody wrote (ISS-71)
+        if (e.name === '.git' || e.name === 'node_modules') continue;
         rec(abs);
       } else if (e.isFile()) files.push(rel);
     }
