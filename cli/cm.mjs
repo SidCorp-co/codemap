@@ -799,7 +799,10 @@ switch (cmd) {
       ]);
       const alive = (f.blockKeys ?? []).some((b) => frozen.has(b));
       const keep = [...frozen].filter((k) => present.has(k) || (alive && countsAsComment(k)));
-      stale += [...frozen].filter((k) => countsAsComment(k) && !present.has(k) && !alive).length;
+      // cm:guard stale is what this run DROPPED, so it is derived from `keep` and never from a second
+      //   predicate — the two disagreed and a dropped CM108 key vanished with the line reading 0
+      const kept = new Set(keep);
+      stale += [...frozen].filter((k) => !k.startsWith('b:') && !kept.has(k)).length;
       // cm:why a prune must not silently erase a prior freeze's per-block counts (ISS-9) — only a
       //   key this run actually drops loses its blockCounts entry too
       const blocks = {};
@@ -990,9 +993,12 @@ switch (cmd) {
     saveBaseline(root, keys);
     // cm:why a block key is a reflow shadow, not a comment, so the count a human reads must exclude it
     const total = countComments(keys);
+    // cm:guard __codes is a declaration, not a file — counting it made every baseline line claim one
+    //   file more than the repo has, in a number the case study quotes as ground truth (ISS-71)
+    const filesFrozen = Object.keys(keys).filter((k) => !k.startsWith('__')).length;
     console.log(scoped
-      ? `codemap baseline: re-froze ${plural(touched.length, 'file')}; ${total} comments frozen across ${Object.keys(keys).length} files`
-      : `codemap baseline: froze ${total} pre-existing prose comments across ${Object.keys(keys).length} files`);
+      ? `codemap baseline: re-froze ${plural(touched.length, 'file')}; ${total} comments frozen across ${filesFrozen} files`
+      : `codemap baseline: froze ${total} pre-existing prose comments across ${filesFrozen} files`);
     if (scoped) console.log(dim('other files\' entries were left exactly as they were — this is a scoped re-freeze'));
     if (skipped) {
       console.log(yellow(`${skipped} comment(s) are NOT in HEAD and were not frozen — a comment written since the`
