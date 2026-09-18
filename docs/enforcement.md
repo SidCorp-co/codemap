@@ -9,7 +9,7 @@ which adoption tier a repository is on.
 The plugin is the guide and the edit-time context. The **repo** is the authority:
 
 ```bash
-cm install                # commit .forge/codemap/ — 14 files, 124K, zero dependencies
+cm install                # commit .forge/codemap/ — 26 files, 424K, zero dependencies
 cm install --git-hook     # + .git/hooks/pre-commit → cm verify --staged   (per-clone, not committed)
 ```
 
@@ -43,7 +43,8 @@ Both hooks run two passes over the staged tree, and the split is deliberate:
 | first | `structural` | reports `CM201`-`CM203`, of which one is what this pass exists for: `CM203`, a file whose block comment is never closed, so every `cm:` annotation below it has stopped being read — an annotation that stops reaching its reader without the gating tier being able to say so. No structural code can change the exit code, so this pass never blocks a commit. |
 | second | `grammar` | the gate: `CM001`-`CM013` and `CM204` fail the commit — a malformed annotation, but also a new TODO/FIXME (`CM010`), an over-long module header (`CM011`), unpaid prose debt (`CM013`), and an annotation running past the one line it may wrap onto so the lines past it never reach the channel (`CM204`, ISS-67). |
 
-The **referential** tier (`CM101`-`CM107` — an edge pointing at a path that is not there) is
+The **referential** tier (`CM101`-`CM108` — an edge pointing at a path that is not there, or an
+annotation naming an identifier that is in no code) is
 deliberately *not* run at commit time. Those diagnostics go red on a file the commit never touched,
 because the target moved somewhere else in the tree, and a commit gate that refuses on them blocks
 work that is not the committer's. CI runs the full `cm verify` and is where they are caught.

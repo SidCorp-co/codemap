@@ -11,6 +11,13 @@ export const TAGS = ['flow', 'edge', 'guard', 'hack', 'why'];
 // cm:why the whole prose family is baselined together, so `cm init` leaves a legacy repo green (§8)
 export const PROSE_CODES = new Set(['CM001', 'CM010', 'CM011']);
 
+// cm:guard the ONE answer to "is this frozen key a comment" — five call sites count the baseline and a
+//   count that disagrees with its neighbour asks for a payment the line beside it says was made (ISS-71)
+// cm:why a block key is one comment's reflow-invariant shadow and a sym: key is one CM108 site, so
+//   neither is a comment; the case study quotes the debt line as ground truth (ISS-9, ISS-21)
+const SHADOW_KEY = /^(?:b|sym):/;
+export const countsAsComment = (key) => !SHADOW_KEY.test(key);
+
 /**
  * Baseline key for one prose comment: a hash of its normalized text.
  *
@@ -70,6 +77,7 @@ const CODES = {
   CM105: { tier: 'referential', section: '§4', message: 'duplicate <flow>/<step> id', fix: 'one step id per flow — rename one of them' },
   CM106: { tier: 'referential', section: '§4', message: 'cm:edge #symbol is not in the target file', fix: 'the symbol was renamed or moved — update the anchor, or drop it and point the edge at the file' },
   CM107: { tier: 'referential', section: '§8', message: 'external is not declared in the registry', fix: 'run: cm new external <name> — an out-of-tree target is verifiable only as far as its name, so the name at least is closed vocabulary' },
+  CM108: { tier: 'referential', section: '§7.2', message: 'identifier named in the annotation body is in no code', fix: 'the name in backticks appears on no line of this repository outside a comment. Three things put it there and each has its own remedy: the symbol was RENAMED, so update the name; it was DELETED along with the claim, so delete the annotation; it was deleted while the claim survives, so replace the example with one that is still there — do not just drop the name, since the sentence around it is the coupling codemap exists to carry. If the name is real but outside this tree, or is a header, an error code, a table or a setting rather than a symbol here, say so with: cm:ignore CM108 — <why this name is not in the code>' },
   CM302: { tier: 'advisory', section: '§7.1', message: 'annotation text is prose the baseline already froze', fix: 'a tag is not a fix for CM001 — delete the sentence, or rewrite it to say the thing that is NOT derivable; if the words really are the invariant, reword them so they read as one' },
   CM303: { tier: 'advisory', section: '§7.1', message: 'annotation retells the incident it cites', fix: 'the rule and its consequence stay; the story goes. Name the incident — the ISS-, the date, the measured number — and stop there, because the changelog, the commit and the tracker already hold it and this line is loaded into an agent\'s context before every edit of the file (§11). If the past tense IS the invariant, say so with: cm:ignore CM303 — <why the history is the rule>' },
   CM301: { tier: 'advisory', section: '§7.1', message: 'declared coupling has no evidence at the other end', fix: 'check the other side is really wired — if the coupling is real but reference-free (HTTP, SQL, a cron), say so with: cm:ignore CM301 — <why there is no reference>' },

@@ -26,6 +26,7 @@ import { mutateCases } from './mutate-cases.mjs';
 import { gitEnvCases } from './git-env-cases.mjs';
 import { stripGitEnv } from './git-env.mjs';
 import { pushCases, pushSourceCases } from './push.mjs';
+import { symbolCases } from './symbols.mjs';
 import { pushAll } from '../cli/lib/push.mjs';
 
 // cm:guard the corpus neutralises its OWN environment, not merely each child's: tiers call cli/lib
@@ -205,7 +206,7 @@ for (const t of pushCases) {
 
 // cm:guard a suite that THROWS is a failing suite, never a dead run — installCases taking the
 //   process down lost every suite after it, with no count line to say so had happened (ISS-45)
-for (const suite of [pushSourceCases, gitEnvCases, wiringCases, profileCases, cliCases, installCases, helpCases, metricsCases, releaseTagCases, upgradeWorkflowCases, notifyConsumersCases, mcpCases, prCommentCases, proposeCases, newTemplateCases, massCases, mutateCases]) {
+for (const suite of [pushSourceCases, gitEnvCases, wiringCases, profileCases, cliCases, installCases, helpCases, metricsCases, releaseTagCases, upgradeWorkflowCases, notifyConsumersCases, mcpCases, prCommentCases, proposeCases, newTemplateCases, massCases, mutateCases, symbolCases]) {
   try {
     suite(PLUGIN_ROOT, check);
   } catch (err) {

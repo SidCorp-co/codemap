@@ -10,7 +10,7 @@
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { join, relative, resolve, dirname, normalize } from 'node:path';
 import {
-  findRoot, loadRegistry, saveRegistry, loadBaseline, saveBaseline,
+  findRoot, loadRegistry, saveRegistry, loadBaseline, saveBaseline, isReservedBaselineKey,
   selects, walk, changedSince, changedStaged, changedRanges, headBlob, dirtyFiles,
   vendoredVersion, compareVersions,
   toolVersion, SPEC_VERSION, DEFAULT_REGISTRY,
@@ -19,7 +19,8 @@ import { analyzeFile } from './lib/analyze.mjs';
 import { profileFor, leaderFor, dominantLeader } from './lib/languages.mjs';
 import { buildGraph, referentialDiags, structuralDiags, advisoryDiags, orderFlow, impact, mermaid, annText } from './lib/graph.mjs';
 import { loadImportGraph, loadCachedImportGraph } from './lib/archmap.mjs';
-import { canonical, CODE_TABLE, PROSE_CODES, EDGE_KINDS, baselineKey } from './lib/parse.mjs';
+import { canonical, CODE_TABLE, PROSE_CODES, EDGE_KINDS, baselineKey, countsAsComment } from './lib/parse.mjs';
+import { symbolDiags, formsError, unreadableRefusal } from './lib/symbols.mjs';
 import { applyFmt } from './lib/rewrite.mjs';
 import { candidateFiles } from './lib/candidates.mjs';
 import { proseCandidates, lockstepCandidates, contractCandidates } from './lib/propose.mjs';
@@ -196,6 +197,27 @@ function analyzeAll(reg, files, baseline = loadBaseline(root)) {
 }
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+// cm:guard a bad `symbolForms` is exit 2, never a rule this quietly narrows to nothing — a typo made
+//   it a green gate with CM108 off, this file's own recurring fail-open shape (ISS-71)
+// cm:guard a WRITING command refuses a scan that stood down — a stand-down reports no sites, which
+//   reads to baseline, init and prune exactly like a clean repo, and each would then write (ISS-71)
+function symbolsFor(reg, graph, { writes = false } = {}) {
+  const wrong = formsError(reg);
+  if (wrong) die(wrong, 'a registry value nothing validates is a rule that quietly stops running');
+  const symbols = symbolDiags({ root, reg, graph });
+  if (writes) {
+    const refusal = unreadableRefusal(symbols);
+    if (refusal) die(refusal, 'freezing or pruning on a scan that could not answer writes a verdict nobody read');
+  }
+  return symbols;
+}
+
+// cm:guard the ONE count of what a baseline holds, so `baseline`, `init`, `sweep` and `doctor` can
+//   never print four different totals for one file — a block key and a CM108 key are not comments
+const countComments = (byFile) => Object.entries(byFile)
+  .filter(([f]) => !isReservedBaselineKey(f))
+  .flatMap(([, v]) => [...v.keys]).filter(countsAsComment).length;
 
 /**
  * Normalize every CM009 in `perFile`, in place on disk. Shared by `cm fmt` and `cm verify --fix` so
@@ -454,6 +476,9 @@ switch (cmd) {
     // cm:guard the baseline is loaded BEFORE the analysis, not after — a frozen line is the evidence that
     //   the comment below an annotation is legacy prose rather than that annotation's wrap (ISS-22)
     const baseline = flags.has('--no-baseline') ? {} : loadBaseline(root);
+    // cm:guard --no-baseline means "show me everything the baseline hides", so it DECLARES the code
+    //   rather than silencing it — reading the empty object as "not adopted" inverted the flag (ISS-71)
+    const declaresSymbols = flags.has('--no-baseline') || Boolean(baseline.__codes?.has('CM108'));
     let perFile = analyzeAll(reg, files, baseline);
     const normalized = flags.has('--fix') ? fixCanonical(perFile) : [];
     if (normalized.length) perFile = analyzeAll(reg, files, baseline);
@@ -473,7 +498,7 @@ switch (cmd) {
       //   as this line reports it, so the accounting lives there and both read the one copy
       const still = debtOf(frozen, f);
       debt += still;
-      cleaned += [...frozen].filter((k) => !k.startsWith('b:')).length - still;
+      cleaned += [...frozen].filter(countsAsComment).length - still;
     }
 
     // cm:edge contract -> cli/lib/drain.mjs — CM013 rides the grammar tier from
@@ -502,6 +527,27 @@ switch (cmd) {
     if (tier !== 'all') diags = diags.filter((d) => d.tier === tier);
     if (tier === 'all' || tier === 'referential') pushAll(diags, scopeGraph(referentialDiags(g, { root, reg })));
     if (tier === 'all' || tier === 'structural') pushAll(diags, scopeGraph(structuralDiags(g)));
+
+    // cm:guard never on --changed-lines, which is the edit hook's own invocation — this walks the
+    //   repository, 2.1s on a 3061-file tree, and that is not a cost to pay per keystroke (ISS-71)
+    // cm:guard the token set stays WHOLE-TREE on a scoped run and only the REPORT is scoped, the same
+    //   split CM102 makes — narrowing it would refuse a PR for a symbol in a file it never opened
+    let symbolsScanned = 0;
+    let symbolSites = [];
+    let symbolsUnreadable = [];
+    if ((tier === 'all' || tier === 'referential') && !flags.has('--changed-lines')) {
+      const sym = symbolsFor(reg, g);
+      symbolsScanned = sym.scanned;
+      symbolSites = sym.sites;
+      symbolsUnreadable = sym.unreadable;
+      // cm:guard CM108 is raised only where the baseline DECLARES it — an adopted repo whose baseline
+      //   predates the code has no key for it, and gating it on upgrade teaches the upgrade to wait
+      if (declaresSymbols) {
+        pushAll(diags, scopeGraph(symbolSites
+          .filter((site) => !baseline[site.file]?.has(site.key))
+          .map((site) => site.diag)));
+      }
+    }
     // cm:edge contract -> cli/lib/archmap.mjs#loadCachedImportGraph — a bare tier=all run (the hook's,
     //   on every edit) may only ever read the cache; the live ~15s scan is for an explicit ask (ISS-14)
     const askedForAdvisory = tier === 'advisory' || (tier === 'all' && Boolean(reg.enforce?.advisory));
@@ -526,8 +572,10 @@ switch (cmd) {
     if (!scoped) {
       const seen = new Set(perFile.map((f) => f.relPath));
       for (const [rel, frozen] of Object.entries(baseline)) {
-        if (rel.startsWith('__') || seen.has(rel)) continue;
-        cleaned += frozen.size ?? frozen.length ?? 0;
+        if (isReservedBaselineKey(rel) || seen.has(rel)) continue;
+        // cm:guard the same predicate the debt line uses — counting a deleted file's keys RAW billed
+        //   its block shadows and its CM108 freezes as comments the author had cleaned (ISS-71)
+        cleaned += [...frozen].filter(countsAsComment).length;
       }
     }
 
@@ -542,6 +590,9 @@ switch (cmd) {
         baselineUnreadable: Boolean(baseline.__legacyFormat),
         normalized,
         legacy: { debt, cleaned, scoped },
+        // cm:why how many files the CM108 resolver opened, 0 where it did not run — the one way a
+        //   test can tell "the edit hook does not pay for this" from "its output was thrown away"
+        symbolsScanned,
         // cm:edge contract -> cli/hooks/hook-post-edit.mjs — the hook prints this count
         // to say why a pre-existing comment is not in the list it is blocking on
         outsideDiff,
@@ -593,6 +644,18 @@ switch (cmd) {
     if (vend && compareVersions(vend, toolVersion()) < 0) {
       console.log(yellow(`this repo's committed checker is ${vend}, but you just ran ${toolVersion()} — `
         + 'CI gates on the committed one, so this verdict is not the gate. Upgrade it: cm install --upgrade'));
+    }
+    // cm:guard a file the resolver could not open silences every CM108, so the loss is said OUT LOUD
+    //   here — a code that stood down quietly reads afterwards as a tree with nothing wrong in it
+    if (symbolsUnreadable.length) {
+      console.log(yellow(`${plural(symbolsUnreadable.length, 'file')} could not be read, so CM108 stood down:`
+        + ` any of them could hold the names it was asked about — ${symbolsUnreadable.slice(0, 3).join(', ')}`));
+    }
+    if (!declaresSymbols && symbolSites.length) {
+      const n = symbolSites.length;
+      console.log(yellow(`${plural(n, 'annotation')} ${n === 1 ? 'names' : 'name'} an identifier that is in no code`
+        + ' (CM108), and this baseline does not declare that code — so none is reported.'
+        + ' Freeze them and turn it on: cm baseline'));
     }
     if (baseline.__legacyFormat) console.log(yellow('baseline is in the pre-0.2 count format and was ignored — run: cm baseline'));
     if (reg._missing) console.log(dim('no .forge/codemap.json — grammar tier ran with defaults; flow names unvalidated (§8). Run: cm init'));
@@ -736,6 +799,7 @@ switch (cmd) {
     const files = fileList(reg);
     const perFile = analyzeAll(reg, files);
     const baseline = loadBaseline(root);
+    const symbols = symbolsFor(reg, buildGraph(perFile), { writes: flags.has('--prune-baseline') });
     const scoped = Boolean(flagValue('--since') || positional.length);
 
     const rows = [];
@@ -752,15 +816,34 @@ switch (cmd) {
       }
       // cm:guard prune reads presentKeys, so a key whose words are still in the file under a cm: tag is not
       //   dropped as stale — dropping it made legacy prose permanently unabsolvable (ISS-21, ISS-25)
-      const present = new Set(f.presentKeys ?? f.proseKeys ?? []);
+      const present = new Set([
+        ...(f.presentKeys ?? f.proseKeys ?? []),
+        // cm:guard a CM108 key is drained here or nowhere — presentKeys holds prose alone, so without
+        //   this every frozen site reads as stale and a prune quietly un-freezes the code (ISS-71)
+        ...symbols.sites.filter((site) => site.file === f.relPath).map((site) => site.key),
+      ]);
       const alive = (f.blockKeys ?? []).some((b) => frozen.has(b));
-      const keep = [...frozen].filter((k) => present.has(k) || (alive && !k.startsWith('b:')));
-      stale += [...frozen].filter((k) => !k.startsWith('b:') && !present.has(k) && !alive).length;
+      const keep = [...frozen].filter((k) => present.has(k) || (alive && countsAsComment(k)));
+      // cm:guard stale is what this run DROPPED, so it is derived from `keep` and never from a second
+      //   predicate — the two disagreed and a dropped CM108 key vanished with the line reading 0
+      const kept = new Set(keep);
+      stale += [...frozen].filter((k) => !k.startsWith('b:') && !kept.has(k)).length;
       // cm:why a prune must not silently erase a prior freeze's per-block counts (ISS-9) — only a
       //   key this run actually drops loses its blockCounts entry too
       const blocks = {};
       for (const k of keep) if (k.startsWith('b:') && frozen.blockCounts?.[k] != null) blocks[k] = frozen.blockCounts[k];
       if (keep.length) pruned[f.relPath] = { keys: keep, blocks };
+    }
+
+    // cm:guard a baselined file that is GONE loses every key it held, and `stale` is what the run
+    //   dropped — so a deleted file dropped its keys under a line reading 0 (ISS-71)
+    // cm:why whole-tree only, which is the only shape --prune-baseline runs in anyway
+    if (!scoped) {
+      const seen = new Set(perFile.map((f) => f.relPath));
+      for (const [rel, frozen] of Object.entries(baseline)) {
+        if (isReservedBaselineKey(rel) || seen.has(rel)) continue;
+        stale += [...frozen].filter((k) => !k.startsWith('b:')).length;
+      }
     }
 
     if (flags.has('--prune-baseline')) {
@@ -770,8 +853,11 @@ switch (cmd) {
         console.error(red('codemap: --prune-baseline needs a whole-tree run — drop the paths and --since.'));
         process.exit(2);
       }
+      // cm:guard the declaration rides through a prune — this command drops KEYS, and dropping the
+      //   code a repo has adopted would silently un-gate it with nothing said (ISS-71)
+      pruned.__codes = baseline.__codes ?? new Set();
       saveBaseline(root, pruned);
-  console.log(`codemap sweep: dropped ${stale} stale key(s); ${Object.values(pruned).flatMap((v) => v.keys).filter((k) => !k.startsWith('b:')).length} remain frozen`);
+      console.log(`codemap sweep: dropped ${stale} stale key(s); ${countComments(pruned)} remain frozen`);
       console.log(dim('bookkeeping only — no source file was touched, and no new comment was absolved'));
       break;
     }
@@ -885,15 +971,22 @@ switch (cmd) {
     // annotation is exactly the one whose legacy prose needs freezing
     const scoped = positional.length > 0;
     const perFile = analyzeAll(reg, scoped ? fileList(reg) : allFiles(reg));
+    // cm:edge contract -> cli/lib/symbols.mjs — the freeze and the report must see one set of sites,
+    //   or a repo adopts CM108 and is red on the next run for a site the freeze never saw (ISS-71)
+    const symbols = symbolsFor(reg, buildGraph(perFile), { writes: true });
+    const prior = loadBaseline(root);
 
     // cm:guard a scoped re-freeze MERGES — writing only the scanned files' keys would drop every other
     //   file's entry and absolve the whole repo at once, the same fail-open shape --prune-baseline refuses
     const keys = {};
     if (scoped) {
-      for (const [file, set] of Object.entries(loadBaseline(root))) {
-        if (!file.startsWith('__')) keys[file] = { keys: [...set], blocks: { ...(set.blockCounts ?? {}) } };
+      for (const [file, set] of Object.entries(prior)) {
+        if (!isReservedBaselineKey(file)) keys[file] = { keys: [...set], blocks: { ...(set.blockCounts ?? {}) } };
       }
     }
+    // cm:guard only a WHOLE-TREE run may DECLARE a code — a scoped run cannot see the sites in the
+    //   files it never scanned, so declaring from one gates the repo on legacy it could not freeze (ISS-71)
+    keys.__codes = new Set([...(prior.__codes ?? []), ...(scoped ? [] : ['CM108'])]);
     // cm:guard "pre-existing" must mean pre-existing, not "in the tree right now" — this command is the
     //   cheapest escape from a blocking CM001, and it was the one baseline command with no guard (ISS-26)
     const dirty = flags.has('--include-new') ? null : dirtyFiles(root);
@@ -919,7 +1012,13 @@ switch (cmd) {
       //   block would otherwise have the block vouch for it
       const mixed = new Set(prose.filter((d) => !old.has(baselineKey(d.text ?? d.message))).map((d) => d.blockKey));
       const survivingBlocks = (f.blockKeys ?? []).filter((b) => !mixed.has(b));
-      const all = [...old, ...survivingBlocks];
+      const allProse = [...old, ...survivingBlocks];
+      // cm:guard a CM108 site obeys the same HEAD rule the prose above it does — `cm baseline` is the
+      //   cheapest escape from a blocking code, and it may not absolve one written since the commit
+      const symKeys = symbols.sites.filter((site) => site.file === f.relPath && isOld(site.file, site.carrier))
+        .map((site) => site.key);
+      skipped += symbols.sites.filter((site) => site.file === f.relPath && !isOld(site.file, site.carrier)).length;
+      const all = [...allProse, ...new Set(symKeys)];
       if (all.length) {
         const blocks = {};
         for (const b of survivingBlocks) if (f.blockCounts?.[b] != null) blocks[b] = f.blockCounts[b];
@@ -929,10 +1028,13 @@ switch (cmd) {
     }
     saveBaseline(root, keys);
     // cm:why a block key is a reflow shadow, not a comment, so the count a human reads must exclude it
-    const total = Object.values(keys).flatMap((v) => v.keys).filter((k) => !k.startsWith('b:')).length;
+    const total = countComments(keys);
+    // cm:guard __codes is a declaration, not a file — counting it made every baseline line claim one
+    //   file more than the repo has, in a number the case study quotes as ground truth (ISS-71)
+    const filesFrozen = Object.keys(keys).filter((k) => !isReservedBaselineKey(k)).length;
     console.log(scoped
-      ? `codemap baseline: re-froze ${plural(touched.length, 'file')}; ${total} comments frozen across ${Object.keys(keys).length} files`
-      : `codemap baseline: froze ${total} pre-existing prose comments across ${Object.keys(keys).length} files`);
+      ? `codemap baseline: re-froze ${plural(touched.length, 'file')}; ${total} comments frozen across ${filesFrozen} files`
+      : `codemap baseline: froze ${total} pre-existing prose comments across ${filesFrozen} files`);
     if (scoped) console.log(dim('other files\' entries were left exactly as they were — this is a scoped re-freeze'));
     if (skipped) {
       console.log(yellow(`${skipped} comment(s) are NOT in HEAD and were not frozen — a comment written since the`
@@ -948,17 +1050,24 @@ switch (cmd) {
     //   the graph is what this tool is for, so init gives that first and prose policy is opted into (--prose)
     const fresh = { ...DEFAULT_REGISTRY, enforce: { ...DEFAULT_REGISTRY.enforce, grammar: flags.has('--prose') } };
     const reg = existsSync(join(root, '.forge', 'codemap.json')) ? loadOrDie() : fresh;
-    saveRegistry(root, reg);
     // cm:why init freezes from scratch, so it must not consult a baseline that may already be there — a
     //   re-init against its own output would treat a frozen line as prose it had never seen
     const perFile = analyzeAll(reg, allFiles(reg), {});
+    // cm:guard init takes the tree AS IT STANDS, with no HEAD rule — a repo being onboarded may have
+    //   no commit to measure against, and the point of the command is that the next verify is green
+    // cm:guard every refusal comes BEFORE the first write — a registry saved ahead of the scan left a
+    //   half-onboarded repo behind whenever the scan went on to refuse (ISS-71)
+    const symbols = symbolsFor(reg, buildGraph(perFile), { writes: true });
+    saveRegistry(root, reg);
     const keys = {};
     for (const f of perFile) {
-      const all = [...(f.proseKeys ?? []), ...(f.blockKeys ?? [])];
+      const symKeys = symbols.sites.filter((site) => site.file === f.relPath).map((site) => site.key);
+      const all = [...(f.proseKeys ?? []), ...(f.blockKeys ?? []), ...new Set(symKeys)];
       if (all.length) keys[f.relPath] = { keys: all, blocks: { ...(f.blockCounts ?? {}) } };
     }
+    keys.__codes = new Set(['CM108']);
     saveBaseline(root, keys);
-    const total = Object.values(keys).flatMap((v) => v.keys).filter((k) => !k.startsWith('b:')).length;
+    const total = countComments(keys);
     console.log(`codemap ${SPEC_VERSION} initialised at ${root}`);
     console.log(`  .forge/codemap.json`);
     console.log(`  .forge/codemap-baseline.json  ${dim(`${total} legacy comments frozen by content`)}`);
@@ -1213,8 +1322,8 @@ switch (cmd) {
     const reg = loadRegistry(root);
     const vend = vendoredVersion(root);
     const bl = loadBaseline(root);
-    const frozen = Object.entries(bl).filter(([k]) => !k.startsWith('__'));
-    const keys = frozen.reduce((a, [, v]) => a + [...v].filter((k) => !k.startsWith('b:')).length, 0);
+    const frozen = Object.entries(bl).filter(([k]) => !isReservedBaselineKey(k));
+    const keys = frozen.reduce((a, [, v]) => a + [...v].filter(countsAsComment).length, 0);
     const row = (k, v) => console.log(`  ${k.padEnd(22)} ${v}`);
     console.log(bold(`codemap doctor · ${root}`));
     row('tool running now', toolVersion());

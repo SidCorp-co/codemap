@@ -44,6 +44,7 @@
         "grammar": { "type": "boolean", "default": true },
         "advisory": { "type": "boolean", "default": false, "description": "Run the advisory tier (CM301) in a --tier all run. Warning-only and never gating; off by default because its false-positive rate is unmeasured (SPEC.md §7.1)." },
         "drain": { "type": "boolean", "default": true, "description": "Raise CM013 on a run with a base revision: a file whose code changed while none of its frozen prose debt fell (SPEC.md §8). On by default — it is the only path by which the baseline drains from work that was happening anyway." },
+        "symbolForms": { "type": "array", "items": { "type": "string", "enum": ["camel", "const", "snake"] }, "default": ["camel"], "description": "Which shapes of backticked token in a cm:guard/cm:why body CM108 holds to existing (SPEC.md §7.2). camel is lowerCamelCase and the only one on by default; const is SCREAMING_SNAKE with an underscore and snake is lower_snake with one, and both are off because a platform error code and a database table have those exact shapes." },
         "include": { "type": "array", "items": { "type": "string" }, "default": ["**"] },
         "exclude": { "type": "array", "items": { "type": "string" } },
         "headerMaxLines": { "type": "integer", "minimum": 1, "default": 20 }
