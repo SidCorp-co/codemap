@@ -240,7 +240,9 @@ export function contractCandidates(root, files) {
   const out = [];
   for (const [lit, entry] of byLiteral) {
     if (entry.size !== 2) continue;
-    const [a, b] = [...entry.values()];
+    // cm:guard order the pair here, never at the caller: files[0] is a SORT KEY and not an anchor —
+    //   which side owns the annotation is emit-versus-parse, which no property of a literal reveals (ISS-54)
+    const [a, b] = [...entry.values()].sort((p, q) => p.file.localeCompare(q.file));
     if (a.eco === b.eco) continue;
     out.push({ source: 'contract', literal: lit, files: [a, b] });
   }
