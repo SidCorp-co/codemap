@@ -109,6 +109,9 @@ const TS = {
   docBlockOpens: ['/**'],
   strDelims: ['"', "'", '`'],
   multiline: ['`'],
+  // cm:edge contract -> cli/lib/scan.mjs — `regexLiteral` turns on that branch, whose vocabulary is
+  //   ECMAScript's; the backtick is the only delimiter here also in `multiline`, so unlexed it desyncs to EOF (ISS-69)
+  regexLiteral: true,
   docPolicy: 'banned',
   // A /** */ block is documentation by form: the IDE surfaces it on hover, which is a consumer
   // with an immediate payoff (principle 1). Narration in a function body is the spam this exists
@@ -219,8 +222,8 @@ const P = {
     //   there and nowhere else, as a RegExp over the single character before the leader (ISS-61)
     // cm:why `${f#src/}` and `a#b` are one word, never a comment — shell ends a word at whitespace
     //   or a metacharacter, and reading the `#` as a leader masked the rest of the line (ISS-61)
-    // cm:guard the backtick stays written \x60 — regex literals are not lexed here, so a LITERAL one
-    //   opens a template string that swallows every annotation below it in this file (ISS-61)
+    // cm:why \x60 rather than a literal backtick is ISS-61's, when an unlexed regex here opened a
+    //   template string that swallowed every annotation below it; scan.mjs lexes this literal since ISS-69
     leaderAfter: /[\s;|&()<>\x60]/,
     docLineLeaders: [],
     blockOpens: [],
