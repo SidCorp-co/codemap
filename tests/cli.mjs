@@ -622,12 +622,43 @@ function advisoryCases(pluginRoot, check, roots) {
     !/CM301/.test(silenced.out),
     `the existing escape hatch must work here:\n${silenced.out}`);
 
+  // cm:guard drop the cm:ignore before judging the wiring — left in place it silences CM301 whatever
+  //   the evidence says, and this check passed against an engine.ts naming nothing at all (ISS-60)
+  writeFileSync(join(root, 'caller.ts'),
+    '// cm:edge contract -> engine.ts#unrelated — the engine must consume this\n'
+    + 'export function listThings() { return []; }\n');
   writeFileSync(join(root, 'engine.ts'),
     'import { listThings } from "./caller";\nexport function unrelated() { return listThings(); }\n');
   const wired = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
   check('cli: once the other side names this file, the warning goes away',
     !/CM301/.test(wired.out),
     `evidence at either end is enough:\n${wired.out}`);
+
+  // cm:guard evidence is read through the file's PROFILE, never a leader list of this check's own —
+  //   one anchored at ^\s* strips whole-line comments only, so each shape below counted as code (ISS-60)
+  writeFileSync(join(root, 'caller.ts'),
+    '// cm:edge contract -> engine.ts#unrelated — the engine must consume this\n'
+    + 'export function listThings() { return []; }\n');
+  const commentShapes = [
+    ['a trailing comment', 'export function unrelated() { return 1; } // caller is the other half\n'],
+    ['an inline block comment', 'export function unrelated() { return /* caller */ 1; }\n'],
+    ['a block body whose line has no leading star',
+      '/*\n   caller is the other half\n*/\nexport function unrelated() { return 1; }\n'],
+  ];
+  for (const [shape, body] of commentShapes) {
+    writeFileSync(join(root, 'engine.ts'), body);
+    const out = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
+    check(`cli: ${shape} is not evidence — CM301 still fires (ISS-60)`,
+      /CM301/.test(out.out) && /caller\.ts:1/.test(out.out),
+      `a stem named only in ${shape} must not wire the pair:\n${out.out}`);
+  }
+
+  writeFileSync(join(root, 'engine.ts'),
+    'import { listThings } from "./caller";\nexport function unrelated() { return listThings(); }\n');
+  const stillWired = cm(pluginRoot, root, 'verify', '--tier', 'advisory');
+  check('cli: masking comments did not blind the check to real code (ISS-60)',
+    !/CM301/.test(stillWired.out),
+    `the control for the three shapes above — real evidence must still count:\n${stillWired.out}`);
 
   // cm:guard measured on two production repos: 26 of 36 hits in one were cross-language pairs, where a
   //   reference CANNOT exist — firing there is a bug in the check, not a threshold to tune (§7.1)
