@@ -38,6 +38,48 @@ export const MUTATIONS = [
     find: 'if (block && flushOpen) {',
     replace: 'if (false) {',
   },
+  {
+    id: 'unaccounted-report',
+    file: 'cli/lib/mass.mjs',
+    mechanism: 'fileMass reporting a file whose block comment is never closed as unaccounted for',
+    find: 'out.unaccounted = unaccountedFor(src, scan.unterminated);',
+    replace: '',
+  },
+  {
+    id: 'unaccounted-verdict',
+    file: 'cli/lib/mass.mjs',
+    mechanism: "the report taking its verdict from analyze's CM203 rather than from the scanner's signal alone",
+    find: "if (scan.unterminated && (res.diags ?? []).some((d) => d.code === 'CM203')) {",
+    replace: 'if (scan.unterminated) {',
+  },
+  {
+    id: 'unaccounted-verdict-any',
+    file: 'cli/lib/mass.mjs',
+    mechanism: "the verdict being CM203 SPECIFICALLY, not merely that analyze reported something about the file",
+    find: "(res.diags ?? []).some((d) => d.code === 'CM203')",
+    replace: '(res.diags ?? []).length > 0',
+  },
+  {
+    id: 'unaccounted-size',
+    file: 'cli/lib/mass.mjs',
+    mechanism: 'the size of the unread region being COMPUTED rather than any constant standing in for it',
+    find: 'return { line: unterminated.line, leader: unterminated.leader, chars: src.length - before - unterminated.col };',
+    replace: 'return { line: unterminated.line, leader: unterminated.leader, chars: 1 };',
+  },
+  {
+    id: 'unaccounted-column',
+    file: 'cli/lib/mass.mjs',
+    mechanism: "the region running from the opener's COLUMN, not from the start of the opener's line",
+    find: 'chars: src.length - before - unterminated.col };',
+    replace: 'chars: src.length - before };',
+  },
+  {
+    id: 'unaccounted-list',
+    file: 'cli/lib/mass.mjs',
+    mechanism: 'massOf collecting the unaccounted rows, which is what the verb and --json report',
+    find: 'const unaccounted = rows.filter((r) => r.unaccounted)',
+    replace: 'const unaccounted = [].filter((r) => r.unaccounted)',
+  },
 ];
 
 // cm:guard the corpus a copy runs carries this marker and main refuses when it is set: without it a
