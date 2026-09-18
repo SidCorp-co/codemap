@@ -123,6 +123,77 @@ export const analyzeCases = [
       + ' because releasing between rows lets a second dispatcher claim the tail'],
   },
   {
+    // cm:edge lockstep -> cli/lib/analyze.mjs — the exempt branch's run-through is what this pins, and
+    //   a directive that ends the run again has to fail a case rather than only contradict a comment
+    name: 'ts: a lint directive carries the overflow run through it and is not itself billed',
+    file: 'wrap-exempt-run.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      '// eslint-disable-next-line @typescript-eslint/no-explicit-any',
+      '//   and this consequence clause never reaches the channel',
+      'const r = 1;',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM204'],
+    annotations: ['guard'],
+    texts: ['the batch is claimed whole, never row by row'
+      + ' because releasing between rows lets a second dispatcher claim the tail'],
+  },
+  {
+    // cm:guard a directive in the WRAP slot must not hand that slot to the line below it — adopting one
+    //   would change what renders, and a truncation diagnostic may only ever add diagnostics (ISS-67)
+    name: 'ts: a lint directive in the wrap slot leaves the annotation unwrapped',
+    file: 'wrap-exempt-slot.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '// eslint-disable-next-line @typescript-eslint/no-explicit-any',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      '//   and this consequence clause never reaches the channel',
+      'const r = 1;',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM204'],
+    annotations: ['guard'],
+    texts: ['the batch is claimed whole, never row by row'],
+  },
+  {
+    // cm:guard a parsed cm:ignore never reaches the prof.exempt branch, so this pins the OTHER call site
+    //   of the run-carry — the checker's own remedy hid the lines beneath it (ISS-67)
+    name: 'ts: a cm:ignore inside the run carries it through and is not billed',
+    file: 'wrap-ignore-run.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      '// cm:ignore CM001 — a generated compatibility note',
+      '//   and this consequence clause never reaches the channel',
+      'const r = 1;',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM204'],
+    annotations: ['guard'],
+    texts: ['the batch is claimed whole, never row by row'
+      + ' because releasing between rows lets a second dispatcher claim the tail'],
+  },
+  {
+    // cm:guard the exempt classes share one call site, so a case per class is what keeps a narrowing of
+    //   COMMON_EXEMPT from silently un-carrying the run for the others (ISS-67)
+    name: 'ts: a licence header inside the run carries it through and is not billed',
+    file: 'wrap-licence-run.ts',
+    src: [
+      '// cm:guard the batch is claimed whole, never row by row',
+      '//   because releasing between rows lets a second dispatcher claim the tail',
+      '// SPDX-License-Identifier: MIT',
+      '//   and this consequence clause never reaches the channel',
+      'const r = 1;',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM204'],
+    annotations: ['guard'],
+    texts: ['the batch is claimed whole, never row by row'
+      + ' because releasing between rows lets a second dispatcher claim the tail'],
+  },
+  {
     name: 'ts: an annotation wrapping onto exactly one line draws no CM204',
     file: 'wrap-fits.ts',
     src: [

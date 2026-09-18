@@ -36,6 +36,20 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
   const annAt = new Map();
   const chainAt = new Map();
   const overflow = new Map();
+  const overflowEnd = new Map();
+
+  // cm:guard every branch that `continue`s over a line INSIDE a run must call this, or the run ends
+  //   there and CM204 goes silent over every line below it (ISS-67)
+  const carryRun = (c) => {
+    if (c.firstOnLine === false) return;
+    const held = chainAt.get(c.line - 1);
+    // cm:guard a directive in the WRAP slot does not pass that slot on — the annotation renders with no
+    //   wrap, so the line below it is a lost line rather than the wrap its author wrote (ISS-67)
+    const ann = held?.leader === c.leader
+      ? held.ann
+      : (annLines.get(c.line - 1) === c.leader ? annAt.get(c.line - 1) : undefined);
+    if (ann) chainAt.set(c.line, { ann, leader: c.leader });
+  };
 
   // cm:guard never gated on `grammar` — a repo that took the graph without the comment discipline still
   //   needs its annotations READ, so losing them silently is not a prose-discipline matter (ISS-31)
@@ -83,6 +97,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
         const set = ignores.get(c.line) ?? new Set();
         set.add(parsed.ignore.code);
         ignores.set(c.line, set);
+        carryRun(c);
         continue;
       }
       // cm:guard register the LINE before the parse verdict — §4 makes the comment below a cm: line its
@@ -107,7 +122,12 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
       continue;
     }
 
-    if (prof.exempt.some((re) => re.test(text))) continue;
+    // cm:guard a directive carries the run THROUGH it and is never billed as a lost line (ISS-67) — it
+    //   is not the author's prose, but ending the run here hid every line under it from CM204
+    if (prof.exempt.some((re) => re.test(text))) {
+      carryRun(c);
+      continue;
+    }
 
     if (grammar && hasTodo(text)) {
       raw.push({ ...diag('CM010', relPath, c.line, trunc(text)), text });
@@ -143,6 +163,7 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
       : undefined;
     if (chain && chain.leader === c.leader) {
       overflow.set(chain.ann, (overflow.get(chain.ann) ?? 0) + 1);
+      overflowEnd.set(chain.ann, c.line);
       chainAt.set(c.line, chain);
     }
 
@@ -157,10 +178,14 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
     }
   }
 
-  // cm:guard never gated on `grammar` — the lines past a wrap are dropped from the channel whatever a
-  //   repo's prose discipline, so this reports the loss where CM001 reports the prose (ISS-33)
+  // cm:guard raised outside the `grammar` switch though CM204's TIER is grammar (ISS-67) — the switch
+  //   governs the prose family alone, and the lines past a wrap are dropped whatever a repo's discipline
+  // cm:edge contract -> cli/cm.mjs — inScope intersects [line, endLine], so a --staged run whose diff
+  //   touches only the dropped line still reports: the annotation's own line is older than the diff
   for (const [ann, lost] of overflow) {
-    raw.push(diag('CM204', relPath, ann.line, `${lost} line${lost === 1 ? ' is' : 's are'} not loaded`));
+    const d = diag('CM204', relPath, ann.line, `${lost} line${lost === 1 ? ' is' : 's are'} not loaded`);
+    d.endLine = overflowEnd.get(ann);
+    raw.push(d);
   }
 
   // cm:guard a silenced prose diagnostic is KEPT here, not just dropped — it is the only record of which
