@@ -76,7 +76,7 @@ Classified structurally, not by judgement: for each block, the next non-blank li
 | Position of the block | Blocks | Lines | Reading |
 |---|---|---|---|
 | Above an **exported top-level** declaration | **0** | **0** | ✅ `required-on-exported` is exact — no godoc touched |
-| Struct field / interface method | 3 036 | 5 925 | ⚠️ godoc renders these too — see [Known gaps](#known-gaps) |
+| Struct field / interface method | 3 036 | 5 925 | ✅ **fixed in 0.7.0** — exempt like the type itself, see [Known gaps](#known-gaps) |
 | Godoc form above an **unexported** declaration | 1 486 | 4 347 | ⚠️ idiomatic Go, flagged by policy |
 | Other prose above an unexported declaration | 1 245 | 3 607 | mixed |
 | **Narration inside a function body** | 1 628 | 2 833 | 🎯 the spam the framework exists to kill |
@@ -229,7 +229,7 @@ Measured while producing this document. Each inflates the flagged count above wi
 
 | Gap | Measured impact | Status |
 |---|---|---|
-| Go struct fields and interface methods are not exempt under `required-on-exported`, though godoc renders their docs | 3 036 blocks · 5 925 lines (Repo A) | open — ISS-778 |
+| Go struct fields and interface methods are not exempt under `required-on-exported`, though godoc renders their docs | 3 036 blocks · 5 925 lines (Repo A) | **fixed in 0.7.0** |
 | A module header after a `"use client"` / `"use strict"` directive prologue is not recognised as a header (§4.1 allowed only a shebang before it) | 23 blocks (Repo A), 13 (Repo B) | **fixed in 0.4.1** |
 | A module header not followed by a blank line is flagged in full — correct per §4.1, but the fix is one blank line and the diagnostic did not say so | 38 blocks · 97 lines (Repo A) | **fixed in 0.4.1** |
 | `cm:edge` targets must be repo-relative paths that exist (§4, `CM005`/`CM102`), so a coupling to a system outside the tree cannot be declared at all | 58 flagged lines (Repo A) | **fixed in 0.8.0** |
@@ -246,8 +246,10 @@ directive on the file's very first line, while the real rule also clears a heade
 prologue with blank lines around it. Everything else in this document is unaffected: the fix changes
 only which comments are *reported*, and no repo that verified clean now fails.
 
-The Go gap is the largest single bucket in the largest repo measured and remains open — it is a
-verdict change across 5 925 lines, which is a spec revision (§6) rather than a patch.
+The Go gap was the largest single bucket in the largest repo measured. §6 now exempts a capitalised
+member of an exported `struct`/`interface`/group the same way it exempts the type itself — a verdict
+change across 5 925 lines, shipped as a spec revision rather than a patch, and no repo that verified
+clean before it started failing because of it.
 
 The fourth was the most interesting, because the constraint is deliberate. Repo A is a Go rewrite
 of a PHP application, and 354 comments across its Go source pin behaviour to the original —
