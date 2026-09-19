@@ -49,12 +49,16 @@ function schemeEndsAt(line, j) {
 //   alone: `"https://x";// cm:guard kept` keeps its annotation only because the quote ends the URL
 const URL_ENDS = /["'<>\\^`{|}\s]/;
 
+// cm:guard `*/` ends it too, and is the one close that set cannot express: without it
+//   `/*https://x*/// cm:guard kept` reads the leader as URL text and loses the annotation
+const endsUrlAt = (line, k) => URL_ENDS.test(line[k - 1]) || (line[k - 1] === '/' && line[k - 2] === '*');
+
 // cm:why anchoring at the nearest whitespace missed every URL a non-space abuts — `<p>`, `(`, `=` —
 //   so its own `//` read as a leader and swallowed the annotation behind it (ISS-70)
 /** Is j inside a bare URL that started earlier on this line? A character no URL carries ends it. */
 function insideBareUrl(line, j) {
   let k = j;
-  while (k > 0 && !URL_ENDS.test(line[k - 1])) k--;
+  while (k > 0 && !endsUrlAt(line, k)) k--;
   for (let q = k; q < j; q++) if (line.startsWith('//', q) && schemeEndsAt(line, q)) return true;
   return false;
 }

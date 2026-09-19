@@ -363,14 +363,15 @@ export const analyzeCases = [
     annotations: ['guard', 'why', 'guard'],
   },
   {
-    name: 'ts: a quoted URL ends at its quote, so a leader abutting the quote is still a leader',
+    name: 'ts: a URL ends at the quote or block close abutting a leader, which is still a leader',
     file: 'b6.ts',
     src: [
       'const u = "https://example.com";// cm:guard the closing quote ends the URL',
       "const v = 'https://example.com';// cm:why a single quote ends it too",
+      'const w = 1; /*https://example.com*/// cm:guard a block close ends it too',
     ].join('\n'),
-    codes: [],
-    annotations: ['guard', 'why'],
+    codes: ['CM001'],
+    annotations: ['guard', 'why', 'guard'],
   },
   {
     name: 'ts: a colon that is not a known scheme still opens a comment',
