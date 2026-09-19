@@ -1338,6 +1338,86 @@ export const analyzeCases = [
     annotations: [],
   },
   {
+    // cm:guard the delimiter is the LAST thing on its line, so the state that swallows the file starts
+    //   where a reader sees nothing wrong — the shape ISS-64 measured, and the one CM203 never covered
+    name: 'ts: a multi-line string that never closes is reported at its delimiter (\u00a76)',
+    file: 'unterminated-string.ts',
+    src: [
+      'const a = 1;',
+      'const s = `open, and never closed',
+      '// cm:guard this must never be lost',
+      'const c = 3;',
+    ].join('\n'),
+    codes: ['CM205'],
+    annotations: [],
+  },
+  {
+    // cm:guard only a delimiter the profile calls MULTI-LINE carries state past its own line, so the
+    //   stray apostrophe prose is full of stays code and the annotation under it is still read (ISS-64)
+    name: 'ts: a single-line delimiter left open is not CM205, and what is below it is still read',
+    file: 'stray-quote.ts',
+    src: [
+      "const a = 'oops;",
+      '// cm:guard this is read',
+      'const c = 3;',
+    ].join('\n'),
+    codes: [],
+    annotations: ['guard'],
+  },
+  {
+    // cm:edge lockstep -> cli/lib/analyze.mjs — the ungating this pins is stated there as a guard, and
+    //   a change that gates CM205 on `grammar` has to fail a case, not merely contradict a comment
+    name: 'ts: CM205 survives grammar: false, because losing annotations is not a prose matter',
+    file: 'unterminated-string-nogrammar.ts',
+    src: [
+      '// narration that grammar: false spares',
+      'const s = `open, and never closed',
+      '// cm:guard this must never be lost',
+      'const c = 3;',
+    ].join('\n'),
+    reg: { enforce: { grammar: false } },
+    codes: ['CM205'],
+    annotations: [],
+  },
+  {
+    // cm:guard CM205's fix line offers this escape, so it has to work from the position the convention
+    //   puts it in: a heredoc or raw-string delimiter has nothing to close, and \u00a76 models neither (ISS-64)
+    name: 'ts: cm:ignore CM205 above the delimiter silences it',
+    file: 'unterminated-string-ignored.ts',
+    src: [
+      'const a = 1;',
+      '// cm:ignore CM205 \u2014 the backtick is heredoc content, not a string',
+      'const s = `open, and never closed',
+      'const b = 2;',
+    ].join('\n'),
+    codes: [],
+    annotations: [],
+  },
+  {
+    // cm:guard the py form is a case of its own, not a variation \u2014 a profile whose multi-line delimiter
+    //   is neither ECMAScript's nor one character is what makes this a property of the discard (ISS-64)
+    name: 'py: a triple-quoted string that never closes is reported the same way as a backtick',
+    file: 'unterminated-string.py',
+    src: [
+      'x = """open, and never closed',
+      '# cm:guard this must never be lost',
+      'y = 1',
+    ].join('\n'),
+    codes: ['CM205'],
+    annotations: [],
+  },
+  {
+    name: 'ts: a multi-line string that closes reports no CM205, and what is below it is read',
+    file: 'terminated-string.ts',
+    src: [
+      'const s = `hello`;',
+      '// cm:guard this is read',
+      'const c = 3;',
+    ].join('\n'),
+    codes: [],
+    annotations: ['guard'],
+  },
+  {
     name: 'ts: a block comment that closes reports no CM203, and what is below it is read',
     file: 'terminated.ts',
     src: [

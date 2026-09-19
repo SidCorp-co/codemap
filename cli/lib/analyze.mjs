@@ -53,7 +53,12 @@ export function analyzeFile({ relPath, src, reg, frozen }) {
 
   // cm:guard never gated on `grammar` — a repo that took the graph without the comment discipline still
   //   needs its annotations READ, so losing them silently is not a prose-discipline matter (ISS-31)
-  if (unterminated) raw.push(diag('CM203', relPath, unterminated.line, unterminated.leader));
+  // cm:guard the CODE follows the scan's `kind` and is never re-derived from the leader — a second
+  //   reading of which construct swallowed the file is the divergence ISS-59 and ISS-62 closed (ISS-64)
+  if (unterminated) {
+    const code = unterminated.kind === 'string' ? 'CM205' : 'CM203';
+    raw.push(diag(code, relPath, unterminated.line, unterminated.leader));
+  }
 
   const header = moduleHeader(lines, comments, codeLines, prof);
   const headerMax = reg.enforce?.headerMaxLines ?? 20;

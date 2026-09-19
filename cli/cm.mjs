@@ -837,17 +837,20 @@ switch (cmd) {
     //   the figure above it, and a reader quoting the total as ground truth has to see it there (§11)
     if (m.unaccounted.length) {
       console.log(bold('unaccounted for') + dim('  (not in any channel above)'));
-      console.log(`  ${plural(m.unaccounted.length, 'file')} open${m.unaccounted.length === 1 ? 's' : ''} a block comment that is`
-        + ' never closed, so the scanner discards it and every character below the opener is billed to no channel');
+      // cm:guard the heading names BOTH constructs because the list carries both — worded as a block
+      //   alone it told the author of a swallowed template literal to close a comment there is none of (ISS-64)
+      console.log(`  ${plural(m.unaccounted.length, 'file')} open${m.unaccounted.length === 1 ? 's' : ''} a block comment or a multi-line`
+        + ' string that is never closed, so the scanner discards it and every character below the opener is billed to no channel');
       for (const u of m.unaccounted) {
         // cm:why characters and not the kb() the channels use — a region is usually small enough to
         //   round to "0.0 KB", which reads as nothing when the point is that it went unmeasured
-        console.log(`  ${bold(`${u.relPath}:${u.line}`)} ${dim(`${u.leader} unclosed — ${plural(u.chars, 'character')} unread`)}`);
+        const what = u.kind === 'string' ? 'unterminated string' : 'unclosed';
+        console.log(`  ${bold(`${u.relPath}:${u.line}`)} ${dim(`${u.leader} ${what} — ${plural(u.chars, 'character')} unread`)}`);
       }
-      // cm:why "close the block" is sound advice for every file listed BECAUSE the list is keyed on a live
-      //   CM203 — a file whose opener the author declared not a comment is silenced in both verbs (ISS-34)
-      console.log(dim('  the text stays unread on purpose (§6) — close the block and the characters return to their channels'));
-      console.log(dim('  if the opener is not a comment at all, CM203\'s fix line carries the directive that silences both verbs (cm codes CM203)'));
+      // cm:why "close it" is sound advice for every file listed BECAUSE the list is keyed on that file's own
+      //   live code — an opener the author declared neither comment nor string is silenced in both verbs (ISS-34)
+      console.log(dim('  the text stays unread on purpose (§6) — close the opener and the characters return to their channels'));
+      console.log(dim('  if the opener is neither a comment nor a string, the fix line of its own code carries the directive that silences both verbs (cm codes CM203, cm codes CM205)'));
       console.log('');
     }
 

@@ -94,14 +94,20 @@ export function narrativeMass(perFile) {
 // cm:edge contract -> cli/lib/scan.mjs — `line` is 1-based and `col` is a 0-based offset into that
 //   line, which is what makes the opener's own delimiter part of the region rather than before it
 /**
- * The region one discarded block swallowed: from its opener to end of file.
+ * The region one discarded opener swallowed: from that opener to end of file.
  *
  * A size, never a channel. How much of it is comment is precisely what the discard makes unknowable,
- * so this says how much of the tree went unclassified and stops there.
+ * so this says how much of the tree went unclassified and stops there. `kind` is the scan's own, and
+ * says which construct swallowed the region — a block comment or a multi-line string.
  */
 const unaccountedFor = (src, unterminated) => {
   const before = src.split('\n').slice(0, unterminated.line - 1).reduce((n, l) => n + l.length + 1, 0);
-  return { line: unterminated.line, leader: unterminated.leader, chars: src.length - before - unterminated.col };
+  return {
+    line: unterminated.line,
+    leader: unterminated.leader,
+    kind: unterminated.kind,
+    chars: src.length - before - unterminated.col,
+  };
 };
 
 /**
@@ -170,11 +176,14 @@ export function fileMass({ relPath, res, frozen }) {
   const scan = scanComments(src, prof);
   // cm:guard every comment the scan RETURNED and carrying text is billed to exactly ONE channel, so the
   //   channels plus the directives below reconcile to that text — a channel is an attribution, never a filter
-  // cm:guard a block left open at EOF is discarded whole by scan.mjs, so its opener and the text under it
-  //   reach NO channel — report that file unaccounted, never billed: §6 leaves the region unread (ISS-34)
-  // cm:edge contract -> cli/lib/analyze.mjs — the VERDICT is its CM203, never the scan's signal alone: a
-  //   `cm:ignore CM203` drops the diag there, and a second reader here named a file verify calls fine (ISS-34)
-  if (scan.unterminated && (res.diags ?? []).some((d) => d.code === 'CM203')) {
+  // cm:guard a block or a multi-line string left open at EOF is discarded whole by scan.mjs, so its opener
+  //   and the text under it reach NO channel — report unaccounted, never billed: §6 leaves it unread (ISS-34)
+  // cm:edge contract -> cli/lib/analyze.mjs — the VERDICT is its CM203 or CM205, never the scan's signal
+  //   alone: an ignore drops the diag there, and a second reader here named a file verify calls fine (ISS-34)
+  // cm:guard the code is the one the scan's `kind` names, so a silenced string opener falls silent in BOTH
+  //   verbs — keying on CM203 alone billed nothing for a file verify had reported as CM205 (ISS-64)
+  const openerCode = scan.unterminated?.kind === 'string' ? 'CM205' : 'CM203';
+  if (scan.unterminated && (res.diags ?? []).some((d) => d.code === openerCode)) {
     out.unaccounted = unaccountedFor(src, scan.unterminated);
   }
   for (const [ci, c] of scan.comments.entries()) {

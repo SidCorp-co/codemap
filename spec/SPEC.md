@@ -311,6 +311,15 @@ re-reading it as code would bill every line of it as prose, which is a worse fai
 fixed. The annotations return when the block is closed. Reporting is what keeps this inside the promise
 above: the loss is loud, not silent.
 
+A **multi-line string delimiter that is never closed** costs exactly the same and is reported the same
+way, as `CM205` at the delimiter. Only a delimiter the profile calls multi-line carries state past its
+own line — a stray apostrophe in prose cannot desync a file — so what reaches this report is a backtick
+in `.ts`, a `"""` or `'''` in `.py`, and the like. The scanner signals the two states through one field
+discriminated by kind, never two, because a caller re-deriving “did this file end inside a string” is the
+divergence between `cm verify` and `cm propose` that §6 exists to prevent. Both codes carry the same
+escape hatch: where the opener is heredoc or raw-string content the scanner does not model, `cm:ignore
+CM203` or `cm:ignore CM205` on the line above it silences the diagnostic, and the region stays unread.
+
 ## §7 Diagnostics
 
 Tier decides where it runs: **grammar** in `PostToolUse` (blocking), **referential** and
@@ -319,8 +328,8 @@ whether it can block, never where the code is computed. Only the grammar tier ma
 others are in general judged against the whole graph, and a scoped run cannot tell "broken" from "the
 other end is out of scope". For the same reason the graph is always built from the whole tree even when
 reporting is scoped — a one-file graph made a legal two-step flow report `CM103`/`CM201` against itself.
-`CM203` is the exception that shows the two questions are separate: it is structural, raised per file,
-and correct on a scoped run, and it still does not block; a new rule enters at warn (NORTH-STAR §7).
+`CM203` and `CM205` are the exception that shows the two questions are separate: both are structural,
+raised per file, and correct on a scoped run, and neither blocks; a new rule enters at warn (NORTH-STAR §7).
 
 | Code | Tier | Meaning |
 |---|---|---|
@@ -349,6 +358,7 @@ and correct on a scoped run, and it still does not block; a new rule enters at w
 | `CM201` | structural | flow has a single step — either it is not a flow, or steps are missing |
 | `CM202` | structural | `after:` chain is cyclic or the flow has several roots |
 | `CM203` | structural | a block comment is never closed, so no annotation below its opener is read (§6) |
+| `CM205` | structural | a multi-line string is never closed, so no annotation below its delimiter is read (§6) |
 | `CM204` | grammar | an annotation runs past the one line it may wrap onto, so the lines past it never reach the channel (§4) |
 | `CM104` | reserved | stale `cm:hack` (issue closed) — requires the Forge integration, tier 3 |
 
@@ -789,10 +799,11 @@ prose, not annotation and not doc: it is narration the channel never loaded.
   a count of characters, never a channel: how much of it is comment is what the discard makes unknowable.
   The verdict is `CM203` itself and not the scanner's signal, so the two verbs name the same files: where
   an author takes the directive `CM203`'s own fix line offers, because the opener is a heredoc or a raw
-  string the scanner does not model, both fall silent together. This is the case the verb says out loud,
-  and it is not the only way a file can lose text: the scanner declares the constructs it does not lex in
-  its own header, and one of those can swallow a file with no diagnostic at all, leaving nothing below
-  that point either returned or reported (ISS-34).
+  string the scanner does not model, both fall silent together. The same holds for a multi-line
+  string left open, whose verdict is `CM205`: the scan's `kind` names the code, so neither verb re-reads the
+  source to decide which construct swallowed the file (ISS-64). Those are the two cases the verb says out
+  loud, and they are what the scanner declares it *does* lex; a construct outside that — a heredoc, a raw
+  string — can still open one of them where no opener was meant, which is what the two directives are for.
 - **The head's share is the number that says whether a drain can be targeted.** A flat distribution has
   no head to pick off; a top-heavy one is reachable by ranking rather than by editing every file. On the
   repo and commit named below, 783 files carry frozen prose and the top 100 of them hold 48% of it.
