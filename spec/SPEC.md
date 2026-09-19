@@ -413,6 +413,15 @@ The runtime is the profile's `ecosystem` (falling back to its `id`), and that is
 authority on the question: nothing outside `languages.mjs` keeps its own table of extensions, so a
 language added to the profile table cannot be missing from the guard (ISS-32).
 
+Evidence is read from **code**, through the one masker `cm propose` uses, so a stem named only in a
+comment never wires a pair. Two regions carry no comment span and so were read as code until ISS-65:
+a **shebang**, which §6 counts as neither code nor comment, and the region below an **unterminated
+opener**, which §6 says stays unread. Both are now blanked before the evidence read — the shebang
+for every caller, the unterminated region for `CM301` alone, because masking it to end of file on
+the `cm propose` path cost whole files their literals wherever the scanner mis-lexed (ISS-59,
+ISS-61). A file whose opener is never closed already reports `CM203`, which is structural and gates,
+so `CM301` losing evidence there is loud, not silent.
+
 Coverage is a separate question from the ecosystem, and a profile answers it with
 `advisoryTier: false`, which excludes its files from `CM301` while leaving their ecosystem intact.
 Out today: single-file components, because no measurement has covered that file format, and the

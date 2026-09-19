@@ -137,6 +137,27 @@ export const MUTATIONS = [
     find: 'out.sort((x, y) => x.files[0].file.localeCompare(y.files[0].file) || x.literal.localeCompare(y.literal));',
     replace: 'out.sort((x, y) => x.files[0].file.localeCompare(y.files[0].file));',
   },
+  {
+    id: 'shebang-mask',
+    file: 'cli/lib/propose.mjs',
+    mechanism: 'blanking a shebang, which scan.mjs reports no span for, so it read as code to CM301',
+    find: "  if (lines[0]?.startsWith('#!')) mask(0, 0, lines[0].length);",
+    replace: '',
+  },
+  {
+    id: 'unterminated-mask',
+    file: 'cli/lib/propose.mjs',
+    mechanism: "codeOnly's maskUnterminated blanking from the unterminated opener's column to EOF",
+    find: '  if (maskUnterminated && scan.unterminated) {',
+    replace: '  if (false && scan.unterminated) {',
+  },
+  {
+    id: 'unterminated-mask-optin',
+    file: 'cli/lib/graph.mjs',
+    mechanism: "CM301's evidence read being the ONE caller that turns maskUnterminated on",
+    find: "    entry.code = codeOnly(entry.src, profileFor(entry.path), { maskUnterminated: true });",
+    replace: '    entry.code = codeOnly(entry.src, profileFor(entry.path));',
+  },
 ];
 
 // cm:guard the corpus a copy runs carries this marker and main refuses when it is set: without it a
