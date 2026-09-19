@@ -521,7 +521,7 @@ function wiringCases(pluginRoot, check) {
     + `.git/index with a stat-cache refresh, which is a write in the tree being measured: ${statusCalls.join(' | ')}`);
 }
 
-function declaredListCases(check) {
+function declaredListCases(pluginRoot, check) {
   // cm:guard every other check here asserts a filter is empty, so all of them pass on an EMPTY list
   //   and the harness then reports success having measured nothing (ISS-30)
   check('mutate: the declared list is not empty',
@@ -545,6 +545,17 @@ function declaredListCases(check) {
     sameText.length === 0,
     `a no-op mutation always reads DEAD: ${sameText.map((m) => m.id).join(', ')}`);
 
+  // cm:guard every anchor is resolved against the REAL tree here, not only when the harness spawns: the
+  //   corpus is what CI runs, and until this an edit to a mutated line rotted its anchor in silence (ISS-64)
+  const stale = MUTATIONS.filter((m) => {
+    const body = readFileSync(join(pluginRoot, m.file), 'utf8');
+    return body.split(m.find).length !== 2;
+  });
+  check('mutate: every declared anchor still matches its file exactly once',
+    stale.length === 0,
+    `these anchors no longer resolve, so the harness reports ANCHOR where it should read DEAD, and`
+      + ` nothing in CI says so: ${stale.map((m) => `${m.id} (${m.file})`).join(', ')}`);
+
   const escaping = MUTATIONS.filter((m) => m.file.split('/').includes('..') || m.file.startsWith('/'));
   check('mutate: no declared point names a path outside the tree',
     escaping.length === 0,
@@ -559,5 +570,5 @@ export function mutateCases(pluginRoot, check) {
   anchorCases(check);
   gitEnvCases(check);
   wiringCases(pluginRoot, check);
-  declaredListCases(check);
+  declaredListCases(pluginRoot, check);
 }

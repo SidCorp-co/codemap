@@ -879,8 +879,8 @@ function cliCases(pluginRoot, check, roots) {
 // below it reach no channel — and the conservation oracle above cannot see that, because it compares
 // the channels against the same scan that already dropped the block. These assert the report instead.
 function unaccountedCases(check) {
-  // cm:guard each fixture's premise is pinned through CM203 at the opener — one that stopped being an
-  //   unterminated shape still bills 0 to every channel, so the figures alone would pass on it (ISS-34)
+  // cm:guard each fixture's premise is pinned through its OWN code at the opener — one that stopped being
+  //   an unterminated shape still bills 0 to every channel, so the figures alone would pass on it (ISS-34)
   const forms = [
     {
       relPath: 'swallowed.ts',
@@ -929,6 +929,24 @@ function unaccountedCases(check) {
       ].join('\n'),
       channels: { annotation: 0, frozen: 0, live: 0, doc: 0, header: 34 },
     },
+    // cm:guard the string form is a case of its own, not a variation — a delimiter that is not a comment
+    //   opener at all is what makes this a property of the discard rather than of §6's block pair (ISS-64)
+    {
+      relPath: 'swallowed-string.ts',
+      code: 'CM205',
+      leader: '`',
+      line: 3,
+      col: 10,
+      chars: 99,
+      src: [
+        '// a header line that does get billed',
+        '',
+        'const s = `opens a template and never closes it',
+        '// cm:guard this annotation is never read',
+        'export const x = 1;',
+      ].join('\n'),
+      channels: { annotation: 0, frozen: 0, live: 0, doc: 0, header: 34 },
+    },
   ];
 
   const rows = [];
@@ -937,14 +955,15 @@ function unaccountedCases(check) {
     const m = fileMass({ relPath: f.relPath, res });
     rows.push(m);
 
-    const cm203 = (res.diags ?? []).filter((d) => d.code === 'CM203');
-    check(`mass: ${f.relPath} really is an unterminated block, one CM203 at line ${f.line}`,
-      cm203.length === 1 && cm203[0].line === f.line,
-      `expected exactly one CM203 at line ${f.line}, got ${JSON.stringify(cm203.map((d) => `${d.code}@${d.line}`))}`
+    const code = f.code ?? 'CM203';
+    const opener = (res.diags ?? []).filter((d) => d.code === code);
+    check(`mass: ${f.relPath} really is an unterminated opener, one ${code} at line ${f.line}`,
+      opener.length === 1 && opener[0].line === f.line,
+      `expected exactly one ${code} at line ${f.line}, got ${JSON.stringify((res.diags ?? []).map((d) => `${d.code}@${d.line}`))}`
         + ' — without this the figures below pass on a fixture that stopped being this shape');
 
     const scanned = scanComments(f.src, profileFor(f.relPath)).unterminated;
-    check(`mass: ${f.relPath} opens its block at column ${f.col ?? 0}, as this fixture set requires`,
+    check(`mass: ${f.relPath} opens at column ${f.col ?? 0}, as this fixture set requires`,
       scanned?.col === (f.col ?? 0),
       `the scanner puts the opener at column ${scanned?.col}, not ${f.col ?? 0} — the column-sensitivity`
         + ' of the region size is pinned by midline.ts alone, so its column moving silently unpins it');
@@ -961,7 +980,7 @@ function unaccountedCases(check) {
         + ` and the fixture is ${f.src.length} characters long`);
 
     const got = Object.fromEntries(Object.keys(f.channels).map((k) => [k, m[k]]));
-    check(`mass: ${f.relPath} bills the discarded block to no channel`,
+    check(`mass: ${f.relPath} bills the discarded region to no channel`,
       JSON.stringify(got) === JSON.stringify(f.channels),
       `channels ${JSON.stringify(got)} != ${JSON.stringify(f.channels)} — the swallowed text must reach`
         + ' no channel, and what the scan did return must still be billed normally');
@@ -1013,6 +1032,30 @@ function unaccountedCases(check) {
     'cm verify reports nothing for this file, so cm mass naming it is the ISS-34 disagreement running'
       + ' the other way — and the line it prints tells the author to close a block that is not one');
 
+  // cm:guard the string form needs its OWN hushed case: keyed on CM203 alone, mass named this file while
+  //   verify called it fine — the ISS-34 disagreement running again through the code ISS-64 added
+  const hushedStr = [
+    'export const a = 1;',
+    '',
+    '// a plain narration line nobody froze',
+    'export const b = 2;',
+    '',
+    '// cm:ignore CM205 \u2014 the backtick is heredoc content, not a string',
+    'const s = `opens nothing',
+    'export const x = 1;',
+  ].join('\n');
+  const hushedStrRes = analyzeFile({ relPath: 'hushed-string.ts', src: hushedStr, reg: DEFAULT_REGISTRY });
+  const hushedStrCodes = (hushedStrRes.diags ?? []).map((d) => d.code);
+  check('mass: the string fixture silences CM205 while still raising a diagnostic of its own',
+    hushedStrCodes.length > 0 && !hushedStrCodes.includes('CM205')
+      && scanComments(hushedStr, profileFor('hushed-string.ts')).unterminated?.kind === 'string',
+    `diags ${JSON.stringify(hushedStrCodes)} — the premise is a file the scanner still calls unterminated`
+      + ' as a STRING, whose CM205 analyze has dropped, and which raises something else');
+  check('mass: a silenced CM205 is not named unaccounted for, so both verbs stay silent together',
+    fileMass({ relPath: 'hushed-string.ts', res: hushedStrRes }).unaccounted === null,
+    'cm verify reports nothing for this file, so cm mass naming it is the ISS-34 disagreement running'
+      + ' the other way, through the code ISS-64 added rather than the one it copied');
+
   // cm:guard a generated file is silent in BOTH verbs — analyze returns before raising CM203, so a
   //   report keyed on the scan alone would name a file §11 declares counted as nothing (ISS-34)
   const genSrc = [
@@ -1032,9 +1075,9 @@ function unaccountedCases(check) {
   const m = massOf([...rows, closedMass]);
   check('mass: massOf lists every unaccounted file, largest region first',
     JSON.stringify(m.unaccounted.map((u) => `${u.relPath}:${u.line}`))
-      === JSON.stringify(['swallowed.ts:3', 'midline.ts:3', 'swallowed.vue:2']),
-    `unaccounted list ${JSON.stringify(m.unaccounted)} — want all three files, 114 then 94 then 75;`
-      + ' midline.ts and swallowed.ts tie on nothing, so the order is the region size alone');
+      === JSON.stringify(['swallowed.ts:3', 'swallowed-string.ts:3', 'midline.ts:3', 'swallowed.vue:2']),
+    `unaccounted list ${JSON.stringify(m.unaccounted)} — want all four files, 114 then 99 then 94 then 75;`
+      + ' no two tie on anything, so the order is the region size alone and the kind never enters it');
   // cm:guard the guard on `out` says `unaccounted` must never become a key of `total`, and this is the
   //   only thing that refuses it — total.comment is a five-term sum, so it stays right either way
   check('mass: massOf\'s total carries the character counts and nothing else',
@@ -1046,10 +1089,10 @@ function unaccountedCases(check) {
   // cm:guard this is the property that keeps §11's and CASE-STUDY.md's published totals true across
   //   this change: an unread region qualifies the comment figure and never joins it (ISS-34)
   check('mass: an unaccounted file adds nothing to the comment total',
-    m.total.comment === 141,
-    `total.comment=${m.total.comment} != 141 — the control's 34 header + 39 live, plus the 34-char`
-      + ' header of each of the two ts fixtures whose block never closes; the three unread regions'
-      + ' total 283 characters and a total that summed them moves every published figure');
+    m.total.comment === 175,
+    `total.comment=${m.total.comment} != 175 — the control's 34 header + 39 live, plus the 34-char`
+      + ' header of each of the three ts fixtures whose opener never closes; the four unread regions'
+      + ' total 382 characters and a total that summed them moves every published figure');
 }
 
 export function massCases(pluginRoot, check) {
