@@ -4,7 +4,7 @@
 // wiring (exit code, --json shape, --source filter).
 
 import {
-  mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync,
+  mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readdirSync, readFileSync,
 } from 'node:fs';
 import { spawnSync, execFileSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -661,10 +661,77 @@ function leaderProfileCases(check) {
     leaderFor('README.md') === null, 'an unprofiled file has no leader to carry an annotation');
 }
 
+// cm:why a shebang and a region no scan could close reached CM301's evidence read as CODE, because
+//   scan.mjs reports no span for either and codeOnly masks spans alone (ISS-65)
+function unreadableCases(pluginRoot, check) {
+  const prof = profileFor('a.ts');
+
+  const shebang = '#!/usr/bin/env node\nexport const y = 1;\n';
+  check('propose: codeOnly blanks a shebang in place, exactly (ISS-65)',
+    codeOnly(shebang, prof) === `${' '.repeat(19)}\nexport const y = 1;\n`,
+    `the shebang handed CM301 the stems usr, bin and env; got ${JSON.stringify(codeOnly(shebang, prof))}`);
+
+  const unclosed = 'export const y = 1;\n/* a dangling note about widget never closed\nconst z = 2;\n';
+  check('propose: codeOnly leaves an unterminated block alone by default (ISS-59, ISS-61)',
+    codeOnly(unclosed, prof) === unclosed,
+    `masking it to EOF here cost whole files their literals; got ${JSON.stringify(codeOnly(unclosed, prof))}`);
+  check('propose: maskUnterminated blanks from the opener to EOF, for CM301 alone (ISS-65)',
+    codeOnly(unclosed, prof, { maskUnterminated: true })
+      === `export const y = 1;\n${' '.repeat(44)}\n${' '.repeat(12)}\n`,
+    `got ${JSON.stringify(codeOnly(unclosed, prof, { maskUnterminated: true }))}`);
+  check('propose: maskUnterminated keeps the code BEFORE the opener on its own line (ISS-65)',
+    codeOnly('const a = 1; /* opener about widget\nmore text\n', prof, { maskUnterminated: true })
+      === `const a = 1;${' '.repeat(23)}\n${' '.repeat(9)}\n`,
+    'an opener mid-line must not blank the code to its left');
+
+  // cm:guard the shape promise contractCandidates rests on — it reports the LINE it found a literal
+  //   on, so a dropped line or a shifted column makes every proposal point at the wrong place (ISS-59)
+  const shapeFiles = [];
+  const walk = (dir) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
+      const full = join(dir, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (profileFor(full)) shapeFiles.push(full);
+    }
+  };
+  for (const d of ['cli', 'tests', 'spec']) walk(join(pluginRoot, d));
+  const bad = [];
+  for (const f of shapeFiles) {
+    const src = readFileSync(f, 'utf8');
+    const p2 = profileFor(f);
+    for (const opts of [undefined, { maskUnterminated: true }]) {
+      const got = (opts ? codeOnly(src, p2, opts) : codeOnly(src, p2)).split('\n');
+      const want = src.split('\n');
+      if (got.length !== want.length || got.some((l, i) => l.length !== want[i].length)) bad.push(f);
+    }
+  }
+  check('propose: codeOnly never drops a line or shifts a column, over the whole tree (ISS-65)',
+    shapeFiles.length > 40 && bad.length === 0,
+    `${shapeFiles.length} file(s) read; these changed shape: ${bad.slice(0, 5).join(', ')}`);
+
+  // cm:guard the control for maskUnterminated — `cm propose` must still see a literal below an
+  //   unterminated opener, which is the ISS-59/ISS-61 decision this change deliberately keeps (ISS-65)
+  const root = mkdtempSync(join(tmpdir(), 'cm-unreadable-'));
+  try {
+    writeFileSync(join(root, 'a.ts'),
+      '/* a dangling note never closed\nexport const k = "wire.ready";\n');
+    writeFileSync(join(root, 'b.go'), 'package main\n\nconst K = "wire.ready"\n');
+    const cands = contractCandidates(root, ['a.ts', 'b.go']);
+    const side = cands[0]?.files.find((f) => f.file === 'a.ts');
+    check('propose: a literal below an unterminated opener is still a candidate, at its own line (ISS-65)',
+      cands.length === 1 && cands[0].literal === 'wire.ready' && side?.line === 2,
+      `masking to EOF here would lose it silently; got ${JSON.stringify(cands)}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 export function proposeCases(pluginRoot, check) {
   pureCases(check);
   lockstepCases(check);
   cliCases(pluginRoot, check);
   leaderCases(pluginRoot, check);
   leaderProfileCases(check);
+  unreadableCases(pluginRoot, check);
 }

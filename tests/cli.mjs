@@ -682,7 +682,68 @@ function advisoryCases(pluginRoot, check, roots) {
     !/repo\.go/.test(goDir.out),
     `Go's import model must not read as missing evidence:\n${goDir.out}`);
 
+  unreadableEvidenceCases(pluginRoot, check, roots);
   coverageCases(pluginRoot, check, roots);
+}
+
+// cm:why codeOnly masks the SPANS scan.mjs reports, and it reports none for a shebang or for a region
+//   below an unterminated opener — so both survived and read as evidence to this check (ISS-65)
+function unreadableEvidenceCases(pluginRoot, check, roots) {
+  const edge = (target) => `// cm:edge contract -> ${target} — the engine must consume this\n`;
+  const run = (files) => {
+    const root = makeRepo();
+    roots.push(root);
+    for (const [name, body] of Object.entries(files)) writeFileSync(join(root, name), body);
+    cm(pluginRoot, root, 'baseline');
+    return cm(pluginRoot, root, 'verify', '--tier', 'advisory');
+  };
+
+  // cm:guard the stem must sit ONLY in the unreadable region — a fixture naming it in code too would
+  //   pass whatever the mask does, which is how the ISS-60 wiring check passed against nothing
+  const srcShebang = run({
+    'env.ts': 'export function loadEnv() { return 1; }\n',
+    'tool.ts': `#!/usr/bin/env node\n${edge('env.ts#loadEnv')}export function listThings() { return []; }\n`,
+  });
+  check('cli: a shebang in the SOURCE is not evidence — CM301 still fires (ISS-65)',
+    /CM301/.test(srcShebang.out) && /tool\.ts:2/.test(srcShebang.out),
+    `#!/usr/bin/env node must not wire tool.ts to env.ts:\n${srcShebang.out}`);
+
+  const tgtShebang = run({
+    'engine.ts': '#!/usr/bin/env node\nexport function unrelated() { return 1; }\n',
+    'env.ts': `${edge('engine.ts#unrelated')}export function listThings() { return []; }\n`,
+  });
+  check('cli: a shebang in the TARGET is not evidence either — CM301 still fires (ISS-65)',
+    /CM301/.test(tgtShebang.out) && /env\.ts:1/.test(tgtShebang.out),
+    `the target's shebang names env, which is the source's own stem:\n${tgtShebang.out}`);
+
+  const srcUnclosed = run({
+    'engine.ts': 'export function unrelated() { return 1; }\n',
+    'caller.ts': `${edge('engine.ts#unrelated')}export function listThings() { return []; }\n`
+      + '/* a dangling note about engine that was never closed\n',
+  });
+  check('cli: an unterminated block in the SOURCE is not evidence — CM301 still fires (ISS-65)',
+    /CM301/.test(srcUnclosed.out) && /caller\.ts:1/.test(srcUnclosed.out),
+    `spec §6 says the text below the opener stays unread:\n${srcUnclosed.out}`);
+
+  const tgtUnclosed = run({
+    'engine.ts': 'export function unrelated() { return 1; }\n'
+      + '/* a dangling note about caller that was never closed\n',
+    'caller.ts': `${edge('engine.ts#unrelated')}export function listThings() { return []; }\n`,
+  });
+  check('cli: an unterminated block in the TARGET is not evidence either — CM301 still fires (ISS-65)',
+    /CM301/.test(tgtUnclosed.out) && /caller\.ts:1/.test(tgtUnclosed.out),
+    `a region no scan could close cannot be code at either end:\n${tgtUnclosed.out}`);
+
+  // cm:guard the control for all four — real code evidence must still silence the check, or the
+  //   fixtures above would pass against a mask that simply blanked everything (ISS-60)
+  const stillWired = run({
+    'engine.ts': '#!/usr/bin/env node\nimport { listThings } from "./caller";\n'
+      + 'export function unrelated() { return listThings(); }\n',
+    'caller.ts': `${edge('engine.ts#unrelated')}export function listThings() { return []; }\n`,
+  });
+  check('cli: the new masks did not blind the check to real code (ISS-65)',
+    !/CM301/.test(stillWired.out),
+    `a shebang beside a real import must still count the import:\n${stillWired.out}`);
 }
 
 // cm:guard these drive the CHECKER, not the resolver — a second narrowing applied downstream of the
