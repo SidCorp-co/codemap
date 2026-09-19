@@ -45,12 +45,18 @@ function schemeEndsAt(line, j) {
   return SCHEMES.has(line.slice(k, j - 1).toLowerCase());
 }
 
-/** Is j inside a bare URL that started earlier on this line? Whitespace ends the URL. */
+// cm:guard the URL ends at a character no URI may carry and at both quotes, not at whitespace
+//   alone: `"https://x";// cm:guard kept` keeps its annotation only because the quote ends the URL
+const URL_ENDS = /["'<>\\^`{|}\s]/;
+
+// cm:why anchoring at the nearest whitespace missed every URL a non-space abuts — `<p>`, `(`, `=` —
+//   so its own `//` read as a leader and swallowed the annotation behind it (ISS-70)
+/** Is j inside a bare URL that started earlier on this line? A character no URL carries ends it. */
 function insideBareUrl(line, j) {
   let k = j;
-  while (k > 0 && !/\s/.test(line[k - 1])) k--;
-  const m = /^([a-z][a-z0-9+.-]*):\/\//i.exec(line.slice(k, j));
-  return !!m && SCHEMES.has(m[1].toLowerCase());
+  while (k > 0 && !URL_ENDS.test(line[k - 1])) k--;
+  for (let q = k; q < j; q++) if (line.startsWith('//', q) && schemeEndsAt(line, q)) return true;
+  return false;
 }
 
 function insideUrl(line, j, leader) {
