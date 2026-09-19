@@ -45,8 +45,12 @@ function readTarget(root, path, cache) {
 //   the whole scanComments state machine, and many edges into one big target pay it per edge (ISS-60)
 // cm:guard takes the cache ENTRY and reads its own path — a caller pairing an entry with another
 //   file's path poisons the memo for the rest of the run, and the two call sites are adjacent
+// cm:why maskUnterminated is ON here and nowhere else — spec §6 already says the text below an
+//   unterminated opener stays unread, and CM301 counting it as evidence contradicted that (ISS-65)
 function maskedCode(entry) {
-  if (entry.code === undefined) entry.code = codeOnly(entry.src, profileFor(entry.path));
+  if (entry.code === undefined) {
+    entry.code = codeOnly(entry.src, profileFor(entry.path), { maskUnterminated: true });
+  }
   return entry.code;
 }
 
@@ -163,7 +167,7 @@ export function advisoryDiags(g, { root, baseline = {}, importGraph } = {}) {
     const source = readTarget(root, e.file, cache);
     if (target.src === undefined || source.src === undefined) continue;
     // cm:guard evidence must come from CODE — counting comments makes this check pass everything it
-    //   exists to find; a shebang and an unterminated block still read as code here (ISS-65)
+    //   exists to find, and a shebang and a region no scan could close are not code either (ISS-65)
     // cm:why per-side profiles, though the ecosystem guard above forces the two equal today: one
     //   advisory ecosystem resolves to one profile, and this holds if a second ever joins (ISS-60)
     const src = maskedCode(source);

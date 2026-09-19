@@ -70,7 +70,11 @@ const stem = (p) => p.split('/').pop().replace(/\.\w+$/, '');
 //   template comment as code where analyzeFile read the same text as a comment (ISS-59)
 // cm:why exported so its tests can reach a comment form no profile carries yet, which is the property
 //   this must hold — and, since ISS-60, so cli/lib/graph.mjs strips through this one answer too
-export const codeOnly = (src, prof) => {
+// cm:why a shebang is neither code nor comment, so scan.mjs reports no span for it and it survived the
+//   mask — `usr bin env` then read as CODE to whatever asked this what the code is (ISS-65)
+// cm:guard maskUnterminated is OFF by default and `cm propose` must keep it off — blanking to EOF there
+//   cost whole files their literals wherever scan.mjs mis-lexed (ISS-59, ISS-61); only CM301 asks (ISS-65)
+export const codeOnly = (src, prof, { maskUnterminated = false } = {}) => {
   if (!prof) return src;
   const lines = src.split('\n');
   const mask = (i, from, to) => {
@@ -80,10 +84,16 @@ export const codeOnly = (src, prof) => {
     if (l === undefined || to <= from) return;
     lines[i] = l.slice(0, from) + ' '.repeat(to - from) + l.slice(to);
   };
-  // cm:guard an unterminated block is left alone, so its text is READ AS CODE here while analyzeFile
-  //   discards it — masking it to EOF cost whole files wherever scan.mjs mis-lexed (ISS-59, ISS-61)
-  for (const c of scanComments(src, prof, { spans: true }).comments) {
+  const scan = scanComments(src, prof, { spans: true });
+  for (const c of scan.comments) {
     for (const sp of c.spans ?? []) mask(sp.line - 1, sp.from, sp.to);
+  }
+  if (lines[0]?.startsWith('#!')) mask(0, 0, lines[0].length);
+  // cm:guard reads `line` and `col` and NEVER a kind — scan.mjs reports the construct it could not
+  //   close, so a string left open at EOF is covered here the day scan.mjs reports one (ISS-65)
+  if (maskUnterminated && scan.unterminated) {
+    const { line, col } = scan.unterminated;
+    for (let i = line - 1; i < lines.length; i++) mask(i, i === line - 1 ? col : 0, lines[i].length);
   }
   return lines.join('\n');
 };
