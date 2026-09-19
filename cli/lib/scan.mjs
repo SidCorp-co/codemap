@@ -13,9 +13,10 @@
 // inside one reads as a leader. That costs a false-positive prose comment where prose is policed, which
 // an author can silence with an ignore directive — and, in the same place, a `cm propose` candidate,
 // which they cannot, because propose reads no directives and the loss is silent (ISS-61). A BLOCK
-// opener inside one is the exception that is not free: it swallows the rest of the file, and the
-// annotations below it are lost rather than merely mis-billed. That is why the discard reports CM203
-// instead of passing quietly — the loss is loud, not prevented (ISS-31).
+// opener or a MULTI-LINE STRING delimiter inside one is the exception that is not free: either
+// swallows the rest of the file, and the annotations below it are lost rather than merely mis-billed.
+// That is why the discard reports CM203 for the one and CM205 for the other instead of passing
+// quietly — the loss is loud, not prevented (ISS-31, ISS-64).
 
 const TAIL_CHARS = 24;
 
@@ -115,7 +116,8 @@ function findUnescaped(line, delim, from) {
 }
 
 /**
- * @returns {{comments: Array, codeLines: Set<number>, unterminated: ?{line: number, leader: string}}}
+ * @returns {{comments: Array, codeLines: Set<number>,
+ *   unterminated: ?{line: number, leader: string, col: number, kind: 'block'|'string'}}}
  *   comments: { kind: 'line'|'doc'|'block', line, endLine, leader, text, lines, spans, firstOnLine }
  *             line comments also carry { indent, col } — `col` is the 0-based offset of the leader,
  *             which is what lets `cm fmt` rewrite an annotation positionally (see lib/rewrite.mjs)
@@ -124,8 +126,10 @@ function findUnescaped(line, delim, from) {
  *             is what lets a caller blank comment text without moving code (see lib/propose.mjs)
  *   codeLines: 1-based line numbers that contain code outside comments (used by Go's
  *              required-on-exported policy to find the declaration a comment block documents)
- *   unterminated: { line, leader, col } — the opener of a block still open at EOF, when it was
- *                 discarded rather than flushed; `col` is where its text starts swallowing the file
+ *   unterminated: { line, leader, col, kind } — the opener of a block comment or of a multi-line
+ *                 string still open at EOF, `kind` being 'block' or 'string'; `col` is where its text
+ *                 starts swallowing the file. A block is reported when it was discarded rather than
+ *                 flushed. The two states are mutually exclusive, so one field carries either
  */
 // cm:guard flushOpen exists for isGenerated alone, which hands in a truncated head and needs the block
 //   still open at the cut; every other caller must leave it false (ISS-26)
@@ -184,10 +188,10 @@ export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = 
       }
 
       if (str) {
-        const k = findUnescaped(line, str, j);
+        const k = findUnescaped(line, str.delim, j);
         if (k === -1) { j = line.length; break; }
-        j = k + str.length;
-        keep(str);
+        j = k + str.delim.length;
+        keep(str.delim);
         str = null;
         sawCode = true;
         codeLines.add(lineNo);
@@ -263,7 +267,9 @@ export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = 
         codeLines.add(lineNo);
         if (k === -1) {
           // cm:why only genuinely multi-line delimiters carry state on, so a stray apostrophe in prose cannot desync the rest of the file
-          if (prof.multiline.includes(q)) { str = q; }
+          // cm:guard the opener's line and column are taken HERE and never re-derived at EOF — by then
+          //   the delimiter's own line is as unreadable as the text it swallowed (ISS-64)
+          if (prof.multiline.includes(q)) { str = { delim: q, startLine: lineNo, openCol: j }; }
           j = line.length;
           break;
         }
@@ -300,7 +306,14 @@ export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = 
   } else if (block) {
     // cm:guard reported only on the discard path — a block still open at isGenerated's truncated head is
     //   where the cut fell, not a defect, so flushOpen keeps its silence (ISS-31)
-    unterminated = { line: block.startLine, leader: block.open, col: block.openCol };
+    unterminated = { line: block.startLine, leader: block.open, col: block.openCol, kind: 'block' };
+  } else if (str) {
+    // cm:why a multi-line delimiter left open swallows the file exactly as a block opener does, and
+    //   reported nothing, so the annotations below it were lost in silence — the one failure this
+    //   scanner's header forbids (ISS-64)
+    // cm:guard flushOpen governs the BLOCK arm alone — a truncated head cut mid-string is the same
+    //   cut isGenerated makes on purpose, and its state is discarded either way (ISS-64)
+    unterminated = { line: str.startLine, leader: str.delim, col: str.openCol, kind: 'string' };
   }
 
   return { comments, codeLines, unterminated };
