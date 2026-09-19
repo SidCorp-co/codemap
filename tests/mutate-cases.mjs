@@ -547,7 +547,9 @@ function declaredListCases(pluginRoot, check) {
 
   // cm:guard every anchor is resolved against the REAL tree here, not only when the harness spawns: the
   //   corpus is what CI runs, and until this an edit to a mutated line rotted its anchor in silence (ISS-64)
-  const stale = MUTATIONS.filter((m) => {
+  // cm:guard skipped inside a mutation copy, where the mutation has by construction replaced one anchor:
+  //   left running there it fails under EVERY point, so every row reads pinned and nothing reads DEAD (ISS-64)
+  const stale = process.env[NESTED_MARKER] ? [] : MUTATIONS.filter((m) => {
     const body = readFileSync(join(pluginRoot, m.file), 'utf8');
     return body.split(m.find).length !== 2;
   });
