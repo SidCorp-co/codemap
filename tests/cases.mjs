@@ -352,6 +352,27 @@ export const analyzeCases = [
     annotations: ['why'],
   },
   {
+    name: 'tsx: a bare URL a non-space abuts is still a URL, so the annotation after it survives',
+    file: 'b5.tsx',
+    src: [
+      'const a = <p>https://example.com/a//b</p>; // cm:guard the markup must not eat this',
+      'const u = (https://example.com/a//b); // cm:why parentheses are not whitespace either',
+      'const v = href=https://example.com/a//b; // cm:guard an attribute value is not whitespace',
+    ].join('\n'),
+    codes: [],
+    annotations: ['guard', 'why', 'guard'],
+  },
+  {
+    name: 'ts: a quoted URL ends at its quote, so a leader abutting the quote is still a leader',
+    file: 'b6.ts',
+    src: [
+      'const u = "https://example.com";// cm:guard the closing quote ends the URL',
+      "const v = 'https://example.com';// cm:why a single quote ends it too",
+    ].join('\n'),
+    codes: [],
+    annotations: ['guard', 'why'],
+  },
+  {
     name: 'ts: a colon that is not a known scheme still opens a comment',
     file: 'b4.ts',
     src: [
