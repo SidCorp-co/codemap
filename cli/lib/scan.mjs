@@ -308,9 +308,8 @@ export function scanComments(src, prof, { flushOpen = false, spans: wantSpans = 
     //   where the cut fell, not a defect, so flushOpen keeps its silence (ISS-31)
     unterminated = { line: block.startLine, leader: block.open, col: block.openCol, kind: 'block' };
   } else if (str) {
-    // cm:why a multi-line delimiter left open swallows the file exactly as a block opener does, and
-    //   reported nothing, so the annotations below it were lost in silence — the one failure this
-    //   scanner's header forbids (ISS-64)
+    // cm:why a delimiter left open swallows the file exactly as a block opener does and reported
+    //   nothing, so every annotation below it was lost in the silence this header forbids (ISS-64)
     // cm:guard flushOpen governs the BLOCK arm alone — a truncated head cut mid-string is the same
     //   cut isGenerated makes on purpose, and its state is discarded either way (ISS-64)
     unterminated = { line: str.startLine, leader: str.delim, col: str.openCol, kind: 'string' };
